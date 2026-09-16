@@ -137,6 +137,20 @@ for (const [name, relativeDirectory] of packages) {
   receipts.push(receipt);
   if (result.status !== 0) {
     const failure = classifyPublishFailure(result, { packageName: name, version: manifest.version });
+    // After a matched-set version is on the registry, dry-run correctly exits
+    // nonzero with a version collision. That is an expected gate outcome, not a
+    // packaging failure (see classifier module header). Other kinds stay fail-closed.
+    if (failure.kind === "version-collision") {
+      receipt.classification = failure;
+      console.log(JSON.stringify({
+        status: "PASS",
+        guard: "dcb-matched-set-publish-dry-run",
+        outcome: "version-already-published",
+        failure,
+        receipt,
+      }, null, 2));
+      continue;
+    }
     console.error(JSON.stringify({ status: "FAIL", failure, receipt }, null, 2));
     process.exit(result.status ?? 1);
   }

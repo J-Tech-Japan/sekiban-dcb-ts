@@ -43,18 +43,17 @@ const sgrSequencePattern = new RegExp(
 const observationRoot = resolve(root, ".artifacts", "sdt-g80-observation");
 const timerResolutionFloorMs = 1;
 const allowanceMadFactor = 3;
-// These bounds are declared before any measurement is collected.  The direct
-// signal must be stable across the intentionally different chunk sizes, while
-// the repeated-size pair supplies the same-unit residual allowance.
-const crossSizeRateLowerBoundRatio = 0.5;
-const crossSizeRateUpperBoundRatio = 2;
-const equalSizeResidualBoundMs = 10;
+// G90: equal-size residual bound from hosted green-run census at main baseline
+// b6c1a6e — p99 paired-residual max 6 ms across 12 greens → ceil(6 + 1) = 7.
+const equalSizeResidualBoundMs = 7;
 const durableRecordPrefix = "G80_CALIBRATION_RECORD";
 const durableSummaryPrefix = "G80_CALIBRATION_SUMMARY";
 const maxDurableRecordBytes = 12_000;
-const durableRecordSchema = "sdt-g80-calibration-record-v2";
+const durableRecordSchema = "sdt-g80-calibration-record-v3";
 const directTimingPlan = Object.freeze({
-  chunks: [4, 8, 12, 4, 4],
+  warmUpRounds: 16,
+  chunks: [8, 8, 8, 8, 8],
+  scoringRounds: 40,
   maxElapsedMs: 5_000,
   clockProbeCount: 3,
   // Workerd/Miniflare can resolve a handful of fast D1 reads to the same
@@ -376,8 +375,7 @@ function calibrationFailureDetails(healthy, calibration, extra = {}) {
     directTiming: calibration?.directTiming ?? null,
     directTimingError: calibration?.directTimingError ?? null,
     uncertainty: {
-      crossSizeRateBounds: extra.crossSizeRateBounds ?? null,
-      crossSizeViolations: extra.crossSizeViolations ?? [],
+      observedRateSpread: extra.observedRateSpread ?? null,
       costsPerRoundMs: extra.costsPerRoundMs ?? null,
       pairedResidualsMs: extra.pairedResidualsMs ?? null,
       residualRangeMs: extra.residualRangeMs ?? null,
@@ -408,8 +406,7 @@ function compactFailureDetails(details) {
     "predictedAddedWorkMs",
     "wholeTestAttributionRatio",
     "timing",
-    "crossSizeRateBounds",
-    "crossSizeViolations",
+    "observedRateSpread",
     "costsPerRoundMs",
     "pairedResidualsMs",
     "residualRangeMs",
@@ -498,7 +495,25 @@ function legacyG69AddedWorkBlock(rounds) {
 `;
 }
 
-function chunkPlanFor(rounds) {
+function scoringRoundsTotal() {
+  return directTimingPlan.chunks.reduce((sum, chunk) => sum + chunk, 0);
+}
+
+function directMutationRoundsTotal() {
+  return directTimingPlan.warmUpRounds + scoringRoundsTotal();
+}
+
+function chunkPlanFor(rounds, { directTiming = false } = {}) {
+  if (directTiming) {
+    if (rounds !== directMutationRoundsTotal()) {
+      throw new Error(
+        "G90 direct timing requires " + directMutationRoundsTotal() +
+        " total mutation rounds (" + directTimingPlan.warmUpRounds + " warm-up + " +
+        scoringRoundsTotal() + " scoring)",
+      );
+    }
+    return [...directTimingPlan.chunks];
+  }
   const plan = [];
   let remaining = rounds;
   for (const candidate of directTimingPlan.chunks) {
@@ -512,7 +527,7 @@ function chunkPlanFor(rounds) {
 }
 
 function g69AddedWorkBlock(rounds, { directTiming = false } = {}) {
-  const chunkPlan = directTiming ? chunkPlanFor(rounds) : [rounds];
+  const chunkPlan = directTiming ? chunkPlanFor(rounds, { directTiming: true }) : [rounds];
   const clockStart = directTiming ? "performance.now()" : "0";
   const clockDuration = directTiming
     ? "performance.now() - g73ChunkStartedAt"
@@ -532,8 +547,9 @@ function g69AddedWorkBlock(rounds, { directTiming = false } = {}) {
     : [];
   const directTail = directTiming
     ? [
-        "          if (g73RoundOffset !== g73G69ExtraRounds) {",
-        '            throw new Error("G80 direct timing did not account for every calibration round");',
+        "          const g73ScoringRounds = g73TimingChunks.reduce((sum, chunk) => sum + chunk.rounds, 0);",
+        "          if (g73RoundOffset !== g73G69ExtraRounds || g73ScoringRounds !== " + scoringRoundsTotal() + ") {",
+        '            throw new Error("G90 direct timing did not account for warm-up and scoring rounds");',
         "          }",
         "          const g73PositiveIntervals = g73TimingChunks.map((chunk) => chunk.durationMs);",
         "          const g73MinObservedAdvanceMs = Math.min(...g73PositiveIntervals);",
@@ -551,10 +567,14 @@ function g69AddedWorkBlock(rounds, { directTiming = false } = {}) {
         '            },',
         "            initializationMs: g73InitializationDurationMs,",
         "            initializationSeparated: true,",
+        "            warmUpRounds: g73WarmUpRounds,",
+        "            warmUpDurationMs: g73WarmUpDurationMs,",
+        "            warmUpExcludedFromGates: true,",
         "            chunks: g73TimingChunks,",
-        "            totalRounds: g73RoundOffset,",
+        "            scoringRounds: g73ScoringRounds,",
+        "            totalRounds: g73ScoringRounds,",
         "            operationsPerRound: g73G69OperationsPerRound,",
-        "            deliveryCount: g73RoundOffset * g73G69OperationsPerRound,",
+        "            deliveryCount: g73ScoringRounds * g73G69OperationsPerRound,",
         "            waitersDrained: true,",
         "            skippedDeliveries: 0,",
         "            omittedWaiterDrain: false,",
@@ -598,11 +618,46 @@ function g69AddedWorkBlock(rounds, { directTiming = false } = {}) {
           "            }",
           "            g80ClockProbeAdvances.push(g80ProbeFinishedAt - g80ProbeStartedAt);",
           "          }",
-          "          const g80ClockProbeMinAdvanceMs = Math.min(...g80ClockProbeAdvances);",
-          "          const g80ClockProbeMaxAdvanceMs = Math.max(...g80ClockProbeAdvances);",
+        "          const g80ClockProbeMinAdvanceMs = Math.min(...g80ClockProbeAdvances);",
+        "          const g80ClockProbeMaxAdvanceMs = Math.max(...g80ClockProbeAdvances);",
         ]
       : []),
-    "          let g73RoundOffset = 0;",
+    ...(directTiming
+      ? [
+          "          let g73RoundOffset = 0;",
+          "          const g73WarmUpRounds = " + directTimingPlan.warmUpRounds + ";",
+          "          const g73WarmUpStartedAt = performance.now();",
+          "          for (let g73WarmUpRound = 0; g73WarmUpRound < g73WarmUpRounds; g73WarmUpRound += 1) {",
+          "            const extraServiceId = String(serviceId) + \"-g73-g69-warmup-\" + String(g73RoundOffset);",
+          "            const extraTag = \"room:g73-g69-warmup-\" + String(g73RoundOffset);",
+          "            for (let g73Operation = 0; g73Operation < g73G69OperationsPerRound; g73Operation += 1) {",
+          "              const extraWaiters: Promise<void>[] = [];",
+          "              const extraMessage = g32Message({",
+          "                serviceId: extraServiceId,",
+          "                allocatorLineageId: extraTemplate.allocatorLineageId,",
+          "                tag: extraTag,",
+          "                attemptId: \"g73-warmup-attempt-\" + String(index) + \"-\" + String(g73RoundOffset) + \"-\" + String(g73Operation),",
+          "                eventId: \"g73-warmup-event-\" + String(index) + \"-\" + String(g73RoundOffset) + \"-\" + String(g73Operation),",
+          "                suid: g32SuidAt(deliveredAt, g73RoundOffset * g73G69OperationsPerRound + g73Operation + 1),",
+          "                payload: extraTemplate.payload,",
+          "                eventTags: [extraTag],",
+          "                eventType: extraTemplate.eventType,",
+          "                enqueuedAt: deliveredAt - 100,",
+          "                obligationSequence: g73RoundOffset * g73G69OperationsPerRound + g73Operation + 1,",
+          "              });",
+          '              await extraStore.recordDelivery(extraMessage, deliveredAt, "queue", {',
+          "                waitUntil: (promise: Promise<void>) => { extraWaiters.push(promise); },",
+          "              });",
+          "              await Promise.all(extraWaiters);",
+          "            }",
+          "            g73RoundOffset += 1;",
+          "          }",
+          "          const g73WarmUpDurationMs = performance.now() - g73WarmUpStartedAt;",
+          "          if (!Number.isFinite(g73WarmUpDurationMs) || g73WarmUpDurationMs <= 0) {",
+          '            throw new Error("G90 warm-up requires a finite positive duration");',
+          "          }",
+        ]
+      : ["          let g73RoundOffset = 0;"]),
     "          const g73ChunkPlan = " + JSON.stringify(chunkPlan) + ";",
     "          for (const g73ChunkRounds of g73ChunkPlan) {",
     "            const g73ChunkStartedAt = " + clockStart + ";",
@@ -917,8 +972,26 @@ function validateDirectTiming(timing) {
   if (timing.operationsPerRound !== g69OperationsPerRound) {
     fail("the operation cardinality changed");
   }
+  if (
+    timing.warmUpExcludedFromGates !== true ||
+    timing.warmUpRounds !== directTimingPlan.warmUpRounds ||
+    !Number.isFinite(timing.warmUpDurationMs) ||
+    timing.warmUpDurationMs <= 0
+  ) {
+    fail("warm-up rounds were not measured separately and excluded from gates");
+  }
+  if (timing.scoringRounds !== directTimingPlan.scoringRounds) {
+    fail("the scoring round count does not match the predeclared equal-size plan");
+  }
   if (!Array.isArray(timing.chunks) || timing.chunks.length < 2) {
     fail("at least two direct timing batches are required");
+  }
+  const chunkSizes = new Set(timing.chunks.map((chunk) => chunk.rounds));
+  if (chunkSizes.size !== 1) {
+    fail("every scoring batch must use the same predeclared round count");
+  }
+  if (timing.chunks[0].rounds !== directTimingPlan.chunks[0]) {
+    fail("scoring batch size does not match the predeclared equal-size plan");
   }
   const validChunks = timing.chunks.every((chunk) =>
     Number.isInteger(chunk.rounds) &&
@@ -937,37 +1010,17 @@ function validateDirectTiming(timing) {
   if (!Number.isFinite(timing.minObservedAdvanceMs) || timing.minObservedAdvanceMs <= 0) {
     fail("the hosted clock did not show a positive finite interval");
   }
-  if (new Set(timing.chunks.map((chunk) => chunk.rounds)).size < 2) {
-    fail("the direct timing batches do not test scaling");
-  }
   return timing;
 }
 
 function deriveAllowance(timing) {
   const costs = timing.chunks.map((chunk) => chunk.durationMs / chunk.rounds);
   const referenceRateMs = median(costs);
-  const crossSizeRateBounds = {
-    referenceRateMs,
-    lowerRatio: crossSizeRateLowerBoundRatio,
-    upperRatio: crossSizeRateUpperBoundRatio,
-    lowerMs: referenceRateMs * crossSizeRateLowerBoundRatio,
-    upperMs: referenceRateMs * crossSizeRateUpperBoundRatio,
+  const observedRateSpread = {
     observedMinMs: Math.min(...costs),
     observedMaxMs: Math.max(...costs),
+    referenceRateMs,
   };
-  const crossSizeViolations = costs.flatMap((costMs, index) =>
-    costMs < crossSizeRateBounds.lowerMs || costMs > crossSizeRateBounds.upperMs
-      ? [{ index, costMs }]
-      : [],
-  );
-  if (crossSizeViolations.length > 0) {
-    throw outcomeError("CALIBRATION_INCONCLUSIVE", {
-      reason: "a direct per-round rate escaped the predeclared two-sided cross-size bounds",
-      crossSizeRateBounds,
-      crossSizeViolations,
-      costsPerRoundMs: costs,
-    });
-  }
   const pairedResiduals = [];
   for (let index = 0; index < timing.chunks.length; index += 1) {
     for (let next = index + 1; next < timing.chunks.length; next += 1) {
@@ -1008,7 +1061,7 @@ function deriveAllowance(timing) {
     timerResolutionFloorMs,
     allowanceMadFactor,
     allowanceMs,
-    crossSizeRateBounds,
+    observedRateSpread,
     directRateLowerBoundMs: Math.min(...costs),
     directRateMedianMs: referenceRateMs,
   };
@@ -1048,8 +1101,8 @@ function decideCalibration(healthy, calibration) {
   }
   const directRateLowerBoundMs = allowance.directRateLowerBoundMs;
   const directRateMedianMs = allowance.directRateMedianMs;
-  const scalingRatio = allowance.crossSizeRateBounds.observedMaxMs /
-    allowance.crossSizeRateBounds.observedMinMs;
+  const scalingRatio = allowance.observedRateSpread.observedMaxMs /
+    allowance.observedRateSpread.observedMinMs;
   // Representative sizing and the acceptance gate use only the direct
   // per-round lower bound.  Whole-test timing is retained below as an
   // attribution diagnostic and is deliberately never compared with the
@@ -1087,7 +1140,8 @@ function decideCalibration(healthy, calibration) {
     predictionRatio: wholeTestAttributionRatio,
     decisionPath: {
       directMeasurement: "bounded performance.now per-round delivery timing",
-      crossSizeRateBounds: "passed",
+      warmUpExcludedFromGates: true,
+      equalSizePlanOnly: true,
       equalSizeResidualBound: "passed",
       directSignal: "lower-bound dominates same-unit allowance",
       scalingRatio,
@@ -1481,7 +1535,7 @@ function runDurableRecordSelfTest() {
 
 function selfTest() {
   const source = readFileSync(resolve(root, testFile), "utf8");
-  const mutated = mutate(source, calibrationRounds);
+  const mutated = mutate(source, directMutationRoundsTotal());
   if (!mutated.includes('extraStore.recordDelivery(extraMessage, deliveredAt, "queue"')) {
     throw new Error("G67 self-test does not exercise the real D1EventStore G69 path");
   }
@@ -1516,12 +1570,18 @@ function selfTest() {
     },
     initializationMs: 0,
     initializationSeparated: true,
-    chunks: [
-      { rounds: 8, operations: 16, deliveryCount: 16, durationMs: 80, waitersDrained: true },
-      { rounds: 16, operations: 32, deliveryCount: 32, durationMs: 160, waitersDrained: true },
-      { rounds: 8, operations: 16, deliveryCount: 16, durationMs: 88, waitersDrained: true },
-    ],
-    totalRounds: 32,
+    warmUpRounds: directTimingPlan.warmUpRounds,
+    warmUpDurationMs: 128,
+    warmUpExcludedFromGates: true,
+    chunks: directTimingPlan.chunks.map((rounds, index) => ({
+      rounds,
+      operations: rounds * g69OperationsPerRound,
+      deliveryCount: rounds * g69OperationsPerRound,
+      durationMs: rounds * (index === directTimingPlan.chunks.length - 1 ? 11 : 10),
+      waitersDrained: true,
+    })),
+    scoringRounds: directTimingPlan.scoringRounds,
+    totalRounds: directTimingPlan.scoringRounds,
     operationsPerRound: 2,
     waitersDrained: true,
     skippedDeliveries: 0,
@@ -1565,17 +1625,20 @@ function selfTest() {
   if (duplicateMarker.value !== null || duplicateMarker.error === null) {
     throw new Error("G80 self-test accepted more than one direct timing marker");
   }
+  if (!directSection.includes("g73WarmUpRounds") || !directSection.includes("g73WarmUpDurationMs")) {
+    throw new Error("G90 direct timing did not emit a separated warm-up phase");
+  }
   validateDirectTiming(validTiming);
   const validAllowance = deriveAllowance(validTiming);
   if (
     validAllowance.directRateLowerBoundMs !== 10 ||
     validAllowance.directRateMedianMs !== 10 ||
     validAllowance.allowanceMs !== 1 ||
-    validAllowance.crossSizeRateBounds.lowerMs !== 5 ||
-    validAllowance.crossSizeRateBounds.upperMs !== 20 ||
+    validAllowance.observedRateSpread.observedMinMs !== 10 ||
+    validAllowance.observedRateSpread.observedMaxMs !== 11 ||
     validAllowance.equalSizeResidualBoundMs !== equalSizeResidualBoundMs
   ) {
-    throw new Error("G80 self-test did not retain the predeclared direct-rate/residual bounds");
+    throw new Error("G90 self-test did not retain the census-backed direct-rate/residual bounds");
   }
   const timingWithRates = (rates) => ({
     ...validTiming,
@@ -1592,25 +1655,56 @@ function selfTest() {
         error?.outcome === "CALIBRATION_INCONCLUSIVE" &&
         error?.details?.reason === expectedReason
       ) return;
-      throw new Error("G80 self-test rejected " + name + " for the wrong reason: " + String(error));
+      throw new Error("G90 self-test rejected " + name + " for the wrong reason: " + String(error));
     }
-    throw new Error("G80 self-test accepted " + name);
+    throw new Error("G90 self-test accepted " + name);
   };
   expectAllowanceRejection(
-    "low cross-size rate mutant",
-    timingWithRates([4, 10, 11]),
-    "a direct per-round rate escaped the predeclared two-sided cross-size bounds",
-  );
-  expectAllowanceRejection(
-    "high cross-size rate mutant",
-    timingWithRates([10, 25, 11]),
-    "a direct per-round rate escaped the predeclared two-sided cross-size bounds",
-  );
-  expectAllowanceRejection(
     "equal-size residual mutant",
-    timingWithRates([8, 10, 19]),
+    timingWithRates([8, 10, 18, 8, 8]),
     "the equal-size residual escaped the predeclared same-unit bound",
   );
+  let warmUpOmissionRejected = false;
+  try {
+    validateDirectTiming({ ...validTiming, warmUpExcludedFromGates: false });
+  } catch {
+    warmUpOmissionRejected = true;
+  }
+  if (!warmUpOmissionRejected) {
+    throw new Error("G90 self-test accepted warm-up omission");
+  }
+  const warmUpDigest = canonicalDigest({
+    ...stripRecordDigests(createDurableRecord({
+      schema: durableRecordSchema,
+      warmUpDurationMs: validTiming.warmUpDurationMs,
+    })),
+  });
+  const omittedWarmUpDigest = canonicalDigest({
+    ...stripRecordDigests(createDurableRecord({
+      schema: durableRecordSchema,
+      warmUpDurationMs: null,
+    })),
+  });
+  if (warmUpDigest === omittedWarmUpDigest) {
+    throw new Error("G90 self-test did not change the digest when warm-up was omitted");
+  }
+  let mixedChunkRejected = false;
+  try {
+    validateDirectTiming({
+      ...validTiming,
+      chunks: [
+        { rounds: 8, operations: 16, deliveryCount: 16, durationMs: 80, waitersDrained: true },
+        { rounds: 4, operations: 8, deliveryCount: 8, durationMs: 40, waitersDrained: true },
+      ],
+      scoringRounds: 12,
+      totalRounds: 12,
+    });
+  } catch {
+    mixedChunkRejected = true;
+  }
+  if (!mixedChunkRejected) {
+    throw new Error("G90 self-test accepted mixed-size scoring chunks");
+  }
   const invalidTimingCases = [
     ["mocked/frozen clock", { clock: "Date.now" }],
     ["zero duration", { chunks: validTiming.chunks.map((chunk, index) => index === 0 ? { ...chunk, durationMs: 0 } : chunk) }],
@@ -1815,7 +1909,7 @@ function selfTest() {
         reportError: null,
         targetCount: 1,
         directTimingError: null,
-        directTiming: timingWithRates([0.25, 0.25, 0.2625]),
+        directTiming: timingWithRates([0.25, 0.25, 0.2625, 0.25, 0.25]),
         receiptVitestVersion: pinnedVitestVersion,
         installedVitestVersion: pinnedVitestVersion,
         bodyDurationMs: 200,
@@ -1863,18 +1957,22 @@ function selfTest() {
     calibrationRounds,
     g69OperationsPerRound,
     safetyFactor,
-    crossSizeRateLowerBoundRatio,
-    crossSizeRateUpperBoundRatio,
+    directTimingPlan: {
+      warmUpRounds: directTimingPlan.warmUpRounds,
+      chunks: directTimingPlan.chunks,
+      scoringRounds: directTimingPlan.scoringRounds,
+    },
     equalSizeResidualBoundMs,
     structuredTimeout,
     durableRecords,
     selfTest: {
-      directTiming: "vitest-body-clock-and-g69-path-valid",
+      directTiming: "vitest-body-clock-g69-path-and-separated-warm-up-valid",
       unitMismatchMutant: "red-by-avoiding-whole-test-vs-per-round-comparison",
       inconclusiveDirectSignal: "red",
-      crossSizeRateLowerBoundMutant: "red",
-      crossSizeRateUpperBoundMutant: "red",
+      warmUpOmissionMutant: "red",
+      mixedChunkPlanMutant: "red",
       equalSizeResidualMutant: "red",
+      crossSizeGate: "removed-with-equal-size-only-plan",
     },
   }) + "\n");
 }
@@ -1905,13 +2003,14 @@ function main() {
       });
     }
 
+    const directMutationRounds = directMutationRoundsTotal();
     writeFileSync(
       sourcePath,
-      mutate(original, calibrationRounds, { directTiming: true }),
+      mutate(original, directMutationRounds, { directTiming: true }),
       "utf8",
     );
     calibration = runOracle(
-      "G67 AC3 " + calibrationRounds + "-round G69 direct calibration",
+      "G67 AC3 " + directMutationRounds + "-round G69 direct calibration",
       { retainReport: true },
     );
     const calibrationStage = emitStage(stages, "calibration", calibration, { status: "observed" });
@@ -2008,8 +2107,10 @@ function main() {
       directTiming: calibrationDecision.timing,
       allowance: calibrationDecision.allowance,
       uncertainty: {
-        crossSizeRateBounds: calibrationDecision.allowance.crossSizeRateBounds,
+        observedRateSpread: calibrationDecision.allowance.observedRateSpread,
         equalSizeResidualBoundMs: calibrationDecision.allowance.equalSizeResidualBoundMs,
+        warmUpRounds: calibrationDecision.timing.warmUpRounds,
+        warmUpDurationMs: calibrationDecision.timing.warmUpDurationMs,
       },
       directPerRoundMs: calibrationDecision.directPerRoundMs,
       directRateLowerBoundMs: calibrationDecision.directRateLowerBoundMs,
