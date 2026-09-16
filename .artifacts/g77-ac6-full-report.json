@@ -426,6 +426,7 @@
   },
   "findings": [
     "safe-pass-warm inconclusive (noise dominated)",
-    "safe-pass-restarted inconclusive (noise dominated)"
+    "safe-pass-restarted inconclusive (noise dominated)",
+    "commit-new p95 exceeded +10% bar (ratio 0.207)"
   ]
 }

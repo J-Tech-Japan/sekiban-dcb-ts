@@ -112,7 +112,7 @@ Predeclared bars (findings only — never tuning targets):
 | Safe-pass paired median wall ratio (gate-on vs gate-off) | ≤ **+5%** |
 | Commit-path aggregate p95 ratio (main vs pinned) | ≤ **+10%** |
 
-### Recorded dispositions (`npm run measure:g77` at `85f12e2`, harness exit **3**)
+### Recorded dispositions (`npm run measure:g77` at `85f12e2`, harness exit **2** — commit-new exceed)
 
 | Cohort / vector | Gate-off p50 / p95 (ms) | Gate-on p50 / p95 (ms) | Storage Δ keys / bytes / ops (off→on median) | Delta median (ms) | Ratio vs bar | Disposition |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
@@ -128,6 +128,7 @@ Harness `findings` array (verbatim):
 
 - `safe-pass-warm inconclusive (noise dominated)`
 - `safe-pass-restarted inconclusive (noise dominated)`
+- `commit-new p95 exceeded +10% bar (ratio 0.207)`
 
 Issuance-envelope write on main commit path: **proved** (`targetTags` + `tag-append-last` pause; durable `issuance:envelope:` key present after commit).
 

@@ -260,6 +260,13 @@ for (const [label, entry] of [
     report.findings.push(`${label} inconclusive (noise dominated)`);
   }
 }
+for (const vector of COMMIT_VECTORS) {
+  const { ratio } = commitMetrics[vector];
+  const disposition = commitDispositions[vector];
+  if (disposition === "exceed") {
+    report.findings.push(`commit-${vector} p95 exceeded +${(COMMIT_P95_BAR * 100).toFixed(0)}% bar (ratio ${ratio.toFixed(3)})`);
+  }
+}
 if (report.commit.aggregate.disposition === "exceed") {
   report.findings.push(`commit aggregate p95 exceeded +${(COMMIT_P95_BAR * 100).toFixed(0)}% bar (ratio ${aggregateCommitRatio.toFixed(3)})`);
 }
