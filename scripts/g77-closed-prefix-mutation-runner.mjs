@@ -33,7 +33,7 @@ const mutants = [
   {
     name: "wrong-prefix-watermark",
     file: "ledger",
-    from: "return { closedPrefixSuid: predecessor, unresolvedCount: count, status: \"ready\" };",
+    from: "return { closedPrefixSuid, unresolvedCount: count, status: \"ready\" };",
     to: "return { closedPrefixSuid: allocatedWatermark, unresolvedCount: count, status: \"ready\" };",
   },
 ];

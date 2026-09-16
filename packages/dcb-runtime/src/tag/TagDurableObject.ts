@@ -1281,6 +1281,9 @@ export class TagDurableObject implements DurableObject {
       return this.setClockOffset(tag, body);
     }
     if (request.method === "POST" && url.pathname === "/__internal/g77/inspect-target") {
+      if (!isNonEmptyString(serviceId)) {
+        return error(400, "service_identity_required", "Service identity is required");
+      }
       return this.inspectG77Target(serviceId, tag, body);
     }
     if (request.method === "POST" && url.pathname === "/__internal/g77/capabilities") {

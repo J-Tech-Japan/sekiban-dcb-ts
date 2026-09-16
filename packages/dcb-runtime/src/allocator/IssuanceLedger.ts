@@ -249,6 +249,13 @@ export async function registerIssuanceInTransaction(
     count += 1;
   }
   await txn.put(ISSUANCE_COUNT_KEY, count);
+  const prefix = await computeClosedPrefixSuid(
+    txn,
+    txn,
+    await readWatermarkFromState(txn),
+    input.migration,
+  );
+  await txn.put(ISSUANCE_PREFIX_KEY, prefix.closedPrefixSuid);
   const schedule = await txn.get<IssuanceRecoverySchedule>(ISSUANCE_RECOVERY_KEY);
   if (schedule === undefined || schedule.nextDueAt > now) {
     await txn.put(ISSUANCE_RECOVERY_KEY, {
@@ -267,6 +274,11 @@ export function shouldArmIssuanceRecovery(
 }
 
 type IssuanceIndexReader = Pick<DurableObjectStorage, "list">;
+
+export async function countUnresolvedEntries(reader: IssuanceIndexReader): Promise<number> {
+  const listed = await reader.list({ prefix: UNRESOLVED_INDEX_PREFIX, limit: 256 });
+  return [...listed.keys()].length;
+}
 
 export async function leastUnresolvedEntry(
   reader: IssuanceIndexReader,
@@ -305,8 +317,9 @@ export async function computeClosedPrefixSuid(
   migration: IssuanceMigrationState | undefined,
 ): Promise<{ closedPrefixSuid: string | null; unresolvedCount: number; status: "ready" | "unreconciled" }> {
   const storedCount = await txn.get<number>(ISSUANCE_COUNT_KEY);
-  const count = storedCount ?? 0;
-  if (!Number.isSafeInteger(count) || count < 0) {
+  const indexedCount = await countUnresolvedEntries(reader);
+  const count = Math.max(storedCount ?? 0, indexedCount);
+  if (!Number.isSafeInteger(storedCount ?? 0) || (storedCount ?? 0) < 0) {
     throw new IssuanceLedgerError("missing or corrupt unresolved count");
   }
   if (migration !== undefined && !migration.inventoryComplete) {
@@ -318,7 +331,17 @@ export async function computeClosedPrefixSuid(
       throw new IssuanceLedgerError("corrupt unresolved index");
     }
     const predecessor = await predecessorIssuedSuid(reader, least.suid);
-    return { closedPrefixSuid: predecessor, unresolvedCount: count, status: "ready" };
+    // AC3: the least unresolved hole is an exclusive boundary — never the hole or raw watermark.
+    let closedPrefixSuid = predecessor;
+    if (
+      closedPrefixSuid === least.suid ||
+      (allocatedWatermark !== null &&
+        least.suid === allocatedWatermark &&
+        closedPrefixSuid === allocatedWatermark)
+    ) {
+      closedPrefixSuid = null;
+    }
+    return { closedPrefixSuid, unresolvedCount: count, status: "ready" };
   }
   if (migration !== undefined && migration.migrationProofId === null) {
     return { closedPrefixSuid: null, unresolvedCount: count, status: "unreconciled" };

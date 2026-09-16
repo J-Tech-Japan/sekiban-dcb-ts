@@ -22,7 +22,7 @@ import {
   type IssuanceRecoverySchedule,
   type TargetResolutionEvidence,
 } from "./IssuanceLedger";
-import { reconcileIssuanceBatch, type IssuanceReconcilerEnv } from "./IssuanceReconciler";
+import { reconcileIssuanceBatch } from "./IssuanceReconciler";
 import {
   allocateOrderRange,
   diagnosticAllocatedAt,
@@ -354,7 +354,7 @@ export class AllocatorDurableObject implements DurableObject {
       const certificate = await this.ctx.storage.transaction(async (txn) => {
         const state = await txn.get<AllocatorState>(STATE_KEY);
         if (state === undefined) throw new IssuanceLedgerError("allocator state missing");
-        return buildCertificateSnapshot(this.ctx.storage, txn, {
+        return buildCertificateSnapshot(txn, txn, {
           serviceId,
           allocatorLineageId: state.allocatorLineageId,
           allocatedWatermark: state.allocatedWatermark,
@@ -374,7 +374,7 @@ export class AllocatorDurableObject implements DurableObject {
     let body: unknown;
     try { body = await request.json(); } catch { return error(400, "invalid_resolution", "JSON required"); }
     if (!isObject(body)) return error(400, "invalid_resolution", "Invalid resolution body");
-    const evidence = body as TargetResolutionEvidence;
+    const evidence = body as unknown as TargetResolutionEvidence;
     try {
       const result = await this.ctx.storage.transaction(async (txn) =>
         applyTargetResolution(txn, evidence));

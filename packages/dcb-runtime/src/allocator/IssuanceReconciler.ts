@@ -8,7 +8,6 @@ import type {
 import {
   DEFAULT_WRITER_EPOCH,
   ISSUANCE_RECOVERY_KEY,
-  TARGET_PREFIX,
   UNRESOLVED_INDEX_PREFIX,
   envelopeKey,
   parseIndexEntry,
@@ -26,11 +25,13 @@ export interface IssuanceReconcilerEnv {
   readonly ALLOCATOR: DurableObjectNamespace;
 }
 
+type TagReconciliationEnv = Pick<IssuanceReconcilerEnv, "TAG">;
+
 const RECONCILE_BATCH_LIMIT = 8;
 const RECONCILE_RETRY_MS = 1_000;
 
 export async function inspectTagTarget(
-  env: IssuanceReconcilerEnv,
+  env: TagReconciliationEnv,
   serviceId: string,
   tag: string,
   envelope: IssuanceEnvelope,
@@ -65,7 +66,7 @@ export async function inspectTagTarget(
 }
 
 export async function fenceAbsentTarget(
-  env: IssuanceReconcilerEnv,
+  env: TagReconciliationEnv,
   serviceId: string,
   tag: string,
   envelope: IssuanceEnvelope,

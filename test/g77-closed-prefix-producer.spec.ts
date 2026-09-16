@@ -32,11 +32,10 @@ import {
   readCertificate,
   readTagState,
   seedObservedTagHead,
-  tagPost,
   triggerReconcile,
   type G77Receipt,
 } from "./helpers/g77-fixtures";
-import { g32EventId, g32Message, g32StoredEvent, g32Suid, G32_FIXTURE_TIMESTAMP } from "./helpers/g32-fixtures";
+import { g32EventId, g32Message, g32StoredEvent, g32Suid } from "./helpers/g32-fixtures";
 // @ts-expect-error Vite raw import keeps this test on the ordinary G32 baseline.
 import g32Migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 
