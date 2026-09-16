@@ -21,23 +21,23 @@ const helperSource = readFileSync(helperPath, "utf8");
 const mutants = [
   {
     name: "omitted-issuance-write",
-    from: "issuanceEnvelope: envelopeWritten,",
-    to: "issuanceEnvelope: false, // mutant: omitted write",
+    from: "const envelope = await state.storage.get(`issuance:envelope:${attemptId}:${candidateIndex}`);",
+    to: "const envelope = undefined; // mutant: omitted issuance write\n    void state;",
     expectedTests: ["G77 AC6 commit path proves issuance-envelope write on main"],
     expectRed: true,
   },
   {
     name: "hidden-history-scan",
-    from: "certificate.unresolvedCount < G77_AC6_UNRESOLVED_BACKLOG",
-    to: "certificate.unresolvedCount < 999 // mutant: hidden scan",
-    expectedTests: ["G77 AC6 safe-pass warm cohort"],
+    from: "for (let index = 0; index < G77_AC6_RESOLVED_HISTORY; index += 1) {",
+    to: "for (let index = 0; index < 0; index += 1) { // mutant: hidden history scan",
+    expectedTests: ["G77 AC6 seed enforces resolved history depth"],
     expectRed: true,
   },
   {
     name: "reduced-backlog",
     from: "for (let index = 0; index < G77_AC6_UNRESOLVED_BACKLOG; index += 1) {",
     to: "for (let index = 0; index < 1; index += 1) { // mutant: reduced backlog",
-    expectedTests: ["G77 AC6 safe-pass warm cohort"],
+    expectedTests: ["G77 AC6 seed enforces unresolved backlog floor"],
     expectRed: true,
   },
   {
@@ -77,7 +77,14 @@ function runTests(testPattern) {
     "test/g77-ac6-measurement.spec.ts",
     "-t",
     testPattern,
-  ], { cwd: root, encoding: "utf8" });
+  ], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}`,
+    },
+  });
   let report = null;
   try {
     report = JSON.parse(readFileSync(reportPath, "utf8"));
@@ -110,7 +117,7 @@ try {
     const run = runTests(mutant.expectedTests[0]);
     const failed = failingTestNames(run.report);
     const matched = mutant.expectedTests.filter((name) => failed.some((failure) => failure.includes(name)));
-    const red = matched.length > 0 || run.exitCode !== 0;
+    const red = matched.length > 0;
     results.push({
       mutant: mutant.name,
       status: red === mutant.expectRed ? "red" : "green",

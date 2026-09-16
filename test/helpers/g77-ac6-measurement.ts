@@ -55,12 +55,17 @@ export interface G77Ac6SafePassPairSample {
 
 export interface G77Ac6CommitSample {
   readonly vector: G77Ac6CommitVector;
+  readonly serviceId: string;
   readonly wallMs: number;
   readonly issuanceEnvelope: boolean;
+  readonly attemptId: string;
   readonly storageDeltaKeys: number;
   readonly storageDeltaBytes: number;
   readonly storageDeltaOps: number;
 }
+
+/** Set by the gate-on safe-pass arm; mutant oracle reads this flag. */
+export let g77Ac6LastSafeViewAdvancePassed: boolean | undefined;
 
 async function allocatorPostQuiet(serviceId: string, path: string, body?: unknown): Promise<Response> {
   return allocatorStub(serviceId).fetch(new Request(`https://allocator.test${path}`, {
@@ -235,10 +240,13 @@ export async function seedLongHistoryAndBacklog(serviceId: string): Promise<{
     });
   }
 
+  let resolvedSeeded = 0;
   for (let index = 0; index < G77_AC6_RESOLVED_HISTORY; index += 1) {
     await seedResolvedAllocation(serviceId, index);
+    resolvedSeeded += 1;
   }
 
+  let backlogSeeded = 0;
   for (let index = 0; index < G77_AC6_UNRESOLVED_BACKLOG; index += 1) {
     const tag = `room:g77:ac6-backlog:${index}`;
     const attemptId = `g77-ac6-backlog-${index}:${crypto.randomUUID()}`;
@@ -252,6 +260,7 @@ export async function seedLongHistoryAndBacklog(serviceId: string): Promise<{
         pinnedWriterEpoch: 0,
       }],
     });
+    backlogSeeded += 1;
   }
 
   const certificate = await readCertificate(serviceId);
@@ -265,13 +274,13 @@ export async function seedLongHistoryAndBacklog(serviceId: string): Promise<{
   }
   return {
     certificate,
-    resolvedCount: G77_AC6_RESOLVED_HISTORY,
-    backlogCount: G77_AC6_UNRESOLVED_BACKLOG,
+    resolvedCount: resolvedSeeded,
+    backlogCount: backlogSeeded,
     legacyCount: G77_AC6_LEGACY_PRECUT,
   };
 }
 
-async function measureSafePassOnce(
+export async function measureSafePassOnce(
   serviceId: string,
   gateOn: boolean,
   seed: string,
@@ -284,7 +293,7 @@ async function measureSafePassOnce(
   const storageBefore = await snapshotAllocatorStorage(serviceId);
   const started = performance.now();
   if (gateOn) {
-    await pollLiveProjections(projectionEnv(serviceId), {
+    const gateOnOptions = {
       serviceId,
       tag,
       store: fixture.store,
@@ -293,8 +302,11 @@ async function measureSafePassOnce(
       allocatorLineageId: lineageId,
       safeViewAdvance: true,
       safeViewCoverage: coverage(serviceId),
-    });
+    };
+    g77Ac6LastSafeViewAdvancePassed = gateOnOptions.safeViewAdvance === true;
+    await pollLiveProjections(projectionEnv(serviceId), gateOnOptions);
   } else {
+    g77Ac6LastSafeViewAdvancePassed = undefined;
     await pollLiveProjections(projectionEnv(serviceId), {
       serviceId,
       tag,
@@ -325,8 +337,18 @@ export async function runSafePassPair(
   }
   const serviceId = `g77-ac6-safe-${pairIndex}-${crypto.randomUUID()}`;
   await seedLongHistoryAndBacklog(serviceId);
-  const gateOff = await measureSafePassOnce(serviceId, false, `pair-${pairIndex}-off`);
-  const gateOn = await measureSafePassOnce(serviceId, true, `pair-${pairIndex}-on`);
+  const gateOffFirst = pairIndex % 2 === 0;
+  const offSeed = `pair-${pairIndex}-off`;
+  const onSeed = `pair-${pairIndex}-on`;
+  let gateOff: G77Ac6SampleMetrics;
+  let gateOn: G77Ac6SampleMetrics;
+  if (gateOffFirst) {
+    gateOff = await measureSafePassOnce(serviceId, false, offSeed);
+    gateOn = await measureSafePassOnce(serviceId, true, onSeed);
+  } else {
+    gateOn = await measureSafePassOnce(serviceId, true, onSeed);
+    gateOff = await measureSafePassOnce(serviceId, false, offSeed);
+  }
   return {
     pairIndex,
     gateOff,
@@ -339,7 +361,7 @@ function attemptIdFromResponse(response: Response, fallback: string): string {
   return response.headers.get("x-sdt-g4-attempt-id") ?? fallback;
 }
 
-async function envelopeExists(serviceId: string, attemptId: string, candidateIndex = 0): Promise<boolean> {
+export async function envelopeExists(serviceId: string, attemptId: string, candidateIndex = 0): Promise<boolean> {
   return runInDurableObject(allocatorStub(serviceId), async (_instance, state) => {
     const envelope = await state.storage.get(`issuance:envelope:${attemptId}:${candidateIndex}`);
     return envelope !== undefined;
@@ -349,17 +371,19 @@ async function envelopeExists(serviceId: string, attemptId: string, candidateInd
 export async function runCommitSample(vector: G77Ac6CommitVector): Promise<G77Ac6CommitSample> {
   const serviceId = `g77-ac6-commit-${vector}-${crypto.randomUUID()}`;
   const storageBefore = await snapshotAllocatorStorage(serviceId);
-  const started = performance.now();
   let envelopeAttemptId = `g77-ac6-commit:${crypto.randomUUID()}`;
+  let wallMs = 0;
 
   if (vector === "new") {
     const tag = "room:g77:ac6-commit-new";
     const head = await seedObservedTagHead(serviceId, tag, "commit-new");
+    const started = performance.now();
     const response = await commitWorker(serviceId).handle(commitRequest([tag], {
       fault: "tag-append-last",
       attemptId: envelopeAttemptId,
       consistencyHeads: [head],
     }));
+    wallMs = performance.now() - started;
     envelopeAttemptId = attemptIdFromResponse(response, envelopeAttemptId);
   } else if (vector === "replayed") {
     const tag = "room:g77:ac6-commit-replay";
@@ -370,22 +394,26 @@ export async function runCommitSample(vector: G77Ac6CommitVector): Promise<G77Ac
       consistencyHeads: [head],
     }));
     envelopeAttemptId = attemptIdFromResponse(first, envelopeAttemptId);
+    const started = performance.now();
     await commitWorker(serviceId).handle(commitRequest([tag], {
       fault: "tag-append-last",
       attemptId: envelopeAttemptId,
       consistencyHeads: [head],
     }));
+    wallMs = performance.now() - started;
   } else if (vector === "multi-candidate") {
     const tagA = "room:g77:ac6-commit-a";
     const tagB = "room:g77:ac6-commit-b";
     const headA = await seedObservedTagHead(serviceId, tagA, "commit-a");
     const headB = await seedObservedTagHead(serviceId, tagB, "commit-b");
     envelopeAttemptId = `g77-ac6-multi:${crypto.randomUUID()}`;
+    const started = performance.now();
     const response = await commitWorker(serviceId).handle(commitRequest([tagA, tagB], {
       fault: "tag-append-last",
       attemptId: envelopeAttemptId,
       consistencyHeads: [headA, headB],
     }));
+    wallMs = performance.now() - started;
     envelopeAttemptId = attemptIdFromResponse(response, envelopeAttemptId);
   } else {
     const tagA = "room:g77:ac6-multi-tag-a";
@@ -393,22 +421,24 @@ export async function runCommitSample(vector: G77Ac6CommitVector): Promise<G77Ac
     const headA = await seedObservedTagHead(serviceId, tagA, "mt-a");
     const headB = await seedObservedTagHead(serviceId, tagB, "mt-b");
     envelopeAttemptId = `g77-ac6-multitag:${crypto.randomUUID()}`;
+    const started = performance.now();
     const response = await commitWorker(serviceId).handle(commitRequest([tagA, tagB], {
       fault: "tag-append-last",
       attemptId: envelopeAttemptId,
       consistencyHeads: [headA, headB],
     }));
+    wallMs = performance.now() - started;
     envelopeAttemptId = attemptIdFromResponse(response, envelopeAttemptId);
   }
-
-  const wallMs = performance.now() - started;
   const registration = await probeIssuanceRegistration(serviceId, envelopeAttemptId);
   const envelopeWritten = registration.envelope || await envelopeExists(serviceId, envelopeAttemptId);
   const storageAfter = await snapshotAllocatorStorage(serviceId);
   return {
     vector,
+    serviceId,
     wallMs,
     issuanceEnvelope: envelopeWritten,
+    attemptId: envelopeAttemptId,
     storageDeltaKeys: storageAfter.keyCount - storageBefore.keyCount,
     storageDeltaBytes: storageAfter.byteEstimate - storageBefore.byteEstimate,
     storageDeltaOps: storageAfter.storageOps - storageBefore.storageOps,

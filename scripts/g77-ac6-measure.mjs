@@ -15,7 +15,7 @@ const SAFE_PASS_BAR = 0.05;
 const COMMIT_P95_BAR = 0.10;
 const MEASUREMENT_SPEC = "test/g77-ac6-measurement.spec.ts";
 const HELPER_SPEC = "test/helpers/g77-ac6-measurement.ts";
-const LEGACY_PROXY_SPEC = "test/g77-cost-measure.spec.ts";
+const LEGACY_PROXY_SPEC = "scripts/g77-cost-measure.mjs (delegates to g77-ac6-measure.mjs)";
 const COMMIT_VECTORS = ["new", "replayed", "multi-candidate", "multi-tag"];
 const envWithPath = { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` };
 
@@ -214,7 +214,7 @@ const protocol = {
   runnerShape: "vitest run --config vitest.config.ts --maxWorkers=1 --no-file-parallelism",
   warmUpPolicy: `${warmRun.report.summary ? 4 : 4} interleaved gate-off/gate-on pairs excluded before scoring`,
   sampleCount: `${warmRun.report.summary.pairCount} scored safe-pass pairs; ${COMMIT_VECTORS.length} commit vectors x ${commitReports.main.new.samples.length} scored samples`,
-  cohortOrdering: "interleaved gate-off then gate-on per pair; commit vectors run warm-up then scored on pinned then main worktrees",
+  cohortOrdering: "alternating within-pair gate-off/gate-on order by pair parity; commit vectors run warm-up then scored on pinned then main worktrees",
   statisticalMethod: "paired delta median with MAD*3 inconclusive guard; p95 from >=24 scored samples per arm",
   resolvedHistory: 30,
   unresolvedBacklog: 10,

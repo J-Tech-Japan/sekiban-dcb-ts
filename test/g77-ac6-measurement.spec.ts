@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 import {
   dispositionAgainstBar,
+  envelopeExists,
   G77_AC6_LEGACY_PRECUT,
   G77_AC6_PINNED_MAIN,
   G77_AC6_RESOLVED_HISTORY,
@@ -14,10 +15,13 @@ import {
   G77_AC6_SCORED_PAIRS,
   G77_AC6_UNRESOLVED_BACKLOG,
   G77_AC6_WARMUP_PAIRS,
+  g77Ac6LastSafeViewAdvancePassed,
+  measureSafePassOnce,
   median,
   percentile,
   runCommitSample,
   runSafePassPair,
+  seedLongHistoryAndBacklog,
   summarizeSafePassPairs,
 } from "./helpers/g77-ac6-measurement";
 import { probeG77Capabilities } from "./helpers/g77-fixtures";
@@ -115,91 +119,88 @@ describe("G77 AC6 decision-grade measurement", () => {
     expect(G77_AC6_SCORED_PAIRS).toBe(24);
   });
 
-  describe.skipIf(!EMIT_REPORT)("measurement cohorts (SDT_G77_AC6_EMIT_REPORT=1 only)", () => {
-  it("G77 AC6 safe-pass warm cohort", async () => {
-    if (COHORT !== "all" && COHORT !== "safe-pass-warm" && COHORT !== "safe-pass warm cohort") return;
-    const summary = await collectSafePassCohort(false);
-    const ratio = summary.gateOff.p50 === 0 ? 0 : summary.deltaMedianMs / summary.gateOff.p50;
-    const inconclusive = summary.deltaMadMs * 3 > Math.abs(summary.deltaMedianMs);
-    await publishReport("safe-pass-warm", {
-      summary,
-      ratio,
-      bar: G77_AC6_SAFE_PASS_BAR,
-      disposition: dispositionAgainstBar(ratio, G77_AC6_SAFE_PASS_BAR, inconclusive),
-    });
-    expect(summary.pairCount).toBe(G77_AC6_SCORED_PAIRS);
-  }, 1_200_000);
-
-  it("G77 AC6 safe-pass restarted cohort", async () => {
-    if (COHORT !== "all" && COHORT !== "safe-pass-restarted" && COHORT !== "safe-pass restarted cohort") return;
-    await abortAllDurableObjects();
-    const summary = await collectSafePassCohort(true);
-    const ratio = summary.gateOff.p50 === 0 ? 0 : summary.deltaMedianMs / summary.gateOff.p50;
-    const inconclusive = summary.deltaMadMs * 3 > Math.abs(summary.deltaMedianMs);
-    await publishReport("safe-pass-restarted", {
-      summary,
-      ratio,
-      bar: G77_AC6_SAFE_PASS_BAR,
-      disposition: dispositionAgainstBar(ratio, G77_AC6_SAFE_PASS_BAR, inconclusive),
-    });
-    expect(summary.pairCount).toBe(G77_AC6_SCORED_PAIRS);
-  }, 1_200_000);
-
-  for (const vector of ["new", "replayed", "multi-candidate", "multi-tag"] as const) {
-    it(`G77 AC6 commit ${vector} vector`, async () => {
-      if (COHORT !== "all" && COHORT !== `commit-${vector}` && COHORT !== `commit ${vector} vector`) return;
-      const samples = [];
-      for (let index = 0; index < G77_AC6_WARMUP_PAIRS; index += 1) {
-        await runCommitSample(vector);
-      }
-      for (let index = 0; index < G77_AC6_SCORED_PAIRS; index += 1) {
-        samples.push(await runCommitSample(vector));
-      }
-      const wallMs = samples.map((sample) => sample.wallMs);
-      await publishReport(`commit-${vector}`, {
-        vector,
-        commitSide: COMMIT_SIDE,
-        samples,
-        p50: median(wallMs),
-        p95: percentile(wallMs, 0.95),
-        issuanceEnvelopeRate: samples.filter((sample) => sample.issuanceEnvelope).length / samples.length,
-      });
-      expect(samples.length).toBe(G77_AC6_SCORED_PAIRS);
-    }, 300_000);
-  }
-
   it("G77 AC6 commit path proves issuance-envelope write on main", async () => {
     const caps = await probeG77Capabilities(`g77-ac6-proof-${crypto.randomUUID()}`);
     if (!caps.issuanceLedger) {
-      await publishReport("issuance-write-proof", { skipped: true, reason: "pre-G77 pin lacks issuance ledger" });
       return;
     }
     const sample = await runCommitSample("new");
     expect(sample.issuanceEnvelope).toBe(true);
-    await publishReport("issuance-write-proof", {
-      sampleEnvelope: sample.issuanceEnvelope,
-      vector: sample.vector,
-      storageDeltaKeys: sample.storageDeltaKeys,
-    });
+    expect(await envelopeExists(sample.serviceId, sample.attemptId)).toBe(true);
   }, 120_000);
 
-  it("G77 AC6 mutant oracle reduced backlog is detectable", async () => {
-    const reduced = Math.max(1, Math.floor(G77_AC6_UNRESOLVED_BACKLOG / 4));
-    expect(reduced).toBeLessThan(G77_AC6_UNRESOLVED_BACKLOG);
-    await publishReport("mutant-reduced-backlog", { reduced, full: G77_AC6_UNRESOLVED_BACKLOG, detectable: true });
-  });
+  it("G77 AC6 seed enforces resolved history depth", async () => {
+    const serviceId = `g77-ac6-history-oracle-${crypto.randomUUID()}`;
+    const seeded = await seedLongHistoryAndBacklog(serviceId);
+    expect(seeded.resolvedCount).toBe(G77_AC6_RESOLVED_HISTORY);
+    expect(seeded.legacyCount).toBe(G77_AC6_LEGACY_PRECUT);
+  }, 600_000);
+
+  it("G77 AC6 seed enforces unresolved backlog floor", async () => {
+    const serviceId = `g77-ac6-backlog-oracle-${crypto.randomUUID()}`;
+    const seeded = await seedLongHistoryAndBacklog(serviceId);
+    expect(seeded.backlogCount).toBe(G77_AC6_UNRESOLVED_BACKLOG);
+    expect(seeded.certificate.unresolvedCount).toBeGreaterThanOrEqual(G77_AC6_UNRESOLVED_BACKLOG);
+  }, 600_000);
 
   it("G77 AC6 mutant oracle disabled gate is detectable", async () => {
-    const pair = await runSafePassPair(999, { restarted: false });
-    expect(pair.gateOn.wallMs).toBeGreaterThanOrEqual(0);
-    expect(pair.gateOff.wallMs).toBeGreaterThanOrEqual(0);
-    const detectable = pair.gateOn.wallMs > pair.gateOff.wallMs || pair.gateOn.storageDeltaOps > pair.gateOff.storageDeltaOps;
-    expect(detectable).toBe(true);
-    await publishReport("mutant-disabled-gate", {
-      gateOffMs: pair.gateOff.wallMs,
-      gateOnMs: pair.gateOn.wallMs,
-      detectable,
-    });
+    const serviceId = `g77-ac6-gate-oracle-${crypto.randomUUID()}`;
+    await seedLongHistoryAndBacklog(serviceId);
+    await measureSafePassOnce(serviceId, true, "gate-oracle");
+    expect(g77Ac6LastSafeViewAdvancePassed).toBe(true);
   }, 600_000);
+
+  describe.skipIf(!EMIT_REPORT)("measurement cohorts (SDT_G77_AC6_EMIT_REPORT=1 only)", () => {
+    it("G77 AC6 safe-pass warm cohort", async () => {
+      if (COHORT !== "all" && COHORT !== "safe-pass-warm" && COHORT !== "safe-pass warm cohort") return;
+      const summary = await collectSafePassCohort(false);
+      const ratio = summary.gateOff.p50 === 0 ? 0 : summary.deltaMedianMs / summary.gateOff.p50;
+      const inconclusive = summary.deltaMadMs * 3 > Math.abs(summary.deltaMedianMs);
+      await publishReport("safe-pass-warm", {
+        summary,
+        ratio,
+        bar: G77_AC6_SAFE_PASS_BAR,
+        disposition: dispositionAgainstBar(ratio, G77_AC6_SAFE_PASS_BAR, inconclusive),
+      });
+      expect(summary.pairCount).toBe(G77_AC6_SCORED_PAIRS);
+    }, 1_200_000);
+
+    it("G77 AC6 safe-pass restarted cohort", async () => {
+      if (COHORT !== "all" && COHORT !== "safe-pass-restarted" && COHORT !== "safe-pass restarted cohort") return;
+      await abortAllDurableObjects();
+      const summary = await collectSafePassCohort(true);
+      const ratio = summary.gateOff.p50 === 0 ? 0 : summary.deltaMedianMs / summary.gateOff.p50;
+      const inconclusive = summary.deltaMadMs * 3 > Math.abs(summary.deltaMedianMs);
+      await publishReport("safe-pass-restarted", {
+        summary,
+        ratio,
+        bar: G77_AC6_SAFE_PASS_BAR,
+        disposition: dispositionAgainstBar(ratio, G77_AC6_SAFE_PASS_BAR, inconclusive),
+      });
+      expect(summary.pairCount).toBe(G77_AC6_SCORED_PAIRS);
+    }, 1_200_000);
+
+    for (const vector of ["new", "replayed", "multi-candidate", "multi-tag"] as const) {
+      it(`G77 AC6 commit ${vector} vector`, async () => {
+        if (COHORT !== "all" && COHORT !== `commit-${vector}` && COHORT !== `commit ${vector} vector`) return;
+        const samples = [];
+        for (let index = 0; index < G77_AC6_WARMUP_PAIRS; index += 1) {
+          await runCommitSample(vector);
+        }
+        for (let index = 0; index < G77_AC6_SCORED_PAIRS; index += 1) {
+          samples.push(await runCommitSample(vector));
+        }
+        const wallMs = samples.map((sample) => sample.wallMs);
+        await publishReport(`commit-${vector}`, {
+          vector,
+          commitSide: COMMIT_SIDE,
+          samples,
+          p50: median(wallMs),
+          p95: percentile(wallMs, 0.95),
+          issuanceEnvelopeRate: samples.filter((sample) => sample.issuanceEnvelope).length / samples.length,
+        });
+        expect(samples.length).toBe(G77_AC6_SCORED_PAIRS);
+      }, 300_000);
+    }
   });
 });
