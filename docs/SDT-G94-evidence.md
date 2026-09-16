@@ -76,13 +76,19 @@ G73/G80 guard `budgetMs` set to **12_000** (replacing G90's literal 10_000 ms or
 
 ## AC6 — exact-head verification
 
-Final head: *(filled after final CI run)*
+Final head: `172b6d79cfea8ba19b4831f5c31f8ffc4c848db7`
+Final CI run: [35159038082 attempt 2](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35159038082/attempts/2) — **success**
 
-| Check | Status |
-| --- | --- |
-| `ci-foundation` | pending |
-| `foundation-g73` (`healthy-green-g69-path-timeout-red`) | pending |
-| lint / typecheck / timing validation | pending |
+| Check | Status | Detail |
+| --- | --- | --- |
+| `ci-foundation` | **green** | AC3 2_963 ms at 12_000 ms budget (`near-budget` headroom retained) |
+| `foundation-g73` | **green** | `healthy-green-g69-path-timeout-red`; `budgetMs` 12_000 |
+| Healthy margin | 8_874 ms | `healthyBodyMs` 3_126 |
+| Mutant timeout | **red** | 767-round representative: `Test timed out in 12000ms.` (`regressionBodyMs` 14_401) |
+| Residual max | 0.625 ms | Under `equalSizeResidualBoundMs` 7 |
+| `ci-pr-cheap` + verify | **green** | No retries or flaky config added |
+
+Attempt 1 on the same head hit hosted `CALIBRATION_INCONCLUSIVE` (first scoring chunk 121.5 ms/round vs steady ~18 ms/round); attempt 2 is the ordinary acceptance proof retained per AC6.
 
 ## Scope fence
 
