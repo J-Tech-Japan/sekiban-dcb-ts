@@ -99,9 +99,14 @@ Local gates (2026-09-16):
 
 Diff limited to: five workflow files, three public manifests, `package.json` (`test:g93`), `scripts/sdt-g93-workflow-package-guard.mjs`, this evidence doc. No tags, publications, version bumps, credentials, or lockfile changes. `git diff --check` passes.
 
-## Hosted CI (fill on PR)
+## Hosted CI
+
+PR [#193](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/193), head `207a95cb92c2d8afd51a3cf85b955d6d3fbe2a82`.
 
 | Check | Run URL | Status |
 | --- | --- | --- |
-| CI (cheap) | _pending_ | _pending_ |
-| dcb-domain-release-preflight | _pending_ | _pending_ |
+| CI (`ci-pr-cheap`) | [35119284935 / job 104872629536](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35119284935/job/104872629536) | pass |
+| CI (`ci-foundation`) | [35119284935 / job 104872629780](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35119284935/job/104872629780) | pass |
+| `dcb-domain-release-preflight` | [35119285094 / job 104872629778](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35119285094/job/104872629778) | pass |
+
+Check-run annotations on `ci-pr-cheap` and `dcb-domain-release-preflight`: `[]` (no `Node.js 20 is deprecated`).
