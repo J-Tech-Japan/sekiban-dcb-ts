@@ -1,7 +1,13 @@
 # Publish only unpublished matched-set packages (SDT-G99)
 
-# First-time scoped packages need an NPM_TOKEN with org publish rights;
-# trusted-publishing OIDC alone often returns 404 until the package exists.
+# Steady-state auth is G72 trusted publishing (OIDC), same selection module as
+# release-dcb-matched-set.yml. When NPM_TRUSTED_PUBLISHING=true the publish step
+# unsets NODE_AUTH_TOKEN so npm CLI uses OIDC.
+#
+# First-time package create: npm Trusted Publishers attach to an *existing*
+# package. Bootstrap @sekiban/dcb-runtime once (manual OTP or short-lived
+# granular token with publish rights), register this workflow filename as the
+# Trusted Publisher on npmjs.com, then re-run this workflow for OIDC-only AC1.
 
 on:
   workflow_dispatch:
@@ -19,6 +25,7 @@ jobs:
   publish-unpublished:
     runs-on: ubuntu-latest
     env:
+      NPM_TRUSTED_PUBLISHING: ${{ vars.NPM_TRUSTED_PUBLISHING }}
       NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v5
@@ -39,20 +46,50 @@ jobs:
           set -euo pipefail
           repository_private="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.private')"
           echo "REPO_IS_PRIVATE=${repository_private}" >> "${GITHUB_ENV}"
-      - name: Publish unpublished packages via NPM_TOKEN (skip version collisions)
+      - name: Resolve trusted publishing, token, or credential-free fallback
+        id: publish-selection
+        run: node scripts/g72-trusted-publishing-selection.mjs --github-output "${GITHUB_OUTPUT}"
+      - name: Prepare private provenance metadata when required
+        if: ${{ steps.publish-selection.outputs.provenance_enabled != 'true' && steps.publish-selection.outputs.private_repository == 'true' }}
         run: |
           set -euo pipefail
-          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
-            echo "NPM_TOKEN secret is required for first-time @sekiban package publish" >&2
-            exit 1
-          fi
-          if [[ "${REPO_IS_PRIVATE}" == "true" ]]; then
-            export PRIVATE_REPOSITORY=true
-            for package in ${{ inputs.packages }}; do
-              (cd "packages/${package}" && npm pkg delete publishConfig.provenance || true)
-            done
-          else
-            export PRIVATE_REPOSITORY=false
-          fi
-          node scripts/dcb-matched-set-publish-unpublished.mjs ${{ inputs.packages }}
+          for package in ${{ inputs.packages }}; do
+            echo "private publish metadata: remove publishConfig.provenance from packages/${package}"
+            (
+              cd "packages/${package}"
+              npm pkg delete publishConfig.provenance
+              node -e 'const fs = require("node:fs"); const manifest = JSON.parse(fs.readFileSync("package.json", "utf8")); if (Object.hasOwn(manifest.publishConfig ?? {}, "provenance")) { throw new Error("publishConfig.provenance remains in package.json"); }'
+            )
+          done
+      - name: Publish unpublished packages with the selected authentication path
+        env:
+          AUTH_MODE: ${{ steps.publish-selection.outputs.auth_mode }}
+          PRIVATE_REPOSITORY: ${{ steps.publish-selection.outputs.private_repository }}
+          UNSET_NODE_AUTH_TOKEN: ${{ steps.publish-selection.outputs.unset_node_auth_token }}
+        run: |
+          set -euo pipefail
+          case "${AUTH_MODE}" in
+            trusted-publishing)
+              if [[ "${UNSET_NODE_AUTH_TOKEN}" != "true" ]]; then
+                echo "trusted publishing selection did not request token removal" >&2
+                exit 1
+              fi
+              echo "authentication branch: trusted-publishing (GitHub Actions OIDC; NPM_TOKEN omitted)"
+              UNSET_NODE_AUTH_TOKEN=true PRIVATE_REPOSITORY="${PRIVATE_REPOSITORY}" \
+                node scripts/dcb-matched-set-publish-unpublished.mjs ${{ inputs.packages }}
+              ;;
+            token)
+              echo "authentication branch: token (legacy fallback only; not the AC1 product path)"
+              PRIVATE_REPOSITORY="${PRIVATE_REPOSITORY}" \
+                node scripts/dcb-matched-set-publish-unpublished.mjs ${{ inputs.packages }}
+              ;;
+            credential-free-dry-run)
+              echo "authentication branch: credential-free-dry-run"
+              node scripts/dcb-matched-set-publish-unpublished.mjs --dry-run ${{ inputs.packages }}
+              ;;
+            *)
+              echo "unknown publish authentication mode: ${AUTH_MODE}" >&2
+              exit 1
+              ;;
+          esac
           npm view @sekiban/dcb-runtime version
