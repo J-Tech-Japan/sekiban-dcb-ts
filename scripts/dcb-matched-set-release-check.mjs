@@ -5,9 +5,14 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const tag = process.argv[2] ?? "";
-const expected = { core: "0.2.0", domain: "0.2.0", client: "0.2.0" };
+const expected = { core: "0.2.0", domain: "0.2.0", client: "0.2.0", runtime: "0.2.0" };
 const manifests = {};
-for (const [key, directory] of Object.entries({ core: "dcb-core", domain: "dcb-domain", client: "dcb-client" })) {
+for (const [key, directory] of Object.entries({
+  core: "dcb-core",
+  domain: "dcb-domain",
+  client: "dcb-client",
+  runtime: "dcb-runtime",
+})) {
   manifests[key] = JSON.parse(await readFile(resolve(root, "packages", directory, "package.json"), "utf8"));
 }
 for (const [key, version] of Object.entries(expected)) {
@@ -18,7 +23,15 @@ if (manifests.client.dependencies?.["@sekiban/dcb-core"] !== expected.core ||
     manifests.client.dependencies?.["@sekiban/dcb-domain"] !== expected.domain) {
   throw new Error("SDT-G71 release guard: client dependencies are not the matched 0.2.0 set");
 }
+if (manifests.runtime.dependencies?.["@sekiban/dcb-core"] !== expected.core) {
+  throw new Error("SDT-G99 release guard: runtime dependency is not the matched 0.2.0 core");
+}
 if (tag !== "" && tag !== `dcb-v${expected.core}`) {
   throw new Error(`SDT-G64 release guard: tag ${tag} is not dcb-v${expected.core}`);
 }
-console.log(JSON.stringify({ status: "PASS", tag: tag || null, order: ["@sekiban/dcb-core", "@sekiban/dcb-domain", "@sekiban/dcb-client"], version: expected.core }));
+console.log(JSON.stringify({
+  status: "PASS",
+  tag: tag || null,
+  order: ["@sekiban/dcb-core", "@sekiban/dcb-domain", "@sekiban/dcb-client", "@sekiban/dcb-runtime"],
+  version: expected.core,
+}));

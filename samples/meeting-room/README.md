@@ -5,9 +5,12 @@
 Start here: [`docs/getting-started-cloudflare.md`](docs/getting-started-cloudflare.md)
 (migrate both D1s → deploy → smoke → C-0 notes).
 
-This Worker is a small consumer of the workspace packages. Its
+This Worker is a small consumer of the matched npm packages
+(`@sekiban/dcb-{core,domain,client,runtime}@0.2.0`). Its
 domain definitions live in `src/domain.ts`; it does not deep-import a package
-`src` directory or copy the runtime's private registries.
+`src` directory or copy the runtime's private registries. For tip Cloudflare
+speed/latency deploys use `./scripts/deploy/g99-npm-consumer-deploy.sh` so the
+Worker resolves packed/registry packages rather than monorepo `file:` links.
 
 The application surface is `/api/commands/{create-room,reserve-room,cancel-reservation,release-room}`
 plus the read-only `/api/read/room?roomId=...` and

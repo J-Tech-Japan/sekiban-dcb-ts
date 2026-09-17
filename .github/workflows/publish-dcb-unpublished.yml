@@ -1,0 +1,65 @@
+# Publish only unpublished matched-set packages (SDT-G99)
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Space-separated package directories under packages/ (default: dcb-runtime)"
+        required: false
+        default: "dcb-runtime"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-unpublished:
+    runs-on: ubuntu-latest
+    env:
+      NPM_TRUSTED_PUBLISHING: ${{ vars.NPM_TRUSTED_PUBLISHING }}
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run build:packages
+      - name: Detect repository visibility for npm provenance policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repository_private="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.private')"
+          echo "REPO_IS_PRIVATE=${repository_private}" >> "${GITHUB_ENV}"
+      - name: Resolve trusted publishing, token, or credential-free fallback
+        id: publish-selection
+        run: node scripts/g72-trusted-publishing-selection.mjs --github-output "${GITHUB_OUTPUT}"
+      - name: Prepare private provenance metadata when required
+        if: ${{ steps.publish-selection.outputs.provenance_enabled != 'true' && steps.publish-selection.outputs.private_repository == 'true' }}
+        run: |
+          set -euo pipefail
+          for package in ${{ inputs.packages }}; do
+            (
+              cd "packages/${package}"
+              npm pkg delete publishConfig.provenance || true
+            )
+          done
+      - name: Publish unpublished packages (skip version collisions)
+        env:
+          PRIVATE_REPOSITORY: ${{ steps.publish-selection.outputs.private_repository }}
+          UNSET_NODE_AUTH_TOKEN: ${{ steps.publish-selection.outputs.unset_node_auth_token }}
+          AUTH_MODE: ${{ steps.publish-selection.outputs.auth_mode }}
+        run: |
+          set -euo pipefail
+          if [[ "${AUTH_MODE}" == "credential-free-dry-run" ]]; then
+            node scripts/dcb-matched-set-publish-unpublished.mjs --dry-run ${{ inputs.packages }}
+          else
+            node scripts/dcb-matched-set-publish-unpublished.mjs ${{ inputs.packages }}
+          fi
+          npm view @sekiban/dcb-runtime version
