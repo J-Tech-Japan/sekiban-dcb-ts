@@ -2,8 +2,10 @@
 
 Issue: [#196](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/196)
 PR: [#197](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/197)
-Measurement SHA: `c6e7d6a11e118142a79839b03253f2fd243ed5d0`
+Measurement head: `8a1d20fa896ba0a57069107a10e0af03b73034fe`
 **Selected permanent ceiling: 12_000 ms**
+
+Machine-readable census: [`docs/evidence/SDT-G94-ac2-census.json`](evidence/SDT-G94-ac2-census.json)
 
 ## AC1 — baseline (fixed window through G93)
 
@@ -36,31 +38,45 @@ PR over-budget (attempt-weighted): **2/21 (9.5%)**. PR first-attempt only: **2/1
 
 ## AC2 — eight-run measurement census (20 s observational ceiling)
 
-Immutable measurement head: `c6e7d6a11e118142a79839b03253f2fd243ed5d0`
-Workflow run: [35142847147](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35142847147) (PR #197, attempts 1–8, same SHA)
+### Procedure disclosure
 
-| # | Attempt | ci-foundation job | AC3 state | Duration (ms) | Censored | Semantic |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | 1 | [104951388951](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35142847147/attempts/1) | passed | 2_864 | false | all assertions green |
-| 2 | 2 | [104955265186](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35142847147/attempts/2) | passed | 3_480 | false | all assertions green |
-| 3 | 3 | [104960517831](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35142847147/attempts/3) | passed | 2_957 | false | all assertions green |
-| 4 | 4 | [104965849107](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35142847147/attempts/4) | passed | 3_507 | false | all assertions green |
-| 5 | 5 | [104971038144](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35142847147/attempts/5) | passed | 2_953 | false | all assertions green |
-| 6 | 6 | [104975004583](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35142847147/attempts/6) | passed | 3_282 | false | all assertions green |
-| 7 | 7 | [104978911239](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35142847147/attempts/7) | passed | 7_872 | false | all assertions green |
-| 8 | 8 | [104983730180](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35142847147/attempts/8) | passed | 9_460 | false | all assertions green |
+Independent review B1–B6 required a **clean predeclared eight-execution census** on a fresh immutable head. The prior run `35142847147` on `c6e7d6a` (fourteen attempts, incompatible censuses, expired early logs) was **not** rehabilitated.
 
-**Census summary:** 8/8 healthy AC3 observations uncensored at 20_000 ms. Max uncensored duration **9_460 ms**. No semantic assertion failures. No 20 s censoring. Attempts 6–8 had workflow-level verify/cancellation noise from concurrent reruns; AC3 receipts retained from `SDT-G79_HOSTED_TEST_TIMING` on the measurement SHA.
+**Predeclaration:** exactly eight `ci-foundation` executions on measurement head `8a1d20f`; all outcomes retained; no outcome-based discard or rerun.
+
+**Procedure:**
+
+1. Measurement tip commit `8a1d20f` sets AC3 Vitest budget and G73/G80 `budgetMs` to **20_000 ms** (observational only).
+2. PR push triggered workflow [35162060007](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35162060007) on that SHA.
+3. For each sample: wait for `ci-foundation` to complete; extract AC3 `SDT-G79_HOSTED_TEST_TIMING` for the ten-paced-commits test from the job log; append to [`docs/evidence/SDT-G94-ac2-census.json`](evidence/SDT-G94-ac2-census.json) (copy retained under host scratch).
+4. Next sample on the **same SHA**: `gh run rerun 35162060007 --job <ci-foundation-databaseId>` (job-level rerun only). No workflow cancels were required; every foundation conclusion (including attempts 5 and 7 where G80 failed on the 20 s measurement tip) was retained.
+5. Deduplication by job database id; no receipt counted twice.
+
+Immutable measurement head: `8a1d20fa896ba0a57069107a10e0af03b73034fe`
+Workflow run: [35162060007](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35162060007) (PR #197, attempts 1–8, same SHA)
+
+| # | Attempt | ci-foundation job | AC3 state | Duration (ms) | Censored | Foundation | Semantic |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1 | [105014928783](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35162060007/attempts/1) | passed | 2_951 | false | success | all assertions green |
+| 2 | 2 | [105018618610](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35162060007/attempts/2) | passed | 3_003 | false | success | all assertions green |
+| 3 | 3 | [105021261701](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35162060007/attempts/3) | passed | 2_460 | false | success | all assertions green |
+| 4 | 4 | [105023188626](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35162060007/attempts/4) | passed | 3_357 | false | success | all assertions green |
+| 5 | 5 | [105025898564](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35162060007/attempts/5) | passed | 4_312 | false | failure | AC3 green; G80 oracle mismatch at 20 s tip |
+| 6 | 6 | [105027510289](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35162060007/attempts/6) | passed | 3_054 | false | success | all assertions green |
+| 7 | 7 | [105030084680](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35162060007/attempts/7) | passed | 4_591 | false | failure | AC3 green; G80 oracle mismatch at 20 s tip |
+| 8 | 8 | [105031534682](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35162060007/attempts/8) | passed | 3_193 | false | success | all assertions green |
+
+**Census summary:** 8/8 healthy AC3 observations uncensored at 20_000 ms. Max uncensored duration **4_591 ms**. No semantic assertion failures. No 20 s censoring. Instrument and document agree (`docs/evidence/SDT-G94-ac2-census.json`).
 
 ## AC3 — selection rule
 
 Allowed ceilings: {12_000, 15_000} ms.
 
 ```text
-max_uncensored_healthy_ms = 9460
-required_min_ceiling     = ceil(1.2 × 9460) = 11352
+max_uncensored_healthy_ms = 4591
+required_min_ceiling     = ceil(1.2 × 4591) = 5510
 
-12_000 ms: 12000 ≥ 11352 ✓ ; max observation 9460 ≤ 0.8 × 12000 = 9600 ✓
+12_000 ms: 12000 ≥ 5510 ✓ ; max observation 4591 ≤ 0.8 × 12000 = 9600 ✓
 15_000 ms: also satisfies both rules but is not the smallest allowed ceiling
 ```
 
@@ -76,23 +92,17 @@ G73/G80 guard `budgetMs` set to **12_000** (replacing G90's literal 10_000 ms or
 
 ## AC6 — exact-head verification
 
-Final head: `172b6d79cfea8ba19b4831f5c31f8ffc4c848db7`
-Final CI run: [35159038082 attempt 2](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35159038082/attempts/2) — **success**
+Final head: *(populated after permanent-ceiling commit push)*
 
 | Check | Status | Detail |
 | --- | --- | --- |
-| `ci-foundation` | **green** | AC3 2_963 ms at 12_000 ms budget (`near-budget` headroom retained) |
-| `foundation-g73` | **green** | `healthy-green-g69-path-timeout-red`; `budgetMs` 12_000 |
-| Healthy margin | 8_874 ms | `healthyBodyMs` 3_126 |
-| Mutant timeout | **red** | 767-round representative: `Test timed out in 12000ms.` (`regressionBodyMs` 14_401) |
-| Residual max | 0.625 ms | Under `equalSizeResidualBoundMs` 7 |
-| `ci-pr-cheap` + verify | **green** | No retries or flaky config added |
-
-Attempt 1 on the same head hit hosted `CALIBRATION_INCONCLUSIVE` (first scoring chunk 121.5 ms/round vs steady ~18 ms/round); attempt 2 is the ordinary acceptance proof retained per AC6.
+| `ci-foundation` | pending | AC3 at 12_000 ms budget |
+| `foundation-g73` | pending | `healthy-green-g69-path-timeout-red`; `budgetMs` 12_000 |
+| Mutant timeout | pending | Named `Test timed out in 12000ms.` on hosted foundation |
 
 ## Scope fence
 
 - No product/runtime changes.
 - No other test budgets changed.
 - No retries, flaky annotations, or skip config added.
-- 20_000 ms existed only on measurement commit `c6e7d6a`; not retained as permanent ceiling.
+- 20_000 ms existed only on measurement commit `8a1d20f`; not retained as permanent ceiling.
