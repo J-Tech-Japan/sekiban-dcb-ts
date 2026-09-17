@@ -76,6 +76,15 @@ const OBLIGATION_ALARM_BATCH_LIMIT = 32;
  * healthy same-colo D1/doorbell attempt to complete before the response.
  */
 export const G65_DERIVED_WRITE_BUDGET_MS = 300;
+/**
+ * SDT-G98: first-append source-partition registration is on the commit path
+ * when G44 D1 is configured, but cold remote D1 registration routinely needs
+ * more than the doorbell/admission 300 ms budget. Keep registration on its own
+ * measured ceiling so multi-tag first-touch does not invent partial_write.
+ * Chosen from 2026-09-17 live cold-reserve observation (300 ms shared budget
+ * timed out registration) plus margin; refined against cold-loop evidence.
+ */
+export const G65_SOURCE_REGISTRATION_BUDGET_MS = 1_500;
 export const G65_SOURCE_REGISTRATION_MAX_ATTEMPTS = 3;
 export const G65_SOURCE_REGISTRATION_RETRY_DELAY_MS = 25;
 export const G65_GLOBAL_ADMISSION_HEADER = "x-sdt-global-admission";
@@ -1611,7 +1620,10 @@ export class TagDurableObject implements DurableObject {
     // is present enters the first-partition refusal contract below.
     if (this.env.D1 === undefined) return "unconfigured";
     if (g44GlobalArrayAuthorityResultByD1.get(this.env.D1) === false) return "unconfigured";
-    const attempt = await this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId, 0));
+    const attempt = await this.boundedDerivedWrite(
+      () => this.registerSourcePartition(tag, serviceId, 0),
+      G65_SOURCE_REGISTRATION_BUDGET_MS,
+    );
     if (attempt.status !== "completed") {
       throw new PartitionRegistrationUnavailableError(
         attempt.status === "timeout" ? "timeout" : attempt.error,
@@ -1655,7 +1667,10 @@ export class TagDurableObject implements DurableObject {
   private async retrySourcePartitionRegistration(tag: string, serviceId: string, preserveRegistered = false): Promise<void> {
     let lastFailure: string | undefined;
     for (let attempt = 1; attempt <= G65_SOURCE_REGISTRATION_MAX_ATTEMPTS; attempt += 1) {
-      const result = await this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId));
+      const result = await this.boundedDerivedWrite(
+        () => this.registerSourcePartition(tag, serviceId),
+        G65_SOURCE_REGISTRATION_BUDGET_MS,
+      );
       if (result.status === "completed") {
         // A D1 binding without the G44 global-array schema is an explicitly
         // unconfigured completeness store, not a failed registration. Do not
@@ -3491,7 +3506,10 @@ export class TagDurableObject implements DurableObject {
    * part of commit semantics.  The rejection branch is attached immediately
    * so a late D1/doorbell failure cannot become an unhandled rejection.
    */
-  private async boundedDerivedWrite<T>(operation: () => Promise<T>): Promise<
+  private async boundedDerivedWrite<T>(
+    operation: () => Promise<T>,
+    budgetMs: number = G65_DERIVED_WRITE_BUDGET_MS,
+  ): Promise<
     | { readonly status: "completed"; readonly value: T }
     | { readonly status: "failed"; readonly error: unknown }
     | { readonly status: "timeout" }
@@ -3504,7 +3522,7 @@ export class TagDurableObject implements DurableObject {
         (error): { readonly status: "failed"; readonly error: unknown } => ({ status: "failed", error }),
       );
     const timeout = new Promise<{ readonly status: "timeout" }>((resolve) => {
-      timer = setTimeout(() => resolve({ status: "timeout" }), G65_DERIVED_WRITE_BUDGET_MS);
+      timer = setTimeout(() => resolve({ status: "timeout" }), budgetMs);
     });
     try {
       return await Promise.race([operationResult, timeout]);
