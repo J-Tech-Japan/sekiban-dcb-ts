@@ -77,16 +77,20 @@ Always migrate **both** `D1` (pipeline) and `D1_MV` before trusting a new tip.
 Symptom of skip: missing columns such as `FirstAdmissionAttemptId`, flaky
 multi-tag reserves.
 
-### G65 `partial_write` (300 ms first-touch)
+### G65 `partial_write` (first-touch registration)
 
-First multi-tag reserve can return `kind: partial` /
+Cold multi-tag reserve historically returned `kind: partial` /
 `code: partial_write` with `writtenTags=[room:…]` and
-`missingTags=[reservation:…]` when source-partition registration exceeds the
-current 300 ms budget. Mitigations in the sample path:
+`missingTags=[reservation:…]` when source-partition registration competed for
+the shared 300 ms doorbell/admission budget.
+
+SDT-G98 gives first-append registration its own
+`G65_SOURCE_REGISTRATION_BUDGET_MS` (1500 ms) while doorbell/admission stay at
+`G65_DERIVED_WRITE_BUDGET_MS = 300`. Sample mitigations remain useful under
+load:
 
 - Use a **new** `reservationId` (do not blind-retry the same attempt id).
 - Prefer create-room success first, then reserve with fresh ids.
-- Product budget changes are **out of scope** for SDT-G97 (follow-up design).
 
 ### Clean slate (C-0) + `SDT_SERVICE_ID`
 

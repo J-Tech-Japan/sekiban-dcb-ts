@@ -5,7 +5,7 @@ import g32Migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 import { D1EventStore, D1IdentityConflictError } from "../packages/dcb-runtime/src/store/D1EventStore";
 import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
-import { TagDurableObject, G65_DERIVED_WRITE_BUDGET_MS } from "../packages/dcb-runtime/src/tag/TagDurableObject";
+import { TagDurableObject, G65_DERIVED_WRITE_BUDGET_MS, G65_SOURCE_REGISTRATION_BUDGET_MS } from "../packages/dcb-runtime/src/tag/TagDurableObject";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { g32Message } from "./helpers/g32-fixtures";
 import { applyG44D1Migration } from "./helpers/g44-d1-migration";
@@ -392,8 +392,8 @@ describe("SDT-G65 bounded two-lane admission", () => {
       );
       const elapsedMs = performance.now() - started;
       expect(response.status).toBe(503);
-      expect(elapsedMs).toBeGreaterThanOrEqual(G65_DERIVED_WRITE_BUDGET_MS - 25);
-      expect(elapsedMs).toBeLessThan(G65_DERIVED_WRITE_BUDGET_MS + 500);
+      expect(elapsedMs).toBeGreaterThanOrEqual(G65_SOURCE_REGISTRATION_BUDGET_MS - 25);
+      expect(elapsedMs).toBeLessThan(G65_SOURCE_REGISTRATION_BUDGET_MS + 500);
       expect(await response.clone().json()).toMatchObject({
         code: "partition_registration_unavailable",
         retryable: true,
@@ -525,7 +525,7 @@ describe("SDT-G65 bounded two-lane admission", () => {
       );
       const elapsedMs = performance.now() - started;
       expect(response.status).toBe(503);
-      expect(elapsedMs).toBeLessThan(G65_DERIVED_WRITE_BUDGET_MS * 2 + 900);
+      expect(elapsedMs).toBeLessThan(G65_SOURCE_REGISTRATION_BUDGET_MS * 2 + 900);
       expect(await response.clone().json()).toMatchObject({
         code: "partition_registration_unavailable",
         retryable: true,

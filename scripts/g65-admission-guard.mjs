@@ -112,6 +112,10 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
   const bounded = between(tagSource, "private async boundedDerivedWrite", "private startAutoDrainBeforeResponse(");
 
   if (!tagSource.includes(`G65_DERIVED_WRITE_BUDGET_MS = ${budgetMs}`)) missing.push("documented 300 ms derived-write budget");
+  if (!tagSource.includes("G65_SOURCE_REGISTRATION_BUDGET_MS = 1_500") &&
+    !tagSource.includes("G65_SOURCE_REGISTRATION_BUDGET_MS = 1500")) {
+    missing.push("documented dedicated source-registration budget");
+  }
   if (!tagSource.includes("G65_GLOBAL_ADMISSION_HEADER") || !tagSource.includes("response.headers.set(G65_GLOBAL_ADMISSION_HEADER")) {
     missing.push("internal global-admission status header");
   }
@@ -133,8 +137,14 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
   }
   if (!tagSource.includes("G65_SOURCE_REGISTRATION_MAX_ATTEMPTS = 3") ||
     !tagSource.includes("retrySourcePartitionRegistration") ||
-    !tagSource.includes("this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId))")) {
+    !tagSource.includes("G65_SOURCE_REGISTRATION_BUDGET_MS") ||
+    !tagSource.includes("this.registerSourcePartition(tag, serviceId)")) {
     missing.push("bounded source registry recovery retry");
+  }
+  if (!tagSource.includes("ensureSourcePartitionBeforeFirstAppend") ||
+    !tagSource.includes("registerSourcePartition(tag, serviceId, 0)") ||
+    !tagSource.includes("G65_SOURCE_REGISTRATION_BUDGET_MS")) {
+    missing.push("first-append registration uses dedicated registration budget");
   }
   if (!tagSource.includes("if (this.env.D1 === undefined) return \"unconfigured\";") ||
     !tagSource.includes("if (!attempt.value) return \"unconfigured\";")) {
