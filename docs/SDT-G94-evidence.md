@@ -92,13 +92,17 @@ G73/G80 guard `budgetMs` set to **12_000** (replacing G90's literal 10_000 ms or
 
 ## AC6 — exact-head verification
 
-Final head: *(populated after permanent-ceiling commit push)*
+Final head: `9832f645a6121f5bcda2a1a65b9acb108b2d0e8a`
+Final CI run: [35168246815 attempt 1](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35168246815/attempts/1) — **success**
 
 | Check | Status | Detail |
 | --- | --- | --- |
-| `ci-foundation` | pending | AC3 at 12_000 ms budget |
-| `foundation-g73` | pending | `healthy-green-g69-path-timeout-red`; `budgetMs` 12_000 |
-| Mutant timeout | pending | Named `Test timed out in 12000ms.` on hosted foundation |
+| `ci-foundation` | **green** | AC3 4_011 ms at 12_000 ms budget (`comfortable` classification) |
+| G73/G80 guard (in foundation) | **green** | `healthy-green-g69-path-timeout-red`; `budgetMs` 12_000 |
+| Healthy margin | 8_033 ms | `healthyBodyMs` 3_967 |
+| Mutant timeout | **red** | 548-round representative: `Test timed out in 12000ms.` (`regressionBodyMs` 13_933) |
+| Residual max | 1.5 ms | Under `equalSizeResidualBoundMs` 7 |
+| `ci-pr-cheap` + verify | **green** | No retries or flaky config added |
 
 ## Scope fence
 
