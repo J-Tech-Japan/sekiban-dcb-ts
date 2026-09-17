@@ -1,0 +1,199 @@
+{
+  "schema": "sdt-g94-ac2-census/v1",
+  "head": "8a1d20fa896ba0a57069107a10e0af03b73034fe",
+  "measurementBudgetMs": 20000,
+  "targetSamples": 8,
+  "predeclaration": "Exactly eight ci-foundation executions on measurementHead; all outcomes retained; no outcome-based discard or rerun.",
+  "samples": [
+    {
+      "n": 1,
+      "runId": 35162060007,
+      "attempt": 1,
+      "jobId": 105014928783,
+      "ac3": {
+        "state": "passed",
+        "durationMs": 2951,
+        "budgetMs": 20000,
+        "classification": "comfortable",
+        "censored": false
+      },
+      "foundationConclusion": "success"
+    },
+    {
+      "n": 2,
+      "runId": 35162060007,
+      "attempt": 2,
+      "jobId": 105018618610,
+      "ac3": {
+        "state": "passed",
+        "durationMs": 3003,
+        "budgetMs": 20000,
+        "classification": "comfortable",
+        "censored": false
+      },
+      "foundationConclusion": "success"
+    },
+    {
+      "n": 3,
+      "runId": 35162060007,
+      "attempt": 3,
+      "jobId": 105021261701,
+      "ac3": {
+        "state": "passed",
+        "durationMs": 2460,
+        "budgetMs": 20000,
+        "classification": "comfortable",
+        "censored": false
+      },
+      "foundationConclusion": "success"
+    },
+    {
+      "n": 4,
+      "runId": 35162060007,
+      "attempt": 4,
+      "jobId": 105023188626,
+      "ac3": {
+        "state": "passed",
+        "durationMs": 3357,
+        "budgetMs": 20000,
+        "classification": "comfortable",
+        "censored": false
+      },
+      "foundationConclusion": "success"
+    },
+    {
+      "n": 5,
+      "runId": 35162060007,
+      "attempt": 5,
+      "jobId": 105025898564,
+      "ac3": {
+        "state": "passed",
+        "durationMs": 4312,
+        "budgetMs": 20000,
+        "classification": "comfortable",
+        "censored": false
+      },
+      "foundationConclusion": "failure"
+    },
+    {
+      "n": 6,
+      "runId": 35162060007,
+      "attempt": 6,
+      "jobId": 105027510289,
+      "ac3": {
+        "state": "passed",
+        "durationMs": 3054,
+        "budgetMs": 20000,
+        "classification": "comfortable",
+        "censored": false
+      },
+      "foundationConclusion": "success"
+    },
+    {
+      "n": 7,
+      "runId": 35162060007,
+      "attempt": 7,
+      "jobId": 105030084680,
+      "ac3": {
+        "state": "passed",
+        "durationMs": 4591,
+        "budgetMs": 20000,
+        "classification": "comfortable",
+        "censored": false
+      },
+      "foundationConclusion": "failure"
+    },
+    {
+      "n": 8,
+      "runId": 35162060007,
+      "attempt": 8,
+      "jobId": 105031534682,
+      "ac3": {
+        "state": "passed",
+        "durationMs": 3193,
+        "budgetMs": 20000,
+        "classification": "comfortable",
+        "censored": false
+      },
+      "foundationConclusion": "success"
+    }
+  ],
+  "procedureEvents": [
+    {
+      "at": "2026-09-16T23:39:39+00:00",
+      "note": "Waiting for initial PR workflow on head 8a1d20fa896ba0a57069107a10e0af03b73034fe"
+    },
+    {
+      "at": "2026-09-16T23:39:40+00:00",
+      "note": "Found workflow run 35162060007 for head 8a1d20fa896ba0a57069107a10e0af03b73034fe"
+    },
+    {
+      "at": "2026-09-16T23:39:40+00:00",
+      "note": "Using workflow run 35162060007 (samples=0/8)"
+    },
+    {
+      "at": "2026-09-16T23:39:45+00:00",
+      "note": "Sample 1/8 from job 105014928783 attempt 1: 2951 passed False"
+    },
+    {
+      "at": "2026-09-16T23:39:45+00:00",
+      "note": "Job-level rerun requested for run 35162060007 job 105014928783: "
+    },
+    {
+      "at": "2026-09-16T23:51:44+00:00",
+      "note": "Sample 2/8 from job 105018618610 attempt 2: 3003 passed False"
+    },
+    {
+      "at": "2026-09-16T23:51:45+00:00",
+      "note": "Job-level rerun requested for run 35162060007 job 105018618610: "
+    },
+    {
+      "at": "2026-09-17T00:00:41+00:00",
+      "note": "Sample 3/8 from job 105021261701 attempt 3: 2460 passed False"
+    },
+    {
+      "at": "2026-09-17T00:00:42+00:00",
+      "note": "Job-level rerun requested for run 35162060007 job 105021261701: "
+    },
+    {
+      "at": "2026-09-17T00:12:41+00:00",
+      "note": "Sample 4/8 from job 105023188626 attempt 4: 3357 passed False"
+    },
+    {
+      "at": "2026-09-17T00:12:42+00:00",
+      "note": "Job-level rerun requested for run 35162060007 job 105023188626: "
+    },
+    {
+      "at": "2026-09-17T00:20:05+00:00",
+      "note": "Sample 5/8 from job 105025898564 attempt 5: 4312 passed False"
+    },
+    {
+      "at": "2026-09-17T00:20:06+00:00",
+      "note": "Job-level rerun requested for run 35162060007 job 105025898564: "
+    },
+    {
+      "at": "2026-09-17T00:32:09+00:00",
+      "note": "Sample 6/8 from job 105027510289 attempt 6: 3054 passed False"
+    },
+    {
+      "at": "2026-09-17T00:32:10+00:00",
+      "note": "Job-level rerun requested for run 35162060007 job 105027510289: "
+    },
+    {
+      "at": "2026-09-17T00:39:12+00:00",
+      "note": "Sample 7/8 from job 105030084680 attempt 7: 4591 passed False"
+    },
+    {
+      "at": "2026-09-17T00:39:13+00:00",
+      "note": "Job-level rerun requested for run 35162060007 job 105030084680: "
+    },
+    {
+      "at": "2026-09-17T00:51:15+00:00",
+      "note": "Sample 8/8 from job 105031534682 attempt 8: 3193 passed False"
+    },
+    {
+      "at": "2026-09-17T00:51:15+00:00",
+      "note": "Census complete: 8 samples on head 8a1d20fa896ba0a57069107a10e0af03b73034fe run 35162060007"
+    }
+  ]
+}
