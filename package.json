@@ -95,6 +95,8 @@
     "test:g99:tip-identity": "node scripts/deploy/g99-tip-identity-guards.mjs",
     "deploy:g99:npm-consumer": "./scripts/deploy/g99-npm-consumer-deploy.sh",
     "deploy:g99:npm-consumer:dry-run": "G99_DRY_RUN=1 ./scripts/deploy/g99-npm-consumer-deploy.sh",
+    "publish:g99:runtime-bootstrap": "./scripts/dcb-runtime-bootstrap-publish.sh",
+    "publish:g99:runtime-bootstrap:dry-run": "./scripts/dcb-runtime-bootstrap-publish.sh --dry-run",
     "test:g64:forced-red": "npm run test:g64 && node -e \"if (process.env.SDT_G64_FORCE_FAILURE === '1') throw new Error('SDT-G64 forced-red CI wiring proof')\"",
     "test:g72:trusted-publishing": "node scripts/g72-trusted-publishing-guard.mjs && node scripts/g72-trusted-publishing-mutation-runner.mjs --self-test && node scripts/g72-trusted-publishing-mutation-runner.mjs",
     "test:g93": "node scripts/sdt-g93-workflow-package-guard.mjs",
