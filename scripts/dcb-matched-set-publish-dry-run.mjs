@@ -11,6 +11,7 @@ const packages = [
   ["@sekiban/dcb-core", "packages/dcb-core"],
   ["@sekiban/dcb-domain", "packages/dcb-domain"],
   ["@sekiban/dcb-client", "packages/dcb-client"],
+  ["@sekiban/dcb-runtime", "packages/dcb-runtime"],
 ];
 
 export function publishArguments({ privateRepository, dryRun = true }) {

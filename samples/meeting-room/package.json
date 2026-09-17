@@ -10,8 +10,9 @@
     "test": "vitest run --config ../../vitest.config.ts"
   },
   "dependencies": {
-    "@sekiban/dcb-client": "file:../../packages/dcb-client",
-    "@sekiban/dcb-core": "file:../../packages/dcb-core",
-    "@sekiban/dcb-runtime": "file:../../packages/dcb-runtime"
+    "@sekiban/dcb-client": "0.2.0",
+    "@sekiban/dcb-core": "0.2.0",
+    "@sekiban/dcb-domain": "0.2.0",
+    "@sekiban/dcb-runtime": "0.2.0"
   }
 }

@@ -10,11 +10,11 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workflowDir = resolve(root, ".github/workflows");
 const canonicalRepositoryUrl = "git+https://github.com/J-Tech-Japan/sekiban-dcb-ts.git";
-const publicPackages = ["dcb-core", "dcb-domain", "dcb-client"];
+const publicPackages = ["dcb-core", "dcb-domain", "dcb-client", "dcb-runtime"];
 
 const expectedV5Counts = {
-  "actions/checkout@v5": 7,
-  "actions/setup-node@v5": 7,
+  "actions/checkout@v5": 8,
+  "actions/setup-node@v5": 8,
   "actions/cache@v5": 2,
   "actions/setup-dotnet@v5": 1,
 };
@@ -36,7 +36,7 @@ const node24ActionContract = {
 
 async function assertWorkflowCensus() {
   const files = (await readdir(workflowDir)).filter((name) => name.endsWith(".yml")).sort();
-  assert.equal(files.length, 5, "expected exactly five workflow files");
+  assert.equal(files.length, 6, "expected exactly six workflow files");
   const combined = (await Promise.all(files.map((name) => readFile(resolve(workflowDir, name), "utf8")))).join("\n");
 
   for (const forbidden of forbiddenV4) {

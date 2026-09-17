@@ -6,12 +6,20 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const version = "0.2.0";
-const packageNames = ["dcb-core", "dcb-domain", "dcb-client"];
+const packageNames = ["dcb-core", "dcb-domain", "dcb-client", "dcb-runtime"];
 const packageRoots = Object.fromEntries(packageNames.map((name) => [name, resolve(root, "packages", name)]));
+const maxUnpackedBytes = {
+  "dcb-core": 1_000_000,
+  "dcb-domain": 1_000_000,
+  "dcb-client": 1_000_000,
+  // Runtime ships multiple Cloudflare/D1 entry bundles; keep a higher ceiling.
+  "dcb-runtime": 5_000_000,
+};
 const allowedEntries = {
   "dcb-core": new Set(["LICENSE", "README.md", "dist", "package.json", "src", "tsconfig.build.json", "tsconfig.json"]),
   "dcb-domain": new Set(["LICENSE", "README.md", "boundary-fixtures", "diagnostic-fixtures", "dist", "package.json", "src", "tsconfig.build.json", "tsconfig.json", "tsconfig.typecheck.json", "typecheck-fixtures"]),
   "dcb-client": new Set(["LICENSE", "README.md", "dist", "package.json", "src", "tsconfig.build.json", "tsconfig.json"]),
+  "dcb-runtime": new Set(["LICENSE", "README.md", "dist", "package.json", "src", "tsconfig.build.json", "tsconfig.json"]),
 };
 
 function fail(message) {
@@ -63,6 +71,10 @@ exact(manifests["dcb-client"].dependencies, {
   "@sekiban/dcb-domain": version,
 }, "client matched runtime dependencies");
 exact(manifests["dcb-client"].devDependencies ?? {}, {}, "client dev dependency allowlist");
+exact(manifests["dcb-runtime"].dependencies, {
+  "@sekiban/dcb-core": version,
+}, "runtime matched core dependency");
+exact(manifests["dcb-runtime"].devDependencies ?? {}, {}, "runtime dev dependency allowlist");
 
 const packages = [];
 for (const name of packageNames) {
@@ -85,7 +97,8 @@ for (const name of packageNames) {
     expect(names.includes(required), `${name} tarball omitted ${required}`);
   }
   expect(!names.some((entry) => entry.endsWith(".map")), `${name} tarball must not contain source maps`);
-  expect(report.unpackedSize <= 1_000_000, `${name} tarball exceeds 1,000,000 unpacked bytes`);
+  const sizeLimit = maxUnpackedBytes[name] ?? 1_000_000;
+  expect(report.unpackedSize <= sizeLimit, `${name} tarball exceeds ${sizeLimit} unpacked bytes`);
   packages.push({ name: manifests[name].name, version, files: names, unpackedSize: report.unpackedSize });
 }
 

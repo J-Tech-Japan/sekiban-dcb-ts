@@ -2,13 +2,21 @@
 
 This is the canonical Cloudflare Workers sample for **sekiban-dcb-ts**.
 
-It consumes workspace packages (`@sekiban/dcb-core`, `@sekiban/dcb-domain`,
-`@sekiban/dcb-client`, and private `@sekiban/dcb-runtime`). Domain authoring
+It consumes the matched npm set (`@sekiban/dcb-core`, `@sekiban/dcb-domain`,
+`@sekiban/dcb-client`, `@sekiban/dcb-runtime` at `0.2.0`). Domain authoring
 lives in `src/domain.ts`; Durable Object classes are re-exported from the
 Worker entry because Cloudflare requires DO classes in the Worker module graph.
 
-Public npm today: `@sekiban/dcb-{core,domain,client}@0.2.0`.
-`@sekiban/dcb-runtime` stays private / workspace-linked (required for DO export).
+In-repo `npm ci` may still workspace-link those packages for developer
+ergonomics. **Tip Cloudflare speed/latency deploys must use the npm-consumer
+path** so the Worker is built from packed/registry packages, not `file:` links:
+
+```sh
+# from repository root
+./scripts/deploy/g99-npm-consumer-deploy.sh
+```
+
+Dry-run packing/install only: `G99_DRY_RUN=1 ./scripts/deploy/g99-npm-consumer-deploy.sh`.
 
 ## Prerequisites
 
