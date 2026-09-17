@@ -5,10 +5,17 @@
 # one-time local path: build → publish without provenance (private GitHub source)
 # → verify npm view → print Trusted Publisher registration URLs.
 #
-# Usage (from repo root):
+# Usage (MUST run from repository root):
+#   cd /home/parallels/dev/work/sekiban-dcb-ts-g97-impl
 #   ./scripts/dcb-runtime-bootstrap-publish.sh --dry-run
 #   ./scripts/dcb-runtime-bootstrap-publish.sh
 #   npm run publish:g99:runtime-bootstrap
+#
+# Absolute paths (this worktree):
+#   root:    /home/parallels/dev/work/sekiban-dcb-ts-g97-impl
+#   script:  /home/parallels/dev/work/sekiban-dcb-ts-g97-impl/scripts/dcb-runtime-bootstrap-publish.sh
+#   package: /home/parallels/dev/work/sekiban-dcb-ts-g97-impl/packages/dcb-runtime
+#   receipt: /home/parallels/dev/work/sekiban-dcb-ts-g97-impl/.artifacts/sdt-g99-runtime-bootstrap-publish.json
 #
 # Prerequisites:
 #   - npm login as a maintainer of the @sekiban scope (OTP / 2FA as prompted)
@@ -18,6 +25,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
+
+info_paths() {
+  cat <<EOF
+dcb-runtime-bootstrap: working directory (repo root): ${ROOT}
+dcb-runtime-bootstrap: script:  ${ROOT}/scripts/dcb-runtime-bootstrap-publish.sh
+dcb-runtime-bootstrap: package: ${ROOT}/packages/dcb-runtime
+EOF
+}
 
 PACKAGE_DIR="${ROOT}/packages/dcb-runtime"
 MANIFEST="${PACKAGE_DIR}/package.json"
@@ -44,6 +59,8 @@ done
 
 fail() { echo "dcb-runtime-bootstrap: ERROR: $*" >&2; exit 1; }
 info() { echo "dcb-runtime-bootstrap: $*"; }
+
+info_paths
 
 [[ -f "${MANIFEST}" ]] || fail "missing ${MANIFEST}"
 

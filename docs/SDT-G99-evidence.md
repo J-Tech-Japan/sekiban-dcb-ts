@@ -5,7 +5,7 @@
 - Manifest: `private: false`, `version: 0.2.0`, Elastic-2.0, `publishConfig.access=public`, dependency `@sekiban/dcb-core: 0.2.0` (no `file:`).
 - Matched-set release/pack/publish scripts and `release-dcb-matched-set.yml` include `packages/dcb-runtime`.
 - Publish path: `.github/workflows/publish-dcb-unpublished.yml` uses **G72 trusted publishing** (`NPM_TRUSTED_PUBLISHING=true` → OIDC, `NODE_AUTH_TOKEN` unset). Token fallback is not the AC1 product path.
-- Chicken-and-egg: npm Trusted Publishers attach to an **existing** package. **Local bootstrap path:** [`docs/SDT-G99-runtime-bootstrap-local.md`](SDT-G99-runtime-bootstrap-local.md) / `npm run publish:g99:runtime-bootstrap`. Then register Trusted Publisher for `publish-dcb-unpublished.yml`, then re-run OIDC publish.
+- Chicken-and-egg: npm Trusted Publishers attach to an **existing** package. Local bootstrap: `npm run publish:g99:runtime-bootstrap` from the repo root (`scripts/dcb-runtime-bootstrap-publish.sh`). Then register Trusted Publisher for `publish-dcb-unpublished.yml`, then re-run OIDC publish.
 
 ```text
 # after trusted-publisher registration + publish-dcb-unpublished on main
