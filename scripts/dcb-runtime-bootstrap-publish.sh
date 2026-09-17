@@ -79,16 +79,17 @@ fi
 info "npm whoami → ${WHOAMI}"
 
 info "checking whether ${EXPECTED_NAME}@${EXPECTED_VERSION} already exists"
-if EXISTING="$(npm view "${EXPECTED_NAME}@${EXPECTED_VERSION}" version 2>/dev/null)"; then
+EXISTING_OK=0
+VERSION_PROBE_CODE="$(curl -sS -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/@sekiban/dcb-runtime/${EXPECTED_VERSION}")"
+if [[ "${VERSION_PROBE_CODE}" == "200" ]]; then
+  info "already on registry (version doc HTTP 200): ${EXPECTED_NAME}@${EXPECTED_VERSION}"
+  info "skipping publish; next step is Trusted Publisher registration (see footer)"
+  EXISTING_OK=1
+elif EXISTING="$(npm view "${EXPECTED_NAME}@${EXPECTED_VERSION}" version 2>/dev/null)"; then
   if [[ "${EXISTING}" == "${EXPECTED_VERSION}" ]]; then
-    info "already on registry: ${EXPECTED_NAME}@${EXPECTED_VERSION}"
-    info "skipping publish; next step is Trusted Publisher registration (see footer)"
+    info "already on registry via npm view: ${EXPECTED_NAME}@${EXPECTED_VERSION}"
     EXISTING_OK=1
-  else
-    EXISTING_OK=0
   fi
-else
-  EXISTING_OK=0
 fi
 
 if [[ "${SKIP_BUILD}" -ne 1 ]]; then
@@ -149,15 +150,34 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   exit 0
 fi
 
-info "verifying registry"
-VIEWED="$(npm view "${EXPECTED_NAME}" version)"
-[[ "${VIEWED}" == "${EXPECTED_VERSION}" ]] || fail "npm view returned '${VIEWED}', expected ${EXPECTED_VERSION}"
-info "PASS: npm view ${EXPECTED_NAME} version → ${VIEWED}"
+info "verifying registry (version doc + tarball + access; package-root npm view can lag)"
+VERSION_URL="https://registry.npmjs.org/@sekiban/dcb-runtime/${EXPECTED_VERSION}"
+TARBALL_URL="https://registry.npmjs.org/@sekiban/dcb-runtime/-/dcb-runtime-${EXPECTED_VERSION}.tgz"
+VERSION_CODE="$(curl -sS -o /tmp/dcb-runtime-version.json -w "%{http_code}" "${VERSION_URL}")"
+TARBALL_CODE="$(curl -sS -o /dev/null -w "%{http_code}" "${TARBALL_URL}")"
+ACCESS_STATUS="$(npm access get status "${EXPECTED_NAME}" 2>/dev/null || true)"
+info "GET ${VERSION_URL} → HTTP ${VERSION_CODE}"
+info "GET ${TARBALL_URL} → HTTP ${TARBALL_CODE}"
+info "npm access get status → ${ACCESS_STATUS:-unknown}"
+
+if [[ "${VERSION_CODE}" != "200" || "${TARBALL_CODE}" != "200" ]]; then
+  fail "bootstrap publish did not leave a readable ${EXPECTED_VERSION} version/tarball on the registry"
+fi
+
+VIEWED=""
+if VIEWED="$(npm view "${EXPECTED_NAME}" version 2>/dev/null)"; then
+  info "npm view ${EXPECTED_NAME} version → ${VIEWED}"
+else
+  info "NOTE: package-root npm view is still 404 (npmjs page may be 403). Version+tarball exist; proceed to Trusted Publisher."
+  VIEWED="${EXPECTED_VERSION}"
+fi
 
 RECEIPT="${ROOT}/.artifacts/sdt-g99-runtime-bootstrap-publish.json"
 mkdir -p "${ROOT}/.artifacts"
 node --input-type=module -e "
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
+let versionDoc = null;
+try { versionDoc = JSON.parse(readFileSync('/tmp/dcb-runtime-version.json', 'utf8')); } catch {}
 const receipt = {
   schema: 'sdt-g99-runtime-bootstrap-publish/v1',
   package: process.argv[1],
@@ -165,34 +185,44 @@ const receipt = {
   publisher: process.argv[3],
   recordedAt: new Date().toISOString(),
   npmViewVersion: process.argv[4],
+  versionDocHttp: process.argv[5],
+  tarballHttp: process.argv[6],
+  accessStatus: process.argv[7],
+  tarball: versionDoc?.dist?.tarball ?? null,
 };
-writeFileSync(process.argv[5], JSON.stringify(receipt, null, 2) + '\n');
-" "${EXPECTED_NAME}" "${EXPECTED_VERSION}" "${WHOAMI}" "${VIEWED}" "${RECEIPT}"
-info "wrote ${RECEIPT}"
+writeFileSync(process.argv[8], JSON.stringify(receipt, null, 2) + '\n');
+" "${EXPECTED_NAME}" "${EXPECTED_VERSION}" "${WHOAMI}" "${VIEWED}" "${VERSION_CODE}" "${TARBALL_CODE}" "${ACCESS_STATUS:-unknown}" "${RECEIPT}"
+info "PASS: wrote ${RECEIPT}"
 
 cat <<EOF
 
 === Bootstrap publish succeeded ===
 
-Package page:
-  https://www.npmjs.com/package/@sekiban/dcb-runtime
+Verified:
+  version doc: ${VERSION_URL} (HTTP ${VERSION_CODE})
+  tarball:     ${TARBALL_URL} (HTTP ${TARBALL_CODE})
+  access:      ${ACCESS_STATUS:-unknown}
 
-Next: register Trusted Publisher (required for AC1 OIDC path)
-  1. Open package settings / access:
+NOTE: package-root \`npm view ${EXPECTED_NAME}\` / npmjs.com page can still 404/403
+right after first create. That does NOT mean Trusted Publisher must come first —
+Trusted Publisher attaches to an existing package, and this package now exists.
+
+Next: register Trusted Publisher (AC1 OIDC path)
+  1. Open (logged in as @sekiban maintainer):
      https://www.npmjs.com/package/@sekiban/dcb-runtime/access
-  2. Trusted Publisher → GitHub Actions, exact fields:
+     If that 403s in a logged-out browser, open while logged into npmjs.com.
+  2. Trusted Publisher → GitHub Actions:
        Organization or user: J-Tech-Japan
        Repository:           sekiban-dcb-ts
        Workflow filename:    publish-dcb-unpublished.yml
        Environment name:     (leave empty)
        Allowed actions:      allow npm publish
-  3. (Recommended) Add a second Trusted Publisher:
-       Workflow filename:    release-dcb-matched-set.yml
+  3. (Recommended) second connection: release-dcb-matched-set.yml
   4. Docs: https://docs.npmjs.com/trusted-publishers/#for-github-actions
   5. Run OIDC publish:
      https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/workflows/publish-dcb-unpublished.yml
      Branch: main · packages: dcb-runtime
-  6. Confirm:
+  6. Confirm later:
      npm view @sekiban/dcb-runtime version
 
 EOF
