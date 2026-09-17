@@ -4,16 +4,16 @@
 
 - Manifest: `private: false`, `version: 0.2.0`, Elastic-2.0, `publishConfig.access=public`, dependency `@sekiban/dcb-core: 0.2.0` (no `file:`).
 - Matched-set release/pack/publish scripts and `release-dcb-matched-set.yml` include `packages/dcb-runtime`.
-- Unpublished-member publish path: `.github/workflows/publish-dcb-unpublished.yml` + `scripts/dcb-matched-set-publish-unpublished.mjs`.
-- Local dry-run: `npm publish --dry-run --provenance --access public` for `@sekiban/dcb-runtime@0.2.0` → status 0.
+- Publish path: `.github/workflows/publish-dcb-unpublished.yml` uses **G72 trusted publishing** (`NPM_TRUSTED_PUBLISHING=true` → OIDC, `NODE_AUTH_TOKEN` unset). Token fallback is not the AC1 product path.
+- Chicken-and-egg: npm Trusted Publishers attach to an **existing** package. Local bootstrap: `npm run publish:g99:runtime-bootstrap` from the repo root (`scripts/dcb-runtime-bootstrap-publish.sh`). Then register Trusted Publisher for `publish-dcb-unpublished.yml`, then re-run OIDC publish.
 
 ```text
-# after publish-dcb-unpublished workflow on main
+# after trusted-publisher registration + publish-dcb-unpublished on main
 npm view @sekiban/dcb-runtime version
 # expected: 0.2.0
 ```
 
-*(Live `npm view` pasted after the publish job on `main`.)*
+*(Live `npm view` pasted after the OIDC publish job on `main`.)*
 
 ## AC2 — sample registry semver deps
 
