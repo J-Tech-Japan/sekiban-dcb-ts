@@ -2,13 +2,14 @@
 /**
  * Publish matched-set packages that are not yet on the registry.
  * Version collisions are treated as an allowed skip (already published).
+ *
+ * Do not import dcb-matched-set-publish-dry-run.mjs — that module runs on import.
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classifyPublishFailure } from "./npm-publish-dry-run-classifier.mjs";
-import { publishArguments, publishEnvironment } from "./dcb-matched-set-publish-dry-run.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const requested = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
@@ -18,8 +19,15 @@ const packages = (requested.length > 0 ? requested : ["dcb-runtime"]).map((name)
 ]);
 const privateRepository = process.env.REPO_IS_PRIVATE === "true" || process.env.PRIVATE_REPOSITORY === "true";
 const dryRun = process.argv.includes("--dry-run");
-const args = publishArguments({ privateRepository, dryRun });
-const env = { ...process.env, ...publishEnvironment({ privateRepository }) };
+const args = [
+  "publish",
+  ...(dryRun ? ["--dry-run"] : []),
+  ...(privateRepository ? [] : ["--provenance"]),
+  "--access",
+  "public",
+];
+const env = { ...process.env };
+if (privateRepository) env.NPM_CONFIG_PROVENANCE = "false";
 if (env.NPM_CONFIG_CACHE !== undefined) env.npm_config_cache = env.NPM_CONFIG_CACHE;
 if (process.env.UNSET_NODE_AUTH_TOKEN === "true") delete env.NODE_AUTH_TOKEN;
 
@@ -35,6 +43,7 @@ for (const [name, relativeDirectory] of packages) {
     package: name,
     cwd: relativeDirectory,
     version: manifest.version,
+    command: ["npm", ...args].join(" "),
     status: result.status,
     signal: result.signal,
     stdout: result.stdout,
