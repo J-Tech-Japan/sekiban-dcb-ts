@@ -4,8 +4,14 @@ import {
   UI_SAFE_WINDOW_BOUND_MS,
   compareV1Ordinal,
   commandOutcome,
+  commandSnapshots as buildCommandSnapshots,
+  reconcileOccupiedAgainstRead,
   reservationListView,
   roomQueryView,
+  snapshotInputValue,
+  snapshotKey,
+  snapshotLooksOccupied,
+  tagsToReconcileForCommand,
   visibilityState,
 } from "./ui-model.js";
 import {
@@ -29,11 +35,10 @@ const roomQueryResult = document.querySelector("#room-query-result");
 // The browser keeps only portable, JSON-safe projector snapshots.  A commit
 // response is authoritative for its per-tag heads; a list/query read head is
 // the fallback observed head when the UI learned the state through a read.
+// After a server C-0 / SDT_SERVICE_ID rotate, occupied entries are reconciled
+// against /api/read before create/reserve so stale exists:true cannot invent
+// reservation_exists / room_exists.
 const portableSnapshots = new Map();
-
-function snapshotKey(projectorId, tag) {
-  return `${projectorId}:${tag}`;
-}
 
 function rememberSnapshot(snapshot) {
   if (typeof snapshot?.projectorId !== "string" || typeof snapshot?.tag !== "string") return;
@@ -46,50 +51,31 @@ function knownSnapshot(projectorId, tag) {
   return portableSnapshots.get(snapshotKey(projectorId, tag));
 }
 
-function emptySnapshot(projectorId, tag) {
-  return {
-    projectorId,
-    tag,
-    head: null,
-    exists: false,
-    state: projectorId === "RoomProjector"
-      ? { status: "empty", version: 0, roomId: null, name: "" }
-      : { status: "empty", version: 0, reservationId: null, roomId: null },
-  };
-}
-
-function inputValue(input, key) {
-  return typeof input?.[key] === "string" ? input[key] : undefined;
+function forgetSnapshot(projectorId, tag) {
+  portableSnapshots.delete(snapshotKey(projectorId, tag));
 }
 
 function commandSnapshots(commandId, input) {
-  const roomId = inputValue(input, "roomId");
-  const reservationId = inputValue(input, "reservationId");
-  const room = roomId === undefined ? undefined : knownSnapshot("RoomProjector", `room:${roomId}`);
-  const reservation = reservationId === undefined ? undefined : knownSnapshot("ReservationProjector", `reservation:${reservationId}`);
-  if (commandId === "create-room" && roomId !== undefined) {
-    return { snapshots: [room ?? emptySnapshot("RoomProjector", `room:${roomId}`)], readMode: "snapshot-only" };
-  }
-  if (commandId === "reserve-room" && roomId !== undefined && reservationId !== undefined) {
-    // A new reservation is known to be empty even when the room snapshot was
-    // learned by the preceding list/query read.
-    return {
-      snapshots: [room, reservation ?? emptySnapshot("ReservationProjector", `reservation:${reservationId}`)].filter(Boolean),
-      readMode: room === undefined ? "read-through" : "snapshot-only",
-    };
-  }
-  if (commandId === "cancel-reservation" && reservation !== undefined) {
-    return { snapshots: [reservation], readMode: "snapshot-only" };
-  }
-  if (commandId === "release-room" && room !== undefined) {
-    return { snapshots: [room], readMode: "snapshot-only" };
-  }
-  return { snapshots: [], readMode: "read-through" };
+  return buildCommandSnapshots(commandId, input, knownSnapshot);
 }
 
 function executorCommandBody(commandId, input) {
   const executor = commandSnapshots(commandId, input);
   return { input, executor };
+}
+
+async function reconcileOccupiedSnapshots(commandId, input) {
+  for (const entry of tagsToReconcileForCommand(commandId, input)) {
+    const known = knownSnapshot(entry.projectorId, entry.tag);
+    if (!snapshotLooksOccupied(known)) continue;
+    const read = await readProjection(entry.kind, entry.id);
+    const decision = reconcileOccupiedAgainstRead(known, read.status, read.body);
+    if (decision.action === "forget") {
+      forgetSnapshot(entry.projectorId, entry.tag);
+    } else if (decision.action === "refresh" && decision.snapshot !== undefined) {
+      rememberSnapshot(decision.snapshot);
+    }
+  }
 }
 
 function setStatus(message, kind = "info") {
@@ -129,8 +115,8 @@ function committedHead(body, tag, fallback) {
 function rememberCommittedSnapshots(commandId, input, body) {
   if (body?.kind !== "committed") return;
   const suid = commitSortableUniqueId(body);
-  const roomId = inputValue(input, "roomId");
-  const reservationId = inputValue(input, "reservationId");
+  const roomId = snapshotInputValue(input, "roomId");
+  const reservationId = snapshotInputValue(input, "reservationId");
   if (commandId === "create-room" && roomId !== undefined && suid !== undefined) {
     const tag = `room:${roomId}`;
     rememberSnapshot({
@@ -138,7 +124,7 @@ function rememberCommittedSnapshots(commandId, input, body) {
       tag,
       head: committedHead(body, tag, suid),
       exists: true,
-      state: { status: "created", version: 1, roomId, name: inputValue(input, "name") ?? "" },
+      state: { status: "created", version: 1, roomId, name: snapshotInputValue(input, "name") ?? "" },
     });
   }
   if (commandId === "reserve-room" && roomId !== undefined && reservationId !== undefined && suid !== undefined) {
@@ -235,6 +221,11 @@ async function observeProjection(kind, id, commitSuid) {
 
 async function sendCommand(commandId, input, projection, options = {}) {
   setStatus(`Sending ${commandId}…`, "pending");
+  // Drop occupied client memory that disagrees with a fresh server read so a
+  // post-C-0 tab cannot send exists:true and invent reservation_exists.
+  if (commandId === "create-room" || commandId === "reserve-room") {
+    await reconcileOccupiedSnapshots(commandId, input);
+  }
   const response = await fetch(`/api/commands/${commandId}`, {
     method: "POST",
     headers: { "content-type": "application/json", Accept: "application/json" },
@@ -243,6 +234,9 @@ async function sendCommand(commandId, input, projection, options = {}) {
   const body = await responseBody(response);
   const [kind, message] = describeOutcome(response.status, body);
   if (kind !== "committed") {
+    if (kind === "conflict" || kind === "partial") {
+      await reconcileOccupiedSnapshots(commandId, input);
+    }
     setStatus(message, kind === "noop" ? "info" : "error");
     showProjection(body, kind);
     return;
@@ -412,14 +406,18 @@ async function queryRoom(roomId) {
       return;
     }
     roomQueryResult.textContent = JSON.stringify(view.result, null, 2);
-    if (typeof view.readHead === "string" && view.result && typeof view.result === "object" && view.result.status !== "empty") {
-      rememberSnapshot({
-        projectorId: "RoomProjector",
-        tag: `room:${roomId}`,
-        head: view.readHead,
-        exists: true,
-        state: view.result,
-      });
+    if (typeof view.readHead === "string" && view.result && typeof view.result === "object") {
+      if (view.result.status === "empty") {
+        forgetSnapshot("RoomProjector", `room:${roomId}`);
+      } else {
+        rememberSnapshot({
+          projectorId: "RoomProjector",
+          tag: `room:${roomId}`,
+          head: view.readHead,
+          exists: true,
+          state: view.result,
+        });
+      }
     }
     setQueryState(roomQueryState, "Room query ready", "ready");
   } catch (error) {

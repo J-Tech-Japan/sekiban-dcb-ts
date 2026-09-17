@@ -73,6 +73,10 @@ Hyperdrive caching is disabled by the deployment script.
 
 ### Cloudflare-only quickstart (recommended)
 
+`samples/meeting-room` is the **canonical Cloudflare getting-started sample**.
+Operator path (migrate both D1s → deploy → smoke → reset):
+[`samples/meeting-room/docs/getting-started-cloudflare.md`](samples/meeting-room/docs/getting-started-cloudflare.md).
+
 The named `cloudflare-only` sample composes the public runtime entrypoint with
 one D1 binding for the PipelineStore (`D1`) and a separate D1 binding for the
 materialized-view rows/checkpoints (`D1_MV`). Durable Objects and the outbox
@@ -81,10 +85,16 @@ Cosmos binding in this variant. Its G16 reservation/room query UI reads the
 `D1_MV` backing after the SafeWindow-aware catch-up worker runs.
 
 ```sh
+./samples/meeting-room/scripts/migrate-remote.sh
+npx wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --keep-vars
+```
+
+Library / gate checks (optional before deploy):
+
+```sh
 npm run test:g20
 npm run test:g20:gate
 npm run build:g20
-wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc
 ```
 
 The PG sample remains available as the alternative via

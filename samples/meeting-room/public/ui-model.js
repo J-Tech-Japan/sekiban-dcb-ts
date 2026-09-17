@@ -99,3 +99,120 @@ export function roomQueryView(status, body) {
   if (result === undefined) return queryError(502, { error: "Room query returned invalid resultJson", code: "transport" });
   return { kind: "ready", result, readHead: readHeadFrom(body) };
 }
+
+// --- SDT-G97 portable snapshot reconcile (pure; tested via Vitest) ---
+
+export function snapshotKey(projectorId, tag) {
+  return `${projectorId}:${tag}`;
+}
+
+export function emptySnapshot(projectorId, tag) {
+  return {
+    projectorId,
+    tag,
+    head: null,
+    exists: false,
+    state: projectorId === "RoomProjector"
+      ? { status: "empty", version: 0, roomId: null, name: "" }
+      : { status: "empty", version: 0, reservationId: null, roomId: null },
+  };
+}
+
+export function snapshotLooksOccupied(snapshot) {
+  if (snapshot == null || typeof snapshot !== "object") return false;
+  if (snapshot.exists !== true) return false;
+  const status = snapshot.state && typeof snapshot.state === "object" ? snapshot.state.status : undefined;
+  return status !== "empty";
+}
+
+/** True when an /api/read/{room|reservation} body is empty / initial. */
+export function projectionReadLooksEmpty(body) {
+  if (body == null || typeof body !== "object") return true;
+  const state = body.state;
+  if (state == null) return true;
+  if (typeof state !== "object") return true;
+  if (state.status === "empty") return true;
+  const version = state.version;
+  if (version === 0 && (state.roomId == null && state.reservationId == null)) return true;
+  return false;
+}
+
+/**
+ * Decide whether a remembered occupied snapshot should be forgotten given a
+ * fresh projection read. Server emptiness wins over client memory (C-0 / rotate).
+ */
+export function reconcileOccupiedAgainstRead(known, readStatus, readBody) {
+  if (!snapshotLooksOccupied(known)) {
+    return { action: "keep", snapshot: known };
+  }
+  if (typeof readStatus !== "number" || readStatus < 200 || readStatus >= 300) {
+    return { action: "forget", reason: "unconfirmed-read" };
+  }
+  if (projectionReadLooksEmpty(readBody)) {
+    return { action: "forget", reason: "server-empty" };
+  }
+  const head = typeof readBody?.lastSortedUniqueId === "string"
+    ? readBody.lastSortedUniqueId
+    : known.head;
+  return {
+    action: "refresh",
+    snapshot: {
+      projectorId: known.projectorId,
+      tag: known.tag,
+      head,
+      exists: true,
+      state: readBody.state,
+    },
+  };
+}
+
+export function snapshotInputValue(input, key) {
+  return typeof input?.[key] === "string" ? input[key] : undefined;
+}
+
+/**
+ * Build executor snapshots for a command. `known` is (projectorId, tag) => snapshot | undefined.
+ */
+export function commandSnapshots(commandId, input, known) {
+  const roomId = snapshotInputValue(input, "roomId");
+  const reservationId = snapshotInputValue(input, "reservationId");
+  const room = roomId === undefined ? undefined : known("RoomProjector", `room:${roomId}`);
+  const reservation = reservationId === undefined
+    ? undefined
+    : known("ReservationProjector", `reservation:${reservationId}`);
+  if (commandId === "create-room" && roomId !== undefined) {
+    return { snapshots: [room ?? emptySnapshot("RoomProjector", `room:${roomId}`)], readMode: "snapshot-only" };
+  }
+  if (commandId === "reserve-room" && roomId !== undefined && reservationId !== undefined) {
+    return {
+      snapshots: [room, reservation ?? emptySnapshot("ReservationProjector", `reservation:${reservationId}`)].filter(Boolean),
+      readMode: room === undefined ? "read-through" : "snapshot-only",
+    };
+  }
+  if (commandId === "cancel-reservation" && reservation !== undefined) {
+    return { snapshots: [reservation], readMode: "snapshot-only" };
+  }
+  if (commandId === "release-room" && room !== undefined) {
+    return { snapshots: [room], readMode: "snapshot-only" };
+  }
+  return { snapshots: [], readMode: "read-through" };
+}
+
+/** Tags that may have caused reservation_exists / room_exists after a stale client map. */
+export function tagsToReconcileForCommand(commandId, input) {
+  const roomId = snapshotInputValue(input, "roomId");
+  const reservationId = snapshotInputValue(input, "reservationId");
+  const tags = [];
+  if ((commandId === "create-room" || commandId === "reserve-room" || commandId === "release-room") && roomId !== undefined) {
+    tags.push({ kind: "room", id: roomId, projectorId: "RoomProjector", tag: `room:${roomId}` });
+  }
+  if ((commandId === "reserve-room" || commandId === "cancel-reservation") && reservationId !== undefined) {
+    tags.push({
+      kind: "reservation",
+      id: reservationId,
+      projectorId: "ReservationProjector",
+      tag: `reservation:${reservationId}`,
+    });
+  }
+  return tags;
+}
