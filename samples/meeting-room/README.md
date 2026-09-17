@@ -1,6 +1,11 @@
 # Meeting-room sample
 
-This Worker is a small consumer of the three public workspace packages. Its
+**Canonical Cloudflare getting-started sample** for sekiban-dcb-ts.
+
+Start here: [`docs/getting-started-cloudflare.md`](docs/getting-started-cloudflare.md)
+(migrate both D1s → deploy → smoke → C-0 notes).
+
+This Worker is a small consumer of the workspace packages. Its
 domain definitions live in `src/domain.ts`; it does not deep-import a package
 `src` directory or copy the runtime's private registries.
 
@@ -52,10 +57,10 @@ as the alternative.
 The Cloudflare-only deployment uses the non-secret `SDT_SERVICE_ID` Wrangler
 var as part of its deployment lifecycle. Change it when replacing the DO
 namespace; no client/internal header can select a namespace. Apply the two
-versioned migrations before the first deployment:
+versioned migrations before the first deployment (see
+[`docs/getting-started-cloudflare.md`](docs/getting-started-cloudflare.md)):
 
 ```sh
-wrangler d1 migrations apply sekiban-dcb-meeting-room-cloudflare-pipeline --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
-wrangler d1 migrations apply sekiban-dcb-meeting-room-cloudflare-mv --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
-wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc
+./samples/meeting-room/scripts/migrate-remote.sh
+npx wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --keep-vars
 ```

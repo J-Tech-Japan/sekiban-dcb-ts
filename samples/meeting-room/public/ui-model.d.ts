@@ -35,3 +35,39 @@ export type RoomQueryView =
   | { readonly kind: "error"; readonly status: number; readonly code: string; readonly error: string }
   | { readonly kind: "ready"; readonly result: unknown; readonly readHead?: string };
 export declare function roomQueryView(status: number, body: unknown): RoomQueryView;
+
+export type PortableSnapshot = {
+  readonly projectorId: string;
+  readonly tag: string;
+  readonly head: string | null;
+  readonly exists: boolean;
+  readonly state: Record<string, unknown>;
+};
+
+export declare function snapshotKey(projectorId: string, tag: string): string;
+export declare function emptySnapshot(projectorId: string, tag: string): PortableSnapshot;
+export declare function snapshotLooksOccupied(snapshot: unknown): boolean;
+export declare function projectionReadLooksEmpty(body: unknown): boolean;
+export declare function reconcileOccupiedAgainstRead(
+  known: PortableSnapshot | undefined,
+  readStatus: number,
+  readBody: unknown,
+):
+  | { readonly action: "keep"; readonly snapshot: PortableSnapshot | undefined }
+  | { readonly action: "forget"; readonly reason: string }
+  | { readonly action: "refresh"; readonly snapshot: PortableSnapshot };
+export declare function snapshotInputValue(input: unknown, key: string): string | undefined;
+export declare function commandSnapshots(
+  commandId: string,
+  input: unknown,
+  known: (projectorId: string, tag: string) => PortableSnapshot | undefined,
+): { readonly snapshots: PortableSnapshot[]; readonly readMode: "snapshot-only" | "read-through" };
+export declare function tagsToReconcileForCommand(
+  commandId: string,
+  input: unknown,
+): ReadonlyArray<{
+  readonly kind: "room" | "reservation";
+  readonly id: string;
+  readonly projectorId: string;
+  readonly tag: string;
+}>;
