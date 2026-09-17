@@ -23,6 +23,7 @@ describe("SDT-G97 portable snapshot reconcile", () => {
       },
     );
     expect(decision.action).toBe("forget");
+    if (decision.action !== "forget") throw new Error("expected forget");
     expect(decision.reason).toBe("server-empty");
   });
 
@@ -63,6 +64,7 @@ describe("SDT-G97 portable snapshot reconcile", () => {
     );
     const reservationSnap = after.snapshots.find((s) => s.tag === "reservation:abcd0001");
     expect(reservationSnap).toBeDefined();
+    if (reservationSnap === undefined) throw new Error("expected reservation snapshot");
     expect(reservationSnap.exists).toBe(false);
     expect(reservationSnap.state.status).toBe("empty");
   });
@@ -77,6 +79,7 @@ describe("SDT-G97 portable snapshot reconcile", () => {
       },
     );
     expect(decision.action).toBe("refresh");
+    if (decision.action !== "refresh") throw new Error("expected refresh");
     expect(decision.snapshot.head).toBe("suid-new");
     expect(decision.snapshot.state.version).toBe(2);
   });
