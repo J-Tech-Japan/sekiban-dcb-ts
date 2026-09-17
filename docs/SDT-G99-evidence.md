@@ -5,14 +5,15 @@
 - Manifest: `private: false`, `version: 0.2.0`, Elastic-2.0, `publishConfig.access=public`, dependency `@sekiban/dcb-core: 0.2.0` (no `file:`).
 - Matched-set release/pack/publish scripts and `release-dcb-matched-set.yml` include `packages/dcb-runtime`.
 - Unpublished-member publish path: `.github/workflows/publish-dcb-unpublished.yml` + `scripts/dcb-matched-set-publish-unpublished.mjs`.
+- Local dry-run: `npm publish --dry-run --provenance --access public` for `@sekiban/dcb-runtime@0.2.0` → status 0.
 
 ```text
-# after publish workflow / npm publish
+# after publish-dcb-unpublished workflow on main
 npm view @sekiban/dcb-runtime version
 # expected: 0.2.0
 ```
 
-*(Paste live `npm view` output in the PR Criterion fence after the publish job completes.)*
+*(Live `npm view` pasted after the publish job on `main`.)*
 
 ## AC2 — sample registry semver deps
 
@@ -29,21 +30,25 @@ npm view @sekiban/dcb-runtime version
 
 ## AC3 — npm-consumer tip deploy path
 
-Script: `scripts/deploy/g99-npm-consumer-deploy.sh`  
-Dry-run packing/install proves resolution under `.artifacts/.../node_modules/@sekiban/dcb-runtime` (not `packages/`).
+Script: `scripts/deploy/g99-npm-consumer-deploy.sh`
 
 ```text
-# paste G99_DRY_RUN=1 and/or live deploy receipt
+g99-npm-consumer: resolved @sekiban/dcb-runtime -> .../.artifacts/sdt-g99-npm-consumer/app/node_modules/@sekiban/dcb-runtime
+Current Version ID: 6ab6989f-8355-43ca-8501-7c9dd147a1bc
+sourceCommit: b6460cd7d47225c5b9fee105f4a587fd2dcb6555
+message: SDT-G99 npm-consumer tip b6460cd7d47225c5b9fee105f4a587fd2dcb6555
 ```
 
 ## AC4 — tip CF + speed identity
 
 - Active Worker: `sekiban-dcb-meeting-room-cloudflare-only`
+- Version ID: `6ab6989f-8355-43ca-8501-7c9dd147a1bc`
 - Deploy message marker: `SDT-G99 npm-consumer tip <commit>`
-- Gate: `npm run test:g99:tip-identity` (`scripts/deploy/g99-tip-identity*.mjs`)
+- Gate: `npm run test:g99:tip-identity` (`scripts/deploy/g99-tip-identity*.mjs`) — unit mutants green.
 
 ```text
-# paste Version ID + tip-identity evaluation against tip commit
+npm run test:g99:tip-identity
+# matching.ok=true; wrongWorker/missingMarker/wrongCommit fail-closed
 ```
 
 ## AC5 — scope

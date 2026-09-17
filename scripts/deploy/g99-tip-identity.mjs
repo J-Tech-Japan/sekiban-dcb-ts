@@ -14,10 +14,12 @@ export function evaluateTipIdentity({ deployments, expectedCommit, service }) {
     });
   }
   const active = Array.isArray(deployments)
-    ? deployments.find((entry) => {
-        const versions = entry?.versions;
-        return Array.isArray(versions) && versions.some((v) => Number(v?.percentage) === 100);
-      })
+    ? [...deployments]
+        .filter((entry) => {
+          const versions = entry?.versions;
+          return Array.isArray(versions) && versions.some((v) => Number(v?.percentage) === 100);
+        })
+        .sort((a, b) => String(b?.created_on ?? "").localeCompare(String(a?.created_on ?? "")))[0]
     : undefined;
   if (active === undefined) {
     return Object.freeze({

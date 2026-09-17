@@ -22,6 +22,12 @@ function baseline() {
   return {
     deployments: [
       {
+        created_on: "2026-09-07T11:02:20.225Z",
+        versions: [{ version_id: "00000000-0000-0000-0000-000000000000", percentage: 100 }],
+        annotations: { "workers/message": "old deploy" },
+      },
+      {
+        created_on: "2026-09-17T21:05:59.631Z",
         versions: [{ version_id: tipVersion, percentage: 100 }],
         annotations: { "workers/message": `SDT-G99 npm-consumer tip ${tipCommit}` },
       },
