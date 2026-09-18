@@ -2276,10 +2276,16 @@ export class TagDurableObject implements DurableObject {
       // SDT-G36: replay the stored write transaction's own pair. Never mint
       // a timestamp and never substitute the current head version.
       if (existingCandidates.every(({ exact }) => exact)) {
-        const receipt = sql.exec<SqlRow>(`
-          SELECT committed_at, written_version FROM tag_commit_receipt
-          WHERE attempt_id = ? AND epoch = ?
-        `, input.attemptId, input.epoch).toArray()[0];
+        // Exact duplicate is before the epoch check, so a replay may name a
+        // different epoch than the write that stored the receipt. Prefer the
+        // caller's epoch; otherwise the sole receipt for this attempt. A
+        // missing or NULL written_version still fails closed.
+        const receipts = sql.exec<SqlRow>(`
+          SELECT epoch, committed_at, written_version FROM tag_commit_receipt
+          WHERE attempt_id = ?
+        `, input.attemptId).toArray();
+        const sameEpoch = receipts.find((row) => sqlNumber(row.epoch, "tag_commit_receipt.epoch") === input.epoch);
+        const receipt = sameEpoch ?? (receipts.length === 1 ? receipts[0] : undefined);
         if (receipt === undefined) {
           await this.rearmScheduler(txn);
           return { ...rejected("duplicate_receipt_missing"), body: { ...rejected("duplicate_receipt_missing").body as JsonObject, version } };
@@ -3267,7 +3273,10 @@ export class TagDurableObject implements DurableObject {
 
         // Required order begins here: exact duplicate is before any epoch or token check.
         if (batchIsExactDuplicate(record, input)) {
-          const receipt = record.writeReceipts?.[`${input.attemptId}:${input.epoch}`];
+          const receipts = record.writeReceipts ?? {};
+          const sameEpoch = receipts[`${input.attemptId}:${input.epoch}`];
+          const forAttempt = Object.entries(receipts).filter(([key]) => key.startsWith(`${input.attemptId}:`));
+          const receipt = sameEpoch ?? (forAttempt.length === 1 ? forAttempt[0]?.[1] : undefined);
           if (receipt === undefined) {
             return {
               ...rejected("duplicate_receipt_unknown"),

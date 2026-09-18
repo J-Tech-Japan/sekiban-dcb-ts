@@ -30,7 +30,9 @@ SQL `tag_commit_receipt.written_version` is `INTEGER NOT NULL` on a fresh
 table. Existing stores gain the column with an idempotent
 `ALTER TABLE ... ADD COLUMN` (nullable, so old rows stay `NULL`). Exact
 duplicate replay returns the stored `committed_at` and `written_version`.
-A missing receipt or a `NULL` `written_version` fails closed
+The lookup prefers the caller's epoch and otherwise uses the sole receipt
+for that attempt, because exact-duplicate replay is checked before the
+epoch gate. A missing receipt or a `NULL` `written_version` fails closed
 (`duplicate_receipt_missing` / `duplicate_receipt_unknown`). The current head
 is not substituted, and `Date.now` is not invented. The non-SQL append seam
 stores the same pair on `TagRecord.writeReceipts`, keyed

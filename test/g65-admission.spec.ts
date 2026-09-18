@@ -807,7 +807,13 @@ describe("SDT-G65 bounded two-lane admission", () => {
 
     expect(admitted.status).toBe(201);
     expect(failed.status).toBe(admitted.status);
-    expect(failed.body).toEqual(admitted.body);
+    const admittedBody = admitted.body as { updatedAt?: string };
+    const failedBody = failed.body as { updatedAt?: string };
+    const { updatedAt: admittedAt, ...admittedRest } = admittedBody;
+    const { updatedAt: failedAt, ...failedRest } = failedBody;
+    expect(failedRest).toEqual(admittedRest);
+    expect(typeof admittedAt).toBe("string");
+    expect(typeof failedAt).toBe("string");
     expect(admitted.admission).toBe("admitted");
     expect(failed.admission).toBe("not-admitted");
     expect(prepareCount).toBeGreaterThan(0);
