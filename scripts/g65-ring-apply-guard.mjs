@@ -47,10 +47,10 @@ function wiring(source) {
   const apply = between(source, "async function applyG65DirectRing(", "function waitForTestFaultBarrier(");
   if (!source.includes("G65_DIRECT_RING_BUDGET_MS")) missing.push("bounded direct ring budget");
   if (!delivery.includes("return ringMeetingRoomDoorbell(env, ctx, message, config)")) missing.push("receiver enters the ring path");
-  if (!ring.includes("recordG65DirectRing(env.D1!, message, ringStartedAt)")) missing.push("durable receiver ring");
+  if (!ring.includes("recordG65DirectRing(pipelineD1(env)!, message, ringStartedAt)")) missing.push("durable receiver ring");
   if (!ring.includes("ctx.waitUntil(apply.catch")) missing.push("receiver apply is waitUntil-backed");
   if (ring.includes("await applyG65DirectRing(")) missing.push("ring awaits the full apply");
-  if (!apply.includes("readG65DirectRing(env.D1!, fallbackMessage)")) missing.push("apply reads retained ring bytes");
+  if (!apply.includes("readG65DirectRing(pipelineD1(env)!, fallbackMessage)")) missing.push("apply reads retained ring bytes");
   if (!apply.includes("markG65DirectApplyStarted") || !apply.includes("markG65DirectApplyFinished")) missing.push("apply ledger boundaries");
   if (!apply.includes("classifyG65DirectApplyOutcome(result, config)")) missing.push("apply classifies selected unsafe view outcomes");
   if (apply.includes('const outcome = result.fastDisposition === "failed"')) missing.push("apply ledger trusts aggregate full-core disposition");

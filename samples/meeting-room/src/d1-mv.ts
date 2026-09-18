@@ -1,3 +1,4 @@
+import { materializedViewD1, pipelineD1 } from "./generated/provider-composition";
 import { defineRowMaterializer } from "@sekiban/dcb-core";
 import {
   envServiceIdentity,
@@ -215,10 +216,10 @@ export async function recordMeetingRoomSafeLanePass(
   env: MeetingRoomD1Env,
   input: MeetingRoomSafeLanePassWrite,
 ): Promise<void> {
-  if (env.D1 === undefined) return;
+  if (pipelineD1(env) === undefined) return;
   const coverage = input.coverage;
   if (input.status === "scheduled") {
-    await env.D1.prepare(
+    await pipelineD1(env).prepare(
       `INSERT INTO serialized_dcb_safe_lane_passes
          (service_id, pass_id, trigger, trigger_kind, status, scheduled_at,
           delivery_event_id, delivery_suid, delivery_attempt_id, delivery_partition_tag,
@@ -241,7 +242,7 @@ export async function recordMeetingRoomSafeLanePass(
     return;
   }
   if (input.status === "running") {
-    await env.D1.prepare(
+    await pipelineD1(env).prepare(
       `UPDATE serialized_dcb_safe_lane_passes
           SET status = 'running', started_at = ?
         WHERE service_id = ? AND pass_id = ?`,
@@ -249,14 +250,14 @@ export async function recordMeetingRoomSafeLanePass(
     return;
   }
   if (input.status === "coalesced") {
-    await env.D1.prepare(
+    await pipelineD1(env).prepare(
       `UPDATE serialized_dcb_safe_lane_passes
           SET status = 'coalesced'
         WHERE service_id = ? AND pass_id = ?`,
     ).bind(input.serviceId, input.passId).run();
     return;
   }
-  await env.D1.prepare(
+  await pipelineD1(env).prepare(
     `UPDATE serialized_dcb_safe_lane_passes
         SET status = ?, completed_at = ?, coverage_kind = ?,
             coverage_reason = ?, coverage_partition_tag = ?,
@@ -293,8 +294,8 @@ export async function readMeetingRoomSafeHeads(
   env: MeetingRoomD1Env,
   serviceId: string,
 ): Promise<string | null> {
-  if (env.D1_MV === undefined) return null;
-  const rows = await env.D1_MV.prepare(
+  if (materializedViewD1(env) === undefined) return null;
+  const rows = await materializedViewD1(env).prepare(
     `SELECT instance.view_id AS projection_id, instance.last_suid
        FROM mv_active_generations active
        JOIN mv_instances instance
@@ -483,13 +484,13 @@ async function openMaterializedViews(env: MeetingRoomD1Env): Promise<{
   readonly views: D1MaterializedViewStore;
   readonly runtime: MaterializedViewCatchUpRuntime;
 }> {
-  if (env.D1 === undefined || env.D1_MV === undefined) {
+  if (pipelineD1(env) === undefined || materializedViewD1(env) === undefined) {
     throw new Error("Cloudflare-only composition requires D1 and D1_MV bindings");
   }
   const provider = createD1StoreProvider();
-  const source = provider.create({ D1: env.D1, D1_MV: env.D1_MV });
+  const source = provider.create({ D1: pipelineD1(env), D1_MV: materializedViewD1(env) });
   await source.initialize();
-  const views = new D1MaterializedViewStore(env.D1_MV);
+  const views = new D1MaterializedViewStore(materializedViewD1(env));
   await views.initialize();
   return { views, runtime: new MaterializedViewCatchUpRuntime(source, views) };
 }
@@ -517,10 +518,10 @@ export async function recordMeetingRoomSafeLaneCoverage(
   serviceId: string,
   coverage: MeetingRoomSafeLaneCoverage,
 ): Promise<void> {
-  if (env.D1 === undefined) throw new Error("Cloudflare-only composition requires the D1 binding");
+  if (pipelineD1(env) === undefined) throw new Error("Cloudflare-only composition requires the D1 binding");
   const tickId = meetingRoomSafeLaneTickId(coverage.observedAt);
   const frontierSuid = coverage.frontierSuid ?? "";
-  const existing = await env.D1.prepare(
+  const existing = await pipelineD1(env).prepare(
     `SELECT service_id, tick_id, coverage_kind, coverage_reason,
             coverage_partition_tag, settled_frontier_suid, observed_at
        FROM serialized_dcb_safe_lane_history
@@ -551,14 +552,14 @@ export async function recordMeetingRoomSafeLaneCoverage(
     // DO NOTHING is intentional: scheduled history is append-only.  The
     // read-back closes the concurrent same-tick race without allowing a
     // second caller to rewrite the first caller's coverage decision.
-    await env.D1.prepare(
+    await pipelineD1(env).prepare(
       `INSERT INTO serialized_dcb_safe_lane_history
          (service_id, tick_id, coverage_kind, coverage_reason,
           coverage_partition_tag, settled_frontier_suid, observed_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (service_id, tick_id) DO NOTHING`,
     ).bind(...historyValues).run();
-    const persisted = await env.D1.prepare(
+    const persisted = await pipelineD1(env).prepare(
       `SELECT service_id, tick_id, coverage_kind, coverage_reason,
               coverage_partition_tag, settled_frontier_suid, observed_at
          FROM serialized_dcb_safe_lane_history
@@ -568,7 +569,7 @@ export async function recordMeetingRoomSafeLaneCoverage(
       throw new Error(`safe_lane_history_tick_conflict:${tickId}`);
     }
   }
-  await env.D1.prepare(
+  await pipelineD1(env).prepare(
     `INSERT INTO serialized_dcb_safe_lane_health
        (service_id, coverage_kind, coverage_reason, coverage_partition_tag, settled_frontier_suid, observed_at)
      VALUES (?, ?, ?, ?, ?, ?)
@@ -609,9 +610,9 @@ export async function recordMeetingRoomLivePollAttempt(
   projectorIds: readonly string[],
   attemptedAt: number,
 ): Promise<void> {
-  if (env.D1 === undefined) throw new Error("Cloudflare-only composition requires the D1 binding");
+  if (pipelineD1(env) === undefined) throw new Error("Cloudflare-only composition requires the D1 binding");
   if (projectorIds.length === 0) return;
-  await env.D1.batch(projectorIds.map((projectorId) => env.D1!.prepare(
+  await pipelineD1(env).batch(projectorIds.map((projectorId) => pipelineD1(env)!.prepare(
     `INSERT INTO serialized_dcb_live_poll_health
        (service_id, projector_id, attempted_at, outcome, reason, advanced_source_events)
      VALUES (?, ?, ?, 'invoked-but-no-work', 'poll_in_progress', 0)
@@ -628,8 +629,8 @@ export async function recordMeetingRoomLivePollOutcome(
   env: MeetingRoomD1Env,
   observation: LiveProjectionPollObservation,
 ): Promise<void> {
-  if (env.D1 === undefined) throw new Error("Cloudflare-only composition requires the D1 binding");
-  await env.D1.prepare(
+  if (pipelineD1(env) === undefined) throw new Error("Cloudflare-only composition requires the D1 binding");
+  await pipelineD1(env).prepare(
     `INSERT INTO serialized_dcb_live_poll_health
        (service_id, projector_id, attempted_at, outcome, reason, advanced_source_events)
      VALUES (?, ?, ?, ?, ?, ?)
@@ -658,7 +659,7 @@ export async function readMeetingRoomHealth(
   serviceId = requiredServiceId(env),
   nowMs = Date.now(),
 ): Promise<MeetingRoomReadHealth> {
-  if (env.D1 === undefined || env.D1_MV === undefined) {
+  if (pipelineD1(env) === undefined || materializedViewD1(env) === undefined) {
     throw new Error("Cloudflare-only composition requires D1 and D1_MV bindings");
   }
   const { views } = await openMaterializedViews(env);
@@ -675,7 +676,7 @@ export async function readMeetingRoomHealth(
         unsafeReceipts: 0,
       };
     }
-    const counts = await env.D1_MV!.prepare(
+    const counts = await materializedViewD1(env)!.prepare(
       `SELECT
          (SELECT COUNT(*) FROM mv_unsafe_rows
            WHERE service_id = ? AND view_id = ? AND generation = ?) AS unsafe_rows,
@@ -693,17 +694,17 @@ export async function readMeetingRoomHealth(
     };
   }));
 
-  const source = new D1EventStore(env.D1);
+  const source = new D1EventStore(pipelineD1(env));
   await source.initialize();
   const lag = await source.lagBoundDiagnostics(serviceId, nowMs);
   const [coverageRow, coverageHistoryRows, safeLanePassRows, globalHeadRow, projectionRows, livePollRows] = await Promise.all([
-    env.D1.prepare(
+    pipelineD1(env).prepare(
       `SELECT coverage_kind, coverage_reason, coverage_partition_tag,
               settled_frontier_suid, observed_at
          FROM serialized_dcb_safe_lane_health
         WHERE service_id = ?`,
     ).bind(serviceId).first<Record<string, unknown>>(),
-    env.D1.prepare(
+    pipelineD1(env).prepare(
       `SELECT tick_id, coverage_kind, coverage_reason, coverage_partition_tag,
               settled_frontier_suid, observed_at
          FROM serialized_dcb_safe_lane_history
@@ -712,7 +713,7 @@ export async function readMeetingRoomHealth(
     ).bind(serviceId).all<Record<string, unknown>>(),
     (async () => {
       try {
-        return await env.D1!.prepare(
+        return await pipelineD1(env)!.prepare(
                   `SELECT pass_id, trigger, trigger_kind, status, scheduled_at, started_at,
                   completed_at, coverage_kind, coverage_reason,
                   coverage_partition_tag, settled_frontier_suid,
@@ -732,12 +733,12 @@ export async function readMeetingRoomHealth(
         return { results: [] as Record<string, unknown>[] };
       }
     })(),
-    env.D1.prepare(
+    pipelineD1(env).prepare(
       `SELECT COALESCE(MAX("SortableUniqueId" COLLATE BINARY), '') AS global_head
          FROM dcb_events
         WHERE "ServiceId" = ?`,
     ).bind(serviceId).first<Record<string, unknown>>(),
-    env.D1.prepare(
+    pipelineD1(env).prepare(
       `SELECT projection_id, last_suid, updated_at
          FROM serialized_dcb_projection_checkpoints
         WHERE service_id = ?
@@ -745,7 +746,7 @@ export async function readMeetingRoomHealth(
     ).bind(serviceId).all<Record<string, unknown>>(),
     (async () => {
       try {
-        return await env.D1!.prepare(
+        return await pipelineD1(env)!.prepare(
           `SELECT projector_id, attempted_at, outcome, reason, advanced_source_events
              FROM serialized_dcb_live_poll_health
             WHERE service_id = ?

@@ -333,7 +333,7 @@ function postCleanupCallerSetFromImplementation(value) {
   requireContains(value.index, 'url.pathname = match[2] ?? "/state"', "index direct state caller");
   actual.add("packages/dcb-runtime/src/index.ts:/journals/:attemptId/state");
   requireContains(value.probe, "runG42JournalProbeTrial", "G42 probe caller");
-  requireContains(value.g42Worker, "runG42JournalProbeTrial(env.JOURNAL", "G42 primary route");
+  requireContains(value.g42Worker, "runG42JournalProbeTrial(journalBinding(env)", "G42 primary route");
   actual.add("samples/meeting-room/src/worker.cloudflare-only.ts:handleG42JournalProbe");
   return actual;
 }
