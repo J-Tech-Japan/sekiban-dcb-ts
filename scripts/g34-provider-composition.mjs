@@ -9,7 +9,6 @@ export const manifestPath = "contracts/provider-composition.json";
 export const mappingPath = "contracts/provider-composition.local-mapping.json";
 export const generatedPath = "samples/meeting-room/src/generated/provider-composition.ts";
 export const DOMAIN = "sekiban-dcb-ts/provider-composition-manifest/v1";
-export const REF_DOMAIN = "sekiban-dcb-ts/resource-ref/v1";
 export const CANONICALIZATION_VERSION = "rfc8785";
 export const PROFILE_CARDINALITIES = {
   primary: {
@@ -107,17 +106,6 @@ export function jcs(value) {
   if (typeof value !== "object") throw new Error("JCS value is not a JSON type");
   const keys = Object.keys(value).sort();
   return `{${keys.map((key) => `${JSON.stringify(key)}:${jcs(value[key])}`).join(",")}}`;
-}
-
-export function opaqueRef(providerKind, identity) {
-  const digest = createHash("sha256")
-    .update(REF_DOMAIN, "utf8")
-    .update("\0")
-    .update(String(providerKind), "utf8")
-    .update("\0")
-    .update(String(identity), "utf8")
-    .digest("hex");
-  return `rref-${digest.slice(0, 20)}`;
 }
 
 function mappedIdentity(id, entry) {
@@ -300,7 +288,8 @@ function requireMappingEntries(mapping) {
   }
   for (const id of MAPPED_RESOURCE_IDS) {
     const identity = mappedIdentity(id, mapping.resources[id]);
-    if (typeof identity !== "string" || identity.length === 0) {
+    const ref = mapping.resources[id]?.resourceRef;
+    if (typeof identity !== "string" || identity.length === 0 || typeof ref !== "string" || ref.length < 16) {
       fail("SCOPE_PROOF_UNAVAILABLE", `${mappingPath}#${id}`, "scope-proof-unavailable");
     }
   }
@@ -320,6 +309,10 @@ export function validateManifest(manifest, mapping) {
       fail("CARDINALITY", `${id}.cardinalities`, "cardinality");
     }
   }
+  const cardinalityOwners = Object.keys(manifest.cardinalities ?? {}).sort();
+  if (JSON.stringify(cardinalityOwners) !== JSON.stringify(Object.keys(PROFILE_CARDINALITIES).sort())) {
+    fail("CARDINALITY", "cardinalities", "cardinality");
+  }
   const pipeline = manifest.resources.filter((resource) => resource.role === "pipeline-D1");
   if (pipeline.length !== 1) fail("SECOND_SHARD", "resources.pipeline-D1", "second-shard");
   const resourceIds = [...manifest.resources.map((resource) => resource.id)].sort();
@@ -332,8 +325,8 @@ export function validateManifest(manifest, mapping) {
   }
   for (const id of MAPPED_RESOURCE_IDS) {
     const resource = resourceById(manifest, id);
-    const identity = mappedIdentity(id, mapping.resources[id]);
-    if (resource === undefined || resource.resourceRef !== opaqueRef(resource.providerKind, identity)) {
+    const mappedRef = mapping.resources[id]?.resourceRef;
+    if (resource === undefined || resource.resourceRef !== mappedRef) {
       fail("RESOURCE_MISMATCH", id, "resource-identity-mismatch");
     }
   }
@@ -788,19 +781,27 @@ export function runSelfTest() {
     },
     edges: [...manifest.edges, { id: "primary-producer-2", kind: "producer-binding", from: "primary", to: "work-queue" }],
   }, mapping));
-  const nextId = "00000000-0000-4000-8000-000000000099";
   const shifted = structuredClone(manifest);
   shifted.resources = shifted.resources.map((resource) => (
-    resource.id === "pipeline-d1" ? { ...resource, resourceRef: opaqueRef(resource.providerKind, nextId) } : resource
+    resource.id === "pipeline-d1" ? { ...resource, resourceRef: "rref-00000000000000000000" } : resource
   ));
-  if (manifestDigest(shifted).digest === envelope.digest) throw new Error("resource identity did not move the digest");
-  if (JSON.stringify(publishedPayload(shifted)).includes(nextId)) throw new Error("published payload leaked a raw identity");
+  if (manifestDigest(shifted).digest === envelope.digest) throw new Error("resource ref change did not move the digest");
   expect("identity-stale", () => validateManifest(manifest, {
-    resources: { ...mapping.resources, "pipeline-d1": { database_id: nextId } },
+    resources: {
+      ...mapping.resources,
+      "pipeline-d1": { ...mapping.resources["pipeline-d1"], resourceRef: "rref-00000000000000000000" },
+    },
   }));
+  expect("extra-cardinality-owner", () => validateManifest({
+    ...manifest,
+    cardinalities: { ...manifest.cardinalities, extra: { "producer-binding": 0 } },
+  }, mapping));
   try {
-    validateManifest(manifest, {
-      resources: { ...mapping.resources, "pipeline-d1": { database_id: "CANARY-SECRET-VALUE" } },
+    validateConfig(manifest, manifest.components[0], primary, {
+      resources: {
+        ...mapping.resources,
+        "pipeline-d1": { ...mapping.resources["pipeline-d1"], database_id: "CANARY-SECRET-VALUE" },
+      },
     });
     throw new Error("canary unexpectedly passed");
   } catch (error) {

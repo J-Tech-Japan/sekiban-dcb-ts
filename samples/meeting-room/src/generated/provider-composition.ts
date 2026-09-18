@@ -1,5 +1,5 @@
 // Generated from contracts/provider-composition.json by scripts/g34-provider-composition.mjs. Do not edit.
-export const providerCompositionDigest = "b1779add2dddf3a5e30a3c4e8f1368414afa2f061db158d1a93e06d9e1d174ab";
+export const providerCompositionDigest = "25d9d41ab85fb5eec1cb213366421309e839133131dca9deb5cf207fea1b46db";
 export const providerCompositionDescriptor = {"profileId":"g32-cutover","components":[{"id":"primary","entrypoints":[{"operation":"fetch","requiredBindings":["ALLOCATOR","BOOTSTRAP","D1","D1_MV","DOWNSTREAM_DOORBELL","DOWNSTREAM_QUEUE","JOURNAL","TAG"],"forbiddenBindings":[]}]},{"id":"receiver","entrypoints":[{"operation":"fetch","requiredBindings":["ALLOCATOR","BOOTSTRAP","D1","D1_MV","JOURNAL","TAG"],"forbiddenBindings":["DOWNSTREAM_QUEUE"]}]}],"bindings":["ALLOCATOR","BOOTSTRAP","D1_MV","D1","DOWNSTREAM_DOORBELL","DOWNSTREAM_QUEUE","JOURNAL","TAG"]} as const;
 
 export function allocatorBinding<E extends { ALLOCATOR?: unknown }>(env: E): NonNullable<E["ALLOCATOR"]> {
