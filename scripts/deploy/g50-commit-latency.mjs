@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { summary, telemetryForLedger } from "./g37-sample.mjs";
 import { DEFAULT_COHORT_INGESTION_TIMEOUT_MS } from "./g30-trace-export.mjs";
+import { assertLiveTipIdentity, G99_TIP_SERVICE } from "./g99-tip-identity.mjs";
 
 export const TASK = "SDT-G50";
 export const DEFAULT_SAMPLE_COUNT = 50;
@@ -316,9 +317,18 @@ export async function captureG50AppCommitLatency({
 function main() {
   const baseUrl = required("--base-url", argument("--base-url", process.env.G50_BASE_URL));
   const accountId = required("--account-id", argument("--account-id", process.env.CLOUDFLARE_ACCOUNT_ID));
-  const serviceId = required("--service-id", argument("--service-id", process.env.SDT_SERVICE_ID));
+  const serviceId = required("--service-id", argument("--service-id", process.env.SDT_SERVICE_ID ?? G99_TIP_SERVICE));
   const versionId = required("--version-id", argument("--version-id", process.env.G50_VERSION_ID));
   const deployedSourceCommit = sourceCommit(required("--source-commit", argument("--source-commit", process.env.G50_SOURCE_COMMIT)));
+  const wrangler = argument("--wrangler", "./node_modules/.bin/wrangler");
+  // Fail closed unless the active 100% deployment is the G99 npm-consumer tip
+  // under test (same worker; message marker + commit + version id).
+  assertLiveTipIdentity({
+    wrangler,
+    service: serviceId,
+    expectedCommit: deployedSourceCommit,
+    expectedVersionId: versionId,
+  });
   const tokenFile = required("--observability-token-file", argument("--observability-token-file", process.env.G50_OBSERVABILITY_TOKEN_FILE));
   if (!existsSync(tokenFile)) fail("observability token file does not exist");
   const observabilityToken = readFileSync(tokenFile, "utf8").trim();

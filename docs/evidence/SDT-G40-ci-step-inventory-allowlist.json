@@ -1,7 +1,7 @@
 {
   "schema": "sdt-g40-ci-step-inventory-allowlist/v1",
   "baselineRef": "origin/main",
-  "reviewedRule": "The G84 manifest is the reviewed authority: historical workflow-run leaves are replaced by manifest dispatch, manifest commands are additions, their recursively expanded package leaves are derived additions, and the retained PR workflow steps remain explicit. Every section is checked by exact normalized command text plus entry identity SHA-256; no wildcard command acceptance is used. SHA or URL rewrites are never allowlisted; the restored historical baseline command is the authority for the retained-history pin. SDT-G96 adds the reviewed cheap-lane command `npm run test:g93` (id `g93`) and its package-script closure leaf `node scripts/sdt-g93-workflow-package-guard.mjs`; that expands addedManifestCommands 135→136 and addedManifestClosure 61→62. SDT-G99 updates package.json script leaves for `test:g64:build` (adds dcb-runtime workspace build), `test:g99:tip-identity`, and `deploy:g99:npm-consumer*`; closure count remains 62 with refreshed digests.",
+  "reviewedRule": "The G84 manifest is the reviewed authority: historical workflow-run leaves are replaced by manifest dispatch, manifest commands are additions, their recursively expanded package leaves are derived additions, and the retained PR workflow steps remain explicit. Every section is checked by exact normalized command text plus entry identity SHA-256; no wildcard command acceptance is used. SHA or URL rewrites are never allowlisted; the restored historical baseline command is the authority for the retained-history pin. SDT-G96 adds the reviewed cheap-lane command `npm run test:g93` (id `g93`) and its package-script closure leaf `node scripts/sdt-g93-workflow-package-guard.mjs`; that expands addedManifestCommands 135→136 and addedManifestClosure 61→62. SDT-G99 updates package.json script leaves for `test:g64:build` (adds dcb-runtime workspace build), `test:g99:tip-identity`, `test:g99:tip-identity:live`, and `deploy:g99:npm-consumer*`; foundation-g50-guards now also runs tip-identity and deployed-identity guards; closure count remains 62 with refreshed digests.",
   "missingHistoricalWorkflow": {
     "count": 86,
     "entrySetSha256": "5075be9c3c2ce3a650056f6108361a0bfa0dde2a5851fe936c98c305539ded76",
@@ -10,7 +10,7 @@
   },
   "addedManifestCommands": {
     "count": 136,
-    "entrySetSha256": "df95c0f3efe89b21adfccb79cd2000dfd220bee0a415fa2e9889c1752c7b4c67",
+    "entrySetSha256": "d8ff0cfd5ca6b961c523ab46193579ea53b25defbf87a169e0f0bba22a803652",
     "idSetSha256": "fb9dceb8897e9664ae25225176f647e7bdb48002ae815c5b1b20b402112b3e1d",
     "reason": "Each manifest lane command is an explicitly reviewed G84 authority entry; changing its lane, command, environment or tier changes this exact set."
   },
