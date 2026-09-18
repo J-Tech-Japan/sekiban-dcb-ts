@@ -146,7 +146,7 @@ describe("SDT-G21 bootstrap core", () => {
     expect((await allocatorPost(serviceId, "/seed-after", { importId: "allocator", leaseEpoch: 1, highWatermark: suid(2) }, allocatorScopeIdentity)).status).toBe(201);
   });
 
-  it("keeps normal allocation legal and blocks the real stalled CommitWorker allocation before watermark mutation", async () => {
+  it("keeps normal allocation legal and holds the write permit before allocation", async () => {
     const normalAllocator = `normal-allocation-${crypto.randomUUID()}`;
     expect((await allocatorPost(normalAllocator, "/allocate", { attemptId: "normal", candidates: [{ candidateIndex: 0, eventId: g32EventId("normal-event") }] })).status).toBe(201);
     const serviceId = `commit-allocator-gate-${crypto.randomUUID()}`; const allocatorScopeIdentity = `commit-allocator-gate-${crypto.randomUUID()}`;
@@ -155,11 +155,16 @@ describe("SDT-G21 bootstrap core", () => {
     const worker = new CommitWorker(workerEnv(), serviceId, { allocatorScopeIdentity, beforeBootstrapAllocation: async () => { entered(); await resumeAllocation; } });
     const pending = worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: 1, eventCandidates: [{ payload: encodedPayload({ fixture: "allocator-race" }), eventPayloadName: "AllocatorRace", tags: ["orders"] }], consistencyTags: [] }) }));
     await enteredAllocation;
-    expect((await post(serviceId, "/plan", { importId: "commit-allocator", dump: dumpFor(serviceId), targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
+    // The permit is already held before allocation, so plan cannot start.
+    // The in-flight commit is still allowed to allocate and write.
+    const planned = await post(serviceId, "/plan", { importId: "commit-allocator", dump: dumpFor(serviceId), targetEvidence: { bindingExists: false, eventsExist: false } });
+    expect(planned.status).toBe(409);
+    expect(await planned.json()).toMatchObject({ code: "bootstrap_write_permit_active" });
     resume(); const result = await pending;
-    expect(result.status).toBe(500);
-    expect(await (await allocatorPost(serviceId, "/state", undefined, allocatorScopeIdentity)).json()).toMatchObject({ allocatedWatermark: null, bootstrapSeed: null });
-    expect((await allocatorPost(serviceId, "/seed-after", { importId: "commit-allocator", leaseEpoch: 1, highWatermark: suid(2) }, allocatorScopeIdentity)).status).toBe(201);
+    expect(result.status).toBe(200);
+    const tag = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/state`, { headers: { [TEST_SERVICE_ID_HEADER]: serviceId } });
+    expect(tag.status).toBe(200);
+    expect((await tag.json<{ events: unknown[] }>()).events).toHaveLength(1);
   });
 
   it("resumes all six durable fault boundaries without duplicate tag rows or early READY", async () => {
@@ -209,9 +214,19 @@ describe("SDT-G21 bootstrap core", () => {
     const worker = new CommitWorker(workerEnv(), serviceId, { beforeBootstrapFinalization: async () => { entered(); await resumeFinalization; } });
     const pending = worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: 1, eventCandidates: [{ payload: encodedPayload({ fixture: "final-write-race" }), eventPayloadName: "Race", tags: ["orders"] }], consistencyTags: [] }) }));
     await enteredFinalization;
-    expect((await post(serviceId, "/plan", { importId: "advanced", dump, targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
+    // SDT-G36: the commit holds the bootstrap write permit across
+    // `beforeBootstrapFinalization`, so `plan` is rejected as a barrier while
+    // the in-flight commit may still complete its own write.
+    const planned = await post(serviceId, "/plan", { importId: "advanced", dump, targetEvidence: { bindingExists: false, eventsExist: false } });
+    expect(planned.status).toBe(409);
+    expect(await planned.json()).toMatchObject({ code: "bootstrap_write_permit_active" });
     resume(); const result = await pending;
-    expect(result.status).toBe(409); expect((await result.json<{ code: string }>()).code).toBe("bootstrap_command_rejected");
-    expect((await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/state`, { headers: { [TEST_SERVICE_ID_HEADER]: serviceId } })).status).toBe(404);
+    expect(result.status).toBe(200);
+    const committed = await result.json<{ tagWriteResults: Array<{ tag: string; version: number; writtenAt: string }> }>();
+    expect(committed.tagWriteResults).toHaveLength(1);
+    const tagState = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/state`, { headers: { [TEST_SERVICE_ID_HEADER]: serviceId } });
+    expect(tagState.status).toBe(200);
+    const tagBody = await tagState.json<{ events: Array<{ eventId: string }> }>();
+    expect(tagBody.events).toHaveLength(1);
   });
 });

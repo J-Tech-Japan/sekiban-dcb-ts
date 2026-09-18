@@ -15,7 +15,7 @@ import type { DeliveryClass } from "../downstream/Doorbell";
 import { canonicalEventType } from "../eventIdentity";
 import { createUuidV7, serializedEventMetadata, writeTimestampUtc } from "../eventRecord";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
-import { PARTIAL_WRITE_FENCE_REASON, type TagHeadFacts } from "../tag/types";
+import { PARTIAL_WRITE_FENCE_REASON } from "../tag/types";
 import {
   beginWorkerInvocationObservation,
   CommitTrace,
@@ -63,6 +63,17 @@ export interface CommitWorkerHooks {
   /** Test-only barrier after entry admission is released and before /allocate. */
   beforeBootstrapAllocation?(): Promise<void> | void;
   beforeBootstrapFinalization?(): Promise<void> | void;
+  /**
+   * SDT-G36 test-only hook invoked after successful `finalize` and before
+   * `appendAllTags`. The bootstrap write permit is held across this hook.
+   */
+  beforeAuthoritativeAppend?(): Promise<void> | void;
+  /**
+   * SDT-G36 test-only hook invoked after all appends resolved with no
+   * pending tags and before result assembly. Lets a test interleave a
+   * concurrent append to prove `tagWriteResults` are not re-read from head.
+   */
+  afterAppendBeforeResponse?(): Promise<void> | void;
   /** Test-only allocator identity; production uses the canonical allocator identity. */
   allocatorScopeIdentity?: string;
   /** Runtime composition value; never sourced from a caller-controlled V1 body. */
@@ -112,6 +123,35 @@ interface AppendAttempt {
   readonly registrationUnavailableTags: readonly string[];
   /** Internal Tag response header; the V1 JSON body remains unchanged. */
   readonly globalAdmission: GlobalAdmissionStatus;
+  /**
+   * SDT-G36: the write transaction's own `{ version, updatedAt }` captured
+   * from each successful `/append` body. `successResponse` must use these and
+   * never re-read head facts on the success path.
+   */
+  readonly tagWriteFacts: ReadonlyMap<string, { readonly version: number; readonly updatedAt: string }>;
+}
+
+/** SDT-G36 stable digest of the attempt tuple (tags + event ids + payloads). */
+function commitPermitDigest(
+  allTags: readonly string[],
+  candidates: ReadonlyArray<{ readonly eventId: string; readonly payload: string; readonly tags: readonly string[] }>,
+): string {
+  const normalized = JSON.stringify({
+    tags: [...allTags].sort(),
+    events: candidates
+      .map((candidate) => ({
+        eventId: candidate.eventId,
+        payload: candidate.payload,
+        tags: [...candidate.tags].sort(),
+      }))
+      .sort((left, right) => (left.eventId < right.eventId ? -1 : left.eventId > right.eventId ? 1 : 0)),
+  });
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash ^= normalized.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
 }
 
 type GlobalAdmissionStatus = "admitted" | "not-admitted" | "unknown";
@@ -592,30 +632,53 @@ export class CommitWorker {
     // S05 trace identities are compatibility observations only; they cannot
     // resolve JOURNAL and are removed from the actual dependency path.
     await this.retiredJournalMilestone("S04", traceState?.scope);
+    // SDT-G36: durable bootstrap write permit. Acquired after admit/release
+    // and before allocate (before `beforeBootstrapAllocation`), held until
+    // every target tag of this attempt is durably resolved. It is only a
+    // bootstrap barrier, never commit-outcome authority. No JOURNAL, no
+    // alarm, no lease expiry.
+    const permitDigest = commitPermitDigest(input.allTags, candidates);
+    let permitHeld = false;
+    const releasePermit = async (): Promise<void> => {
+      if (!permitHeld) return;
+      permitHeld = false;
+      await this.bootstrapPermitRelease(attemptId, permitDigest);
+    };
+    const permit = await this.bootstrapPermitAcquire(attemptId, permitDigest);
+    if (!permit.ok) {
+      if (permit.code === "bootstrap_permit_digest_mismatch") {
+        return responseWithAttempt(error(409, "bootstrap_permit_digest_mismatch", "Bootstrap write permit digest does not match"), attemptId, fault !== undefined);
+      }
+      return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap is importing; commit is unavailable"), attemptId, fault !== undefined);
+    }
+    permitHeld = this.env.BOOTSTRAP !== undefined;
     const reservations = await this.acquireReservations(input, attemptId, fault, traceState?.scope);
     await this.retiredJournalMilestone("S05a", traceState?.scope, 0);
     if (reservations.failure !== undefined) {
-      return this.finishReservationFailure(
+      const failure = await this.finishReservationFailure(
         [...reservations.successes.keys()],
         attemptId,
         reservations.failure,
         fault,
         traceState?.scope,
       );
+      if (failure.resolved) await releasePermit();
+      return failure.response;
     }
 
     if (fault === "after-reservations-before-allocation") {
       // Boundary 1: every durable prepare fact is force-tombstoned before
       // returning the intentionally undetermined outcome.  There is no
       // attempt-level Journal recovery record to make this safe later.
-      await this.cancelReservations([...reservations.successes.keys()], attemptId, fault, traceState?.scope);
+      const cleanup = await this.cancelReservations([...reservations.successes.keys()], attemptId, fault, traceState?.scope);
+      if (cleanup.failedTags.length === 0) await releasePermit();
       return this.noApplicationOutcome(attemptId, true);
     }
 
     await this.hooks.beforeBootstrapAllocation?.();
     const allocation = await this.allocate(candidates, attemptId, fault, bootstrapEpoch, traceState?.scope);
     if (allocation === undefined) {
-      return this.finishReservationFailure(
+      const failure = await this.finishReservationFailure(
         [...reservations.successes.keys()],
         attemptId,
         {
@@ -626,10 +689,13 @@ export class CommitWorker {
         fault,
         traceState?.scope,
       );
+      if (failure.resolved) await releasePermit();
+      return failure.response;
     }
     const allocatedCandidates = this.withAllocatedSuids(candidates, allocation);
     if (allocatedCandidates === undefined) {
-      await this.cancelReservations([...reservations.successes.keys()], attemptId, fault, traceState?.scope);
+      const cleanup = await this.cancelReservations([...reservations.successes.keys()], attemptId, fault, traceState?.scope);
+      if (cleanup.failedTags.length === 0) await releasePermit();
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
     // Allocation supplies the exact EventId/SUID pair needed by the durable
@@ -651,7 +717,8 @@ export class CommitWorker {
       // This retained fault marks the allocation-to-first-append crash
       // boundary.  With no Journal alarm, tags receive the same best-effort
       // tombstone barrier immediately and retain their own expiry alarm.
-      await this.cancelReservations(input.allTags, attemptId, fault, traceState?.scope);
+      const cleanup = await this.cancelReservations(input.allTags, attemptId, fault, traceState?.scope);
+      if (cleanup.failedTags.length === 0) await releasePermit();
       return this.noApplicationOutcome(attemptId, true);
     }
 
@@ -661,10 +728,14 @@ export class CommitWorker {
     // This is immediately before the first final authoritative tag mutation.
     // The same service epoch obtained at admission must still be current.
     if ((await this.bootstrapCommand("finalize", attemptId, bootstrapEpoch, traceState?.scope, "S10")) === undefined) {
-      await this.cancelReservations(input.allTags, attemptId, fault, traceState?.scope);
+      const cleanup = await this.cancelReservations(input.allTags, attemptId, fault, traceState?.scope);
+      if (cleanup.failedTags.length === 0) await releasePermit();
       return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap fencing epoch changed before commit write"), attemptId, fault !== undefined);
     }
 
+    // SDT-G36 test-only hook: the write permit is held across this barrier,
+    // so `POST /plan` must be 409 while the in-flight commit may still write.
+    await this.hooks.beforeAuthoritativeAppend?.();
     const writes = await this.appendAllTags(
       input,
       allocatedCandidates,
@@ -683,12 +754,15 @@ export class CommitWorker {
       // /fence/install loop: G44 can discover the incomplete source universe
       // without a delivery, and G45/G46 retain a readable fenced frontier.
       if (!await this.installPartialWriteFences(writes.pendingTags, attemptId, traceState?.scope)) {
+        // Resolution is not proven: the permit stays held and correctly
+        // blocks `plan`. Do not add recovery.
         return this.noApplicationOutcome(attemptId, true);
       }
       if (
         writes.committedTags.size === 0 &&
         writes.registrationUnavailableTags.length === writes.pendingTags.length
       ) {
+        await releasePermit();
         return responseWithAttempt(
           error(
             503,
@@ -700,23 +774,30 @@ export class CommitWorker {
           fault !== undefined,
         );
       }
+      await releasePermit();
       return this.partialWriteOutcome(input, allocatedCandidates, writes, attemptId, fault !== undefined);
     }
+    // SDT-G36 test seam: a concurrent append here must not change the
+    // already-captured `tagWriteResults`.
+    await this.hooks.afterAppendBeforeResponse?.();
     await this.retiredJournalMilestone("S05d", traceState?.scope, 3);
     if (fault === "sealing-after-cas") {
       // The all-tags-written/response-lost boundary has no single terminal
       // Journal response.  Durable tag receipts and G44 reconciliation are
       // now the detection authority.
+      await releasePermit();
       return this.noApplicationOutcome(attemptId, true);
     }
     try {
-      const success = await this.successResponse(input, allocatedCandidates, attemptId, startedAt, fault, traceState?.scope);
+      const success = await this.successResponse(input, allocatedCandidates, attemptId, startedAt, fault, traceState?.scope, writes);
+      await releasePermit();
       return responseWithAttempt(
         withGlobalAdmission(json(success, 200), writes.globalAdmission),
         attemptId,
         fault !== undefined,
       );
     } catch {
+      await releasePermit();
       return responseWithAttempt(
         error(500, "internal_error", "Committed records could not be read while preparing the response"),
         attemptId,
@@ -775,6 +856,52 @@ export class CommitWorker {
       ? await invoke()
       : await traceScope.span(rowId, {}, invoke);
     return result.leaseEpoch;
+  }
+
+  /**
+   * SDT-G36 bootstrap write permit. Deliberately untraced: it must not add
+   * `sdt.commit/v2` rows or new trace identities. Only a bootstrap barrier,
+   * never commit-outcome authority. No JOURNAL, no alarm, no lease expiry.
+   */
+  private bootstrapStub(): DurableObjectStub | undefined {
+    if (this.env.BOOTSTRAP === undefined) return undefined;
+    return this.env.BOOTSTRAP.get(scopeIdFor(this.env.BOOTSTRAP, {
+      serviceId: this.serviceId,
+      doClass: "bootstrap",
+      identity: "coordinator",
+    }));
+  }
+
+  private async bootstrapPermitAcquire(commandId: string, digest: string): Promise<{ readonly ok: boolean; readonly code?: string }> {
+    const stub = this.bootstrapStub();
+    if (stub === undefined) return { ok: true };
+    try {
+      const url = new URL(`https://commit-worker.internal/command/permit`);
+      url.searchParams.set("__serviceId", this.serviceId);
+      const response = await stub.fetch(new Request(url, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ commandId, digest }),
+      }));
+      if (response.ok) return { ok: true };
+      const body = await response.clone().json().catch(() => undefined) as { code?: unknown } | undefined;
+      return { ok: false, code: typeof body?.code === "string" ? body.code : undefined };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  private async bootstrapPermitRelease(commandId: string, digest: string): Promise<void> {
+    const stub = this.bootstrapStub();
+    if (stub === undefined) return;
+    try {
+      const url = new URL(`https://commit-worker.internal/command/permit-release`);
+      url.searchParams.set("__serviceId", this.serviceId);
+      await stub.fetch(new Request(url, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ commandId, digest }),
+      }));
+    } catch {
+      // Best effort: a lost release cannot replace the primary commit outcome.
+      // A permit left behind by a crash correctly blocks `plan`.
+    }
   }
 
   private async postJson<T>(
@@ -986,6 +1113,7 @@ export class CommitWorker {
     let pending = [...input.allTags];
     const committedTags = new Set<string>();
     const lastFailureCodeByTag = new Map<string, string | undefined>();
+    const tagWriteFacts = new Map<string, { readonly version: number; readonly updatedAt: string }>();
     let globalAdmission: GlobalAdmissionStatus = "admitted";
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS && pending.length > 0; attempt += 1) {
       const append = (stageScope?: CommitTraceScope) => Promise.allSettled(
@@ -1019,14 +1147,27 @@ export class CommitWorker {
             retryIndex: attempt,
             attemptId,
           });
-          const body = response.status === 503
-            ? await response.clone().json().catch(() => undefined) as unknown
-            : undefined;
+          const success = response.status >= 200 && response.status < 300;
+          let appendVersion: number | undefined;
+          let appendUpdatedAt: string | undefined;
+          let code: string | undefined;
+          try {
+            const parsed = (await response.clone().json()) as unknown;
+            if (isObject(parsed)) {
+              if (typeof parsed.version === "number" && Number.isSafeInteger(parsed.version)) appendVersion = parsed.version;
+              if (typeof parsed.updatedAt === "string" && parsed.updatedAt.length > 0) appendUpdatedAt = parsed.updatedAt;
+              if (typeof parsed.code === "string") code = parsed.code;
+            }
+          } catch {
+            // Callers use the status first; malformed internal bodies are failures.
+          }
           return {
             tag,
-            success: response.status >= 200 && response.status < 300,
+            success,
             globalAdmission: readGlobalAdmission(response),
-            code: isObject(body) && typeof body.code === "string" ? body.code : undefined,
+            code,
+            appendVersion,
+            appendUpdatedAt,
           };
         }),
       );
@@ -1040,6 +1181,9 @@ export class CommitWorker {
           committedTags.add(tag);
           lastFailureCodeByTag.delete(tag);
           globalAdmission = mergeGlobalAdmission(globalAdmission, result.value.globalAdmission);
+          if (result.value.appendVersion !== undefined && result.value.appendUpdatedAt !== undefined) {
+            tagWriteFacts.set(tag, { version: result.value.appendVersion, updatedAt: result.value.appendUpdatedAt });
+          }
         } else {
           lastFailureCodeByTag.set(
             tag,
@@ -1057,6 +1201,7 @@ export class CommitWorker {
         (tag) => lastFailureCodeByTag.get(tag) === "partition_registration_unavailable",
       ),
       globalAdmission,
+      tagWriteFacts,
     };
   }
 
@@ -1103,18 +1248,21 @@ export class CommitWorker {
     failure: ReservationFailure,
     fault: CommitTestFault | undefined,
     traceScope?: CommitTraceScope,
-  ): Promise<Response> {
+  ): Promise<{ readonly response: Response; readonly resolved: boolean }> {
     if (traceScope !== undefined) {
       await traceScope.span("S17", {}, async () => undefined);
     }
-    await this.cancelReservations(tags, attemptId, fault, traceScope);
+    const cleanup = await this.cancelReservations(tags, attemptId, fault, traceScope);
     await this.retiredJournalMilestone("S05e", traceScope, 4);
     const response = failure.outcome === "REFUSED"
       ? error(400, "consistency_conflict", "serialized commit was refused by a consistency reservation")
       : failure.failureCause === "reservation-timeout"
         ? error(504, "timeout", "serialized commit timed out")
         : error(500, "internal_error", "serialized commit failed before writing requested records");
-    return responseWithAttempt(response, attemptId, fault !== undefined);
+    return {
+      response: responseWithAttempt(response, attemptId, fault !== undefined),
+      resolved: cleanup.failedTags.length === 0,
+    };
   }
 
   /**
@@ -1179,24 +1327,33 @@ export class CommitWorker {
     startedAt: number,
     fault: CommitTestFault | undefined,
     traceScope?: CommitTraceScope,
+    writes?: AppendAttempt,
   ): Promise<CompleteCommitResponse> {
-    const readStates = (stageScope?: CommitTraceScope) => Promise.all(input.allTags.map(async (tag, memberIndex): Promise<TagWriteResultResponse> => {
+    // SDT-G36: `tagWriteResults` come from the `/append` bodies captured in
+    // `writes.tagWriteFacts`. The success path never re-reads `/head-facts`
+    // or `/state`. S13/S14 stay as compatibility observations only.
+    const assemble = async (stageScope?: CommitTraceScope): Promise<TagWriteResultResponse[]> => {
       if (fault === "tag-state-unavailable") {
         throw new Error("Test fault made the committed tag state unavailable");
       }
-      const response = await this.tagRequest(tag, "/head-facts", undefined, stageScope?.fork(), stageScope === undefined ? undefined : "S14", { memberIndex, attemptId });
-      if (response.status !== 200) {
-        throw new Error("Committed tag state was unavailable while preparing the response");
+      const results: TagWriteResultResponse[] = [];
+      for (const [memberIndex, tag] of input.allTags.entries()) {
+        const read = (): TagWriteResultResponse => {
+          const fact = writes?.tagWriteFacts.get(tag);
+          if (fact === undefined) {
+            throw new Error("Committed tag state was unavailable while preparing the response");
+          }
+          return { tag, version: fact.version, writtenAt: fact.updatedAt };
+        };
+        results.push(stageScope === undefined
+          ? read()
+          : await stageScope.fork().span("S14", { tag, memberIndex, attemptId }, async () => read()));
       }
-      const body = (await response.json()) as Partial<TagHeadFacts>;
-      if (typeof body.version !== "number" || typeof body.updatedAt !== "string" || typeof body.head !== "string") {
-        throw new Error("Committed tag state was malformed while preparing the response");
-      }
-      return { tag, version: body.version, writtenAt: body.updatedAt };
-    }));
+      return results;
+    };
     const tagWriteResults = traceScope === undefined
-      ? await readStates()
-      : await traceScope.span("S13", {}, async (stage) => readStates(stage));
+      ? await assemble()
+      : await traceScope.span("S13", {}, async (stage) => assemble(stage));
     return {
       writtenEvents: candidates.map((candidate) => ({
         payload: encodeBase64Utf8(candidate.payload),

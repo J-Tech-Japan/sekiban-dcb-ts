@@ -222,7 +222,7 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
     "does not await registration again for an already-registered tag",
     "expect(rows).toEqual({ events: 1, receipts: 1 })",
     "x-sdt-global-admission",
-    "expect(failed.body).toEqual(admitted.body)",
+    "expect(failedRest).toEqual(admittedRest)",
   ]) {
     if (!testSource.includes(token)) missing.push(`real G65 oracle: ${token}`);
   }

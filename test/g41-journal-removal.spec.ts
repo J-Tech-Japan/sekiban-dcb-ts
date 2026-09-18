@@ -123,7 +123,7 @@ function fakeRun(options: FakeRunOptions = {}): FakeRun {
     if (path === "/acquire") return options.acquire?.(tagName) ?? json({ reservation: { token: `token:${tagName}` } }, 201);
     if (path === "/append") {
       appends.push(tagName);
-      return options.append?.(tagName) ?? json({ appended: true }, 201);
+      return options.append?.(tagName) ?? json({ appended: true, version: 1, updatedAt: "2026-08-29T00:00:00.000Z" }, 201);
     }
     if (path === "/cancel") {
       const body = await incoming.json<Record<string, unknown>>();

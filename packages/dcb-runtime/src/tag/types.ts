@@ -176,6 +176,11 @@ export interface TagRecord {
   version: number;
   createdAt: string;
   updatedAt: string;
+  /**
+   * SDT-G36 non-SQL seam only. Maps `attemptId:epoch` to the write
+   * transaction's own version and updatedAt. Absent on older records.
+   */
+  writeReceipts?: Readonly<Record<string, { readonly version: number; readonly updatedAt: string; readonly headSuid?: string }>>;
 }
 
 /**

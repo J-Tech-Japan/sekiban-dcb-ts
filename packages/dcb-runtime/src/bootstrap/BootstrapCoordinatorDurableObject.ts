@@ -28,13 +28,17 @@ type CommandAction = "admit" | "finalize" | "release";
 type FaultPoint = "mode-record" | "tag-chunk" | "store-progress-gap" | "allocator-seed" | "verifying" | "ready-cas";
 
 function empty(serviceId: string): BootstrapControlRecord {
-  return { schemaVersion: 1, status: "EMPTY", importId: null, targetServiceId: serviceId, allocatorLineageId: null, source: null, digest: null, manifest: null, progress: {}, leaseEpoch: 0, leaseUntil: null, failure: null, readyAt: null, normalInFlight: 0, normalCommands: {}, releasedCommands: {}, verifiedImportId: null, verifiedLeaseEpoch: null, storeCompletion: null };
+  return { schemaVersion: 1, status: "EMPTY", importId: null, targetServiceId: serviceId, allocatorLineageId: null, source: null, digest: null, manifest: null, progress: {}, leaseEpoch: 0, leaseUntil: null, failure: null, readyAt: null, normalInFlight: 0, normalCommands: {}, releasedCommands: {}, writePermits: {}, verifiedImportId: null, verifiedLeaseEpoch: null, storeCompletion: null };
 }
 function expired(control: BootstrapControlRecord): boolean { return control.leaseUntil !== null && control.leaseUntil <= Date.now(); }
 function commands(control: BootstrapControlRecord): Record<string, number> { return { ...(control.normalCommands ?? {}) }; }
 function released(control: BootstrapControlRecord): Record<string, number> { return { ...(control.releasedCommands ?? {}) }; }
+function permits(control: BootstrapControlRecord): Record<string, string> { return { ...(control.writePermits ?? {}) }; }
 function fault(body: unknown, point: FaultPoint): boolean { return object(body) && body.faultAt === point; }
 function encodedBytes(value: unknown): number { return new TextEncoder().encode(JSON.stringify(value)).byteLength; }
+async function readBody(request: Request): Promise<unknown> {
+  try { return await request.json(); } catch { return undefined; }
+}
 
 /** Per-service authority and linearization point for bootstrap and normal writes. */
 export class BootstrapCoordinatorDurableObject implements DurableObject {
@@ -57,6 +61,8 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     if (request.method === "POST" && url.pathname === "/command/admit") return this.traceCommand(request, serviceId, activation, observation, "admit");
     if (request.method === "POST" && url.pathname === "/command/finalize") return this.traceCommand(request, serviceId, activation, observation, "finalize");
     if (request.method === "POST" && url.pathname === "/command/release") return this.traceCommand(request, serviceId, activation, observation, "release");
+    if (request.method === "POST" && url.pathname === "/command/permit") return this.permit(serviceId, await readBody(request));
+    if (request.method === "POST" && url.pathname === "/command/permit-release") return this.permitRelease(serviceId, await readBody(request));
     let body: unknown; try { body = await request.json(); } catch { return reject("bootstrap_body_invalid", "JSON body is required", 400); }
     if (request.method !== "POST") return reject("bootstrap_route_not_found", "bootstrap route was not found", 404);
     if (url.pathname === "/plan") return this.plan(serviceId, body);
@@ -110,6 +116,7 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
       const control = (await txn.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId);
       if (control.status === "READY") return { error: "bootstrap_ready_permanent" };
       if (control.status !== "EMPTY") return control.importId === importId && control.digest === dump.manifest.contentDigest ? { control } : { error: "bootstrap_plan_conflict" };
+      if (Object.keys(permits(control)).length !== 0) return { error: "bootstrap_write_permit_active" };
       if (control.normalInFlight !== 0 || Object.keys(commands(control)).length !== 0) return { error: "bootstrap_normal_command_in_flight" };
       const next: BootstrapControlRecord = { ...control, status: "PLANNED", importId, allocatorLineageId: dump.manifest.target.allocatorLineageId, source: dump.manifest.source, digest: dump.manifest.contentDigest, manifest: dump.manifest, leaseEpoch: control.leaseEpoch + 1, leaseUntil: Date.now() + 30_000, failure: null, progress: {}, verifiedImportId: null, verifiedLeaseEpoch: null, storeCompletion: null };
       await txn.put(CONTROL, next); await txn.put(DUMP, dump); return { control: next };
@@ -232,6 +239,49 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     if (!object(body) || !string(body.route)) return reject("bootstrap_route_invalid", "route is required", 400);
     const control = await this.control(serviceId);
     return control.status === "EMPTY" || control.status === "READY" ? response({ admitted: true, leaseEpoch: control.leaseEpoch, route: body.route }) : reject("bootstrap_route_rejected", `${body.route} is unavailable during bootstrap`);
+  }
+
+  private async permit(serviceId: string, body: unknown): Promise<Response> {
+    if (!object(body) || !string(body.commandId) || !string(body.digest)) return reject("bootstrap_permit_invalid", "commandId and digest are required", 400);
+    const commandId = body.commandId as string;
+    const digest = body.digest as string;
+    const result = await this.ctx.storage.transaction(async (txn) => {
+      const control = (await txn.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId);
+      const active = permits(control);
+      if (active[commandId] !== undefined) {
+        return active[commandId] === digest
+          ? { control }
+          : { digestMismatch: true as const };
+      }
+      if (control.status !== "EMPTY" && control.status !== "READY") return { rejected: true as const };
+      const updated: BootstrapControlRecord = { ...control, writePermits: { ...active, [commandId]: digest } };
+      await txn.put(CONTROL, updated);
+      return { control: updated };
+    });
+    if ("digestMismatch" in result) return reject("bootstrap_permit_digest_mismatch", "bootstrap permit digest does not match the held permit");
+    if ("rejected" in result) return reject("bootstrap_command_rejected", "bootstrap epoch rejects normal durable mutation");
+    return response({ leaseEpoch: result.control.leaseEpoch, admitted: true });
+  }
+
+  private async permitRelease(serviceId: string, body: unknown): Promise<Response> {
+    if (!object(body) || !string(body.commandId)) return reject("bootstrap_permit_invalid", "commandId is required", 400);
+    const commandId = body.commandId as string;
+    const digest = string(body.digest) ? (body.digest as string) : undefined;
+    const result = await this.ctx.storage.transaction(async (txn) => {
+      const control = (await txn.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId);
+      const active = permits(control);
+      if (active[commandId] !== undefined && digest !== undefined && active[commandId] !== digest) {
+        return { digestMismatch: true as const };
+      }
+      if (active[commandId] === undefined) return { control };
+      const next = { ...active };
+      delete next[commandId];
+      const updated: BootstrapControlRecord = { ...control, writePermits: next };
+      await txn.put(CONTROL, updated);
+      return { control: updated };
+    });
+    if ("digestMismatch" in result) return reject("bootstrap_permit_digest_mismatch", "bootstrap permit digest does not match the held permit");
+    return response({ leaseEpoch: result.control.leaseEpoch, admitted: true });
   }
 
   private async command(

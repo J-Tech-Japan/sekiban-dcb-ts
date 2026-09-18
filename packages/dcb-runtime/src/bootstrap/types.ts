@@ -51,6 +51,12 @@ export interface BootstrapControlRecord {
   readonly normalCommands?: Readonly<Record<string, number>>;
   /** Recently released entry admissions, retained only for their final epoch check. */
   readonly releasedCommands?: Readonly<Record<string, number>>;
+  /**
+   * SDT-G36 durable write permits. Held from before allocation until every
+   * target tag of that attempt is durably resolved. Absent on old records
+   * (treated as `{}`). Only a bootstrap barrier, never commit authority.
+   */
+  readonly writePermits?: Readonly<Record<string, string>>;
   /** READY is a post-verification state, never merely an import completion. */
   readonly verifiedImportId?: string | null;
   readonly verifiedLeaseEpoch?: number | null;

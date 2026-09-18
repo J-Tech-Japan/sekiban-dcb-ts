@@ -203,7 +203,7 @@ function fakeRun(plan: MatrixPlan): FakeRun {
         }
       }
       const response = mode === "committed"
-        ? json({ appended: true }, 201)
+        ? json({ appended: true, version: facts.events.length, updatedAt: "2026-09-09T00:00:00.000Z" }, 201)
         : mode === "post-commit-reply-loss"
           ? json({ code: "append_ack_lost" }, 503)
           : mode === "registration-unavailable"
@@ -284,7 +284,7 @@ const FIXTURE_ALLOCATOR_LINEAGE = "g76-fake-lineage";
 function expectedAppendResponse(mode: AppendMode): ResponseFact {
   switch (mode) {
     case "committed":
-      return { status: 201, body: { appended: true } };
+      return { status: 201, body: { appended: true, version: expect.any(Number), updatedAt: "2026-09-09T00:00:00.000Z" } };
     case "post-commit-reply-loss":
       return { status: 503, body: { code: "append_ack_lost" } };
     case "registration-unavailable":
