@@ -692,42 +692,37 @@ export function runSelfTest() {
       mutations.push(`${name}:${error.diagnostic.reason}`);
     }
   };
-  expect("legacy-fail-new-pass", () => {
-    const drifted = structuredClone(primary);
-    drifted.vars = { ...primary.vars, G32_PIPELINE_DATABASE_ID: cutover.bridge.oldPipelineDatabaseId };
-    compareOverlap(
-      legacyOverlapRows("primary", drifted, cutover.final, primary).concat(legacyOverlapRows("receiver", receiver, cutover.final, receiver)),
-      newOverlapRows("primary", drifted, mapping, manifest).concat(newOverlapRows("receiver", receiver, mapping, manifest)),
-    );
-  });
-  expect("new-fail-legacy-pass", () => {
-    const mapped = structuredClone(mapping);
-    mapped.resources = {
-      ...mapping.resources,
-      "pipeline-d1": { database_id: "00000000-0000-4000-8000-000000000099" },
-    };
-    compareOverlap(
-      legacyOverlapRows("primary", primary, cutover.final).concat(legacyOverlapRows("receiver", receiver, cutover.final)),
-      newOverlapRows("primary", primary, mapped, manifest).concat(newOverlapRows("receiver", receiver, mapped, manifest)),
-    );
-  });
-  expect("missing-row", () => {
-    const missing = structuredClone(primary);
-    missing.d1_databases = primary.d1_databases.filter((entry) => entry.binding !== "D1");
-    compareOverlap(
-      legacyOverlapRows("primary", missing, cutover.final, primary),
-      newOverlapRows("primary", missing, mapping, manifest),
-    );
-  });
-  expect("duplicate-row", () => {
-    const duplicated = structuredClone(primary);
-    const pipelineBinding = primary.d1_databases.find((entry) => entry.binding === "D1");
-    duplicated.d1_databases = [...primary.d1_databases, { ...pipelineBinding }];
-    compareOverlap(
-      legacyOverlapRows("primary", duplicated, cutover.final, primary),
-      newOverlapRows("primary", duplicated, mapping, manifest),
-    );
-  });
+  const drifted = structuredClone(primary);
+  drifted.vars = { ...primary.vars, G32_PIPELINE_DATABASE_ID: cutover.bridge.oldPipelineDatabaseId };
+  const mappedDrift = structuredClone(mapping);
+  mappedDrift.resources = {
+    ...mapping.resources,
+    "pipeline-d1": {
+      ...mapping.resources["pipeline-d1"],
+      database_id: "00000000-0000-4000-8000-000000000099",
+    },
+  };
+  const missingD1 = structuredClone(primary);
+  missingD1.d1_databases = primary.d1_databases.filter((entry) => entry.binding !== "D1");
+  const duplicatedD1 = structuredClone(primary);
+  duplicatedD1.d1_databases = [
+    ...primary.d1_databases,
+    { ...primary.d1_databases.find((entry) => entry.binding === "D1") },
+  ];
+  const overlapCorpus = [
+    { name: "legacy-fail-new-pass", primaryConfig: drifted, receiverConfig: receiver, mapped: mapping },
+    { name: "new-fail-legacy-pass", primaryConfig: primary, receiverConfig: receiver, mapped: mappedDrift },
+    { name: "missing-row", primaryConfig: missingD1, receiverConfig: receiver, mapped: mapping },
+    { name: "duplicate-row", primaryConfig: duplicatedD1, receiverConfig: receiver, mapped: mapping },
+  ];
+  for (const item of overlapCorpus) {
+    expect(item.name, () => compareOverlap(
+      legacyOverlapRows("primary", item.primaryConfig, cutover.final, primary)
+        .concat(legacyOverlapRows("receiver", item.receiverConfig, cutover.final, receiver)),
+      newOverlapRows("primary", item.primaryConfig, item.mapped, manifest)
+        .concat(newOverlapRows("receiver", item.receiverConfig, item.mapped, manifest)),
+    ));
+  }
   expect("second-producer", () => validateConfig(manifest, manifest.components[0], {
     ...primary,
     queues: { ...primary.queues, producers: [...primary.queues.producers, { binding: "EXTRA", queue: primary.queues.producers[0].queue }] },
