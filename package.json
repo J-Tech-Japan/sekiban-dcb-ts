@@ -94,6 +94,8 @@
     "test:g64": "npm run test:g64:build && npm run test:g64:pack && npm run test:g64:consumer && node scripts/dcb-matched-set-release-check.mjs dcb-v0.2.0 && npm run test:g64:publish-shape && npm run test:g64:publish-dry-run",
     "test:g99:tip-identity": "node scripts/deploy/g99-tip-identity-guards.mjs",
     "test:g99:tip-identity:live": "node scripts/deploy/g99-tip-identity.mjs",
+    "test:g99:sample-registry": "node scripts/sdt-g99-sample-registry-guard.mjs",
+    "test:g99:telemetry-diagnosis": "node scripts/deploy/g99-telemetry-shortfall-diagnosis.mjs",
     "deploy:g99:npm-consumer": "./scripts/deploy/g99-npm-consumer-deploy.sh",
     "deploy:g99:npm-consumer:dry-run": "G99_DRY_RUN=1 ./scripts/deploy/g99-npm-consumer-deploy.sh",
     "publish:g99:runtime-bootstrap": "./scripts/dcb-runtime-bootstrap-publish.sh",
