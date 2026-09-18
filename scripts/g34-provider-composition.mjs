@@ -9,7 +9,27 @@ export const manifestPath = "contracts/provider-composition.json";
 export const mappingPath = "contracts/provider-composition.local-mapping.json";
 export const generatedPath = "samples/meeting-room/src/generated/provider-composition.ts";
 export const DOMAIN = "sekiban-dcb-ts/provider-composition-manifest/v1";
+export const REF_DOMAIN = "sekiban-dcb-ts/resource-ref/v1";
 export const CANONICALIZATION_VERSION = "rfc8785";
+export const PROFILE_CARDINALITIES = {
+  primary: {
+    "producer-binding": 1,
+    "consumer-attachment": 1,
+    "dlq-target": 1,
+    "service-binding": 1,
+    "target-entrypoint": 1,
+  },
+  receiver: {
+    "producer-binding": 0,
+    "consumer-attachment": 0,
+    "dlq-target": 0,
+    "service-binding": 0,
+    "target-entrypoint": 0,
+  },
+};
+const REQUIRED_RESOURCE_IDS = ["dlq-queue", "doorbell-service", "mv-d1", "pipeline-d1", "primary-do", "receiver-do", "work-queue"];
+const REQUIRED_EDGE_IDS = ["primary-consumer", "primary-dlq", "primary-doorbell", "primary-entrypoint", "primary-mv", "primary-pipeline", "primary-producer", "receiver-mv", "receiver-pipeline"];
+const MAPPED_RESOURCE_IDS = ["pipeline-d1", "mv-d1", "work-queue", "dlq-queue", "doorbell-service"];
 
 const BINDING_FUNCTIONS = [
   ["ALLOCATOR", "allocatorBinding"],
@@ -79,8 +99,7 @@ export function jcs(value) {
   if (value === null) return "null";
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value === "number") {
-    if (!Number.isFinite(value) || Object.is(value, -0)) throw new Error("JCS number is not finite");
-    if (!Number.isSafeInteger(value)) throw new Error("JCS number must be a safe integer in this profile");
+    if (!Number.isFinite(value)) throw new Error("JCS number is not finite");
     return JSON.stringify(value);
   }
   if (typeof value === "string") return JSON.stringify(value);
@@ -88,6 +107,25 @@ export function jcs(value) {
   if (typeof value !== "object") throw new Error("JCS value is not a JSON type");
   const keys = Object.keys(value).sort();
   return `{${keys.map((key) => `${JSON.stringify(key)}:${jcs(value[key])}`).join(",")}}`;
+}
+
+export function opaqueRef(providerKind, identity) {
+  const digest = createHash("sha256")
+    .update(REF_DOMAIN, "utf8")
+    .update("\0")
+    .update(String(providerKind), "utf8")
+    .update("\0")
+    .update(String(identity), "utf8")
+    .digest("hex");
+  return `rref-${digest.slice(0, 20)}`;
+}
+
+function mappedIdentity(id, entry) {
+  if (entry == null || typeof entry !== "object") return undefined;
+  if (id === "pipeline-d1" || id === "mv-d1") return entry.database_id;
+  if (id === "work-queue" || id === "dlq-queue") return entry.name;
+  if (id === "doorbell-service") return entry.service;
+  return undefined;
 }
 
 export function digestBytes(payload, domain = DOMAIN) {
@@ -191,15 +229,23 @@ export function checkGenerated(manifest = loadManifest(), source = readFileSync(
   return expected;
 }
 
-export function findRawBindingReads(files) {
+export function rawBindingHits(text) {
   const names = BINDING_FUNCTIONS.map(([name]) => name).sort((left, right) => right.length - left.length);
-  const pattern = new RegExp(`\\benv\\.(${names.join("|")})\\b`, "g");
+  const alt = names.join("|");
+  const patterns = [
+    new RegExp(`\\benv\\s*\\?\\.\\s*(${alt})\\b`),
+    new RegExp(`\\benv\\.(${alt})\\b`),
+    new RegExp(`\\benv\\s*(?:\\?\\.)?\\s*\\[\\s*["'](${alt})["']\\s*\\]`),
+    new RegExp(`\\{[^}\\n]*\\b(${alt})\\b[^}\\n]*\\}\\s*=\\s*env\\b`),
+  ];
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+export function findRawBindingReads(files) {
   const hits = [];
   for (const file of files) {
     if (file.endsWith(generatedPath)) continue;
-    const text = readFileSync(join(root, file), "utf8");
-    if (pattern.test(text)) hits.push(file);
-    pattern.lastIndex = 0;
+    if (rawBindingHits(readFileSync(join(root, file), "utf8"))) hits.push(file);
   }
   return hits;
 }
@@ -219,7 +265,14 @@ export function scanSampleBindingReads() {
   return hits;
 }
 
-export function assertSingleSource(files) {
+function publishedManifestFiles() {
+  return readdirSync(join(root, "contracts"))
+    .filter((name) => name.startsWith("provider-composition") && name.endsWith(".json") && !name.includes("local-mapping"))
+    .map((name) => `contracts/${name}`)
+    .sort();
+}
+
+export function assertSingleSource(files = publishedManifestFiles()) {
   const manifests = files.filter((file) => {
     const base = file.split("/").pop() ?? file;
     return base.startsWith("provider-composition") && base.endsWith(".json") && !base.includes("local-mapping");
@@ -241,16 +294,41 @@ function tenantRefOf(manifest) {
   return typeof manifest.tenantRef === "string" ? manifest.tenantRef : "";
 }
 
-export function validateManifest(manifest, mapping) {
-  if (tenantRefOf(manifest).length < 16) fail("SCOPE_PROOF_UNAVAILABLE", "tenantRef", "scope-proof-unavailable");
-  if (!Array.isArray(mapping?.resources ? Object.keys(mapping.resources) : null)) {
+function requireMappingEntries(mapping) {
+  if (mapping?.resources == null || typeof mapping.resources !== "object" || Array.isArray(mapping.resources)) {
     fail("SCOPE_PROOF_UNAVAILABLE", mappingPath, "scope-proof-unavailable");
   }
+  for (const id of MAPPED_RESOURCE_IDS) {
+    const identity = mappedIdentity(id, mapping.resources[id]);
+    if (typeof identity !== "string" || identity.length === 0) {
+      fail("SCOPE_PROOF_UNAVAILABLE", `${mappingPath}#${id}`, "scope-proof-unavailable");
+    }
+  }
+}
+
+export function validateManifest(manifest, mapping) {
+  requireMappingEntries(mapping);
+  if (tenantRefOf(manifest).length < 16) fail("SCOPE_PROOF_UNAVAILABLE", "tenantRef", "scope-proof-unavailable");
   const pipeline = manifest.resources.filter((resource) => resource.role === "pipeline-D1");
   if (pipeline.length !== 1) fail("SECOND_SHARD", "resources.pipeline-D1", "second-shard");
+  const resourceIds = [...manifest.resources.map((resource) => resource.id)].sort();
+  if (JSON.stringify(resourceIds) !== JSON.stringify([...REQUIRED_RESOURCE_IDS].sort())) {
+    fail("CARDINALITY", "resources", "cardinality");
+  }
   const mv = manifest.resources.filter((resource) => resource.role === "MV-D1");
   if (mv.length !== 1 || mv[0].resourceRef === pipeline[0].resourceRef) {
     fail("CARDINALITY", "resources.MV-D1", "cardinality");
+  }
+  for (const id of MAPPED_RESOURCE_IDS) {
+    const resource = resourceById(manifest, id);
+    const identity = mappedIdentity(id, mapping.resources[id]);
+    if (resource === undefined || resource.resourceRef !== opaqueRef(resource.providerKind, identity)) {
+      fail("RESOURCE_MISMATCH", id, "resource-identity-mismatch");
+    }
+  }
+  const edgeIds = manifest.edges.map((edge) => edge.id).sort();
+  if (JSON.stringify(edgeIds) !== JSON.stringify([...REQUIRED_EDGE_IDS].sort())) {
+    fail("CARDINALITY", "edges", "cardinality");
   }
   for (const component of manifest.components) {
     requireAxes(component);
@@ -259,9 +337,15 @@ export function validateManifest(manifest, mapping) {
     }
     const owner = manifest.migrationDomains["durable-object"][component.id];
     if (owner?.owner !== component.id) fail("DO_MIGRATION_OWNER", `${component.id}.durable-object`, "do-migration-owner");
-    for (const [kind, expected] of Object.entries(manifest.cardinalities[component.id])) {
-      const actual = componentEdgeCount(manifest, component.id, kind);
-      if (actual !== expected) fail("CARDINALITY", `${component.id}.${kind}`, "cardinality");
+    const expectedCounts = PROFILE_CARDINALITIES[component.id];
+    if (expectedCounts === undefined) fail("CARDINALITY", component.id, "cardinality");
+    for (const [kind, expected] of Object.entries(expectedCounts)) {
+      if (manifest.cardinalities?.[component.id]?.[kind] !== expected) {
+        fail("CARDINALITY", `${component.id}.${kind}`, "cardinality");
+      }
+      if (componentEdgeCount(manifest, component.id, kind) !== expected) {
+        fail("CARDINALITY", `${component.id}.${kind}`, "cardinality");
+      }
     }
   }
   const primaryDo = resourceById(manifest, "primary-do");
@@ -288,16 +372,24 @@ function database(config, binding) {
 }
 
 export function validateConfig(manifest, component, config, mapping) {
+  requireMappingEntries(mapping);
   if (config.name !== component.workerName) fail("CARDINALITY", `${component.id}.workerName`, "cardinality");
   const names = bindingNames(config);
   if (new Set(names).size !== names.length) fail("GLOBAL_BINDING", `${component.id}.bindings`, "global-binding");
+  const allowed = new Set(component.entrypoints.flatMap((entrypoint) => entrypoint.requiredBindings));
+  for (const name of names) {
+    if (!allowed.has(name)) fail("CARDINALITY", `${component.id}.${name}`, "cardinality");
+  }
+  for (const required of allowed) {
+    if (!names.includes(required)) fail("CARDINALITY", `${component.id}.${required}`, "cardinality");
+  }
   const pipelineEdge = manifest.edges.find((edge) => edge.from === component.id && edge.binding === "D1");
   const mvEdge = manifest.edges.find((edge) => edge.from === component.id && edge.binding === "D1_MV");
   const pipeline = database(config, "D1");
   const mv = database(config, "D1_MV");
   if (pipeline === undefined || mv === undefined) fail("CARDINALITY", `${component.id}.d1`, "cardinality");
-  const pipelineId = mapping.resources?.[pipelineEdge.to]?.database_id;
-  const mvId = mapping.resources?.[mvEdge.to]?.database_id;
+  const pipelineId = mappedIdentity(pipelineEdge?.to, mapping.resources?.[pipelineEdge?.to]);
+  const mvId = mappedIdentity(mvEdge?.to, mapping.resources?.[mvEdge?.to]);
   if (typeof pipelineId !== "string" || typeof mvId !== "string") {
     fail("SCOPE_PROOF_UNAVAILABLE", `${component.id}.mapping`, "scope-proof-unavailable");
   }
@@ -324,15 +416,18 @@ export function validateConfig(manifest, component, config, mapping) {
   }
   const producers = config.queues?.producers ?? [];
   const consumers = config.queues?.consumers ?? [];
-  const expected = manifest.cardinalities[component.id];
+  const expected = PROFILE_CARDINALITIES[component.id];
   if (component.id === "receiver") {
     if (config.queues !== undefined) fail("QUEUES_FORBIDDEN", "receiver.queues", "queues-forbidden");
     if ((config.services ?? []).length !== 0) fail("CARDINALITY", "receiver.service-binding", "cardinality");
   } else {
     if (producers.length !== expected["producer-binding"]) fail("CARDINALITY", "primary.producer-binding", "cardinality");
     if (consumers.length !== expected["consumer-attachment"]) fail("CARDINALITY", "primary.consumer-attachment", "cardinality");
-    const work = mapping.resources["work-queue"].name;
-    const dlq = mapping.resources["dlq-queue"].name;
+    const work = mappedIdentity("work-queue", mapping.resources?.["work-queue"]);
+    const dlq = mappedIdentity("dlq-queue", mapping.resources?.["dlq-queue"]);
+    if (typeof work !== "string" || typeof dlq !== "string") {
+      fail("SCOPE_PROOF_UNAVAILABLE", "primary.queue", "scope-proof-unavailable");
+    }
     if (producers[0]?.queue !== work || consumers[0]?.queue !== work) {
       fail("RESOURCE_MISMATCH", "primary.queue", "resource-identity-mismatch");
     }
@@ -343,7 +438,8 @@ export function validateConfig(manifest, component, config, mapping) {
       fail("ENTRYPOINT_MISSING", `${component.id}.target-entrypoint`, "entrypoint-missing");
     }
     if (service[0].entrypoint === component.workerName) fail("ENTRYPOINT_MISSING", `${component.id}.target-entrypoint`, "entrypoint-missing");
-    if (service[0].service !== mapping.resources["doorbell-service"].service) {
+    const doorbell = mappedIdentity("doorbell-service", mapping.resources?.["doorbell-service"]);
+    if (typeof doorbell !== "string" || service[0].service !== doorbell) {
       fail("RESOURCE_MISMATCH", "primary.service-binding", "resource-identity-mismatch");
     }
   }
@@ -354,6 +450,7 @@ export function validateConfig(manifest, component, config, mapping) {
 }
 
 export function validateProfile(manifest = loadManifest(), mapping = loadMapping(), configs) {
+  assertSingleSource();
   validateManifest(manifest, mapping);
   const loaded = configs ?? Object.fromEntries(manifest.components.map((component) => [component.id, loadJson(component.config)]));
   for (const component of manifest.components) validateConfig(manifest, component, loaded[component.id], mapping);
@@ -362,25 +459,114 @@ export function validateProfile(manifest = loadManifest(), mapping = loadMapping
   return manifestDigest(manifest);
 }
 
-export function overlapRows(componentId, config) {
-  const pipeline = database(config, "D1");
-  const mv = database(config, "D1_MV");
-  const classes = (config.durable_objects?.bindings ?? []).map((entry) => entry.class_name).sort().join(",");
-  const rows = [
-    { rowId: `${componentId}.pipeline.database_id`, status: pipeline?.database_id ?? "missing" },
-    { rowId: `${componentId}.mv.database_id`, status: mv?.database_id ?? "missing" },
-    { rowId: `${componentId}.do.class-set`, status: classes },
-  ];
+function databaseEntries(config, binding) {
+  return (config?.d1_databases ?? []).filter((entry) => entry?.binding === binding);
+}
+
+export function legacyOverlapRows(componentId, config, expected) {
+  const rows = [];
+  const pipelines = databaseEntries(config, "D1");
+  if (pipelines.length === 0) rows.push({ rowId: `${componentId}.pipeline.database_id`, status: "fail" });
+  for (const entry of pipelines) {
+    const idOk = entry.database_id === expected.pipelineDatabase.id;
+    const varOk = config?.vars?.G32_PIPELINE_DATABASE_ID === expected.pipelineDatabase.id;
+    rows.push({ rowId: `${componentId}.pipeline.database_id`, status: idOk && varOk ? "pass" : "fail" });
+  }
+  const views = databaseEntries(config, "D1_MV");
+  if (views.length === 0) rows.push({ rowId: `${componentId}.mv.database_id`, status: "fail" });
+  for (const entry of views) {
+    const idOk = entry.database_id === expected.materializedViewDatabase.id;
+    const varOk = config?.vars?.G32_MATERIALIZED_VIEW_DATABASE_ID === expected.materializedViewDatabase.id;
+    rows.push({ rowId: `${componentId}.mv.database_id`, status: idOk && varOk ? "pass" : "fail" });
+  }
+  const classes = (config?.durable_objects?.bindings ?? []).map((entry) => entry?.class_name).sort();
+  const wantedClasses = [...expected.durableObjectNamespaces].sort();
+  rows.push({
+    rowId: `${componentId}.do.class-set`,
+    status: JSON.stringify(classes) === JSON.stringify(wantedClasses) ? "pass" : "fail",
+  });
   if (componentId === "primary") {
-    rows.push(
-      { rowId: "primary.queue.producer.0", status: config.queues?.producers?.[0]?.queue ?? "missing" },
-      { rowId: "primary.queue.consumer.0", status: config.queues?.consumers?.[0]?.queue ?? "missing" },
-      { rowId: "primary.queue.dlq.0", status: config.queues?.consumers?.[0]?.dead_letter_queue ?? "missing" },
-    );
+    const consumer = config?.queues?.consumers?.[0];
+    rows.push({
+      rowId: "primary.queue.producer.0",
+      status: config?.queues?.producers?.[0]?.queue === expected.queue ? "pass" : "fail",
+    });
+    rows.push({
+      rowId: "primary.queue.consumer.0",
+      status: consumer?.queue === expected.queue ? "pass" : "fail",
+    });
+    rows.push({
+      rowId: "primary.queue.dlq.0",
+      status: consumer?.dead_letter_queue === expected.deadLetterQueue && consumer?.dead_letter_queue !== expected.queue ? "pass" : "fail",
+    });
   } else {
-    rows.push({ rowId: "receiver.queues.absent", status: config.queues === undefined ? "absent" : "present" });
+    rows.push({ rowId: "receiver.queues.absent", status: config?.queues === undefined ? "pass" : "fail" });
   }
   return rows;
+}
+
+export function newOverlapRows(componentId, config, mapping, manifest) {
+  const rows = [];
+  const pipelines = databaseEntries(config, "D1");
+  const wantedPipeline = mapping?.resources?.["pipeline-d1"]?.database_id;
+  for (const entry of pipelines) {
+    rows.push({
+      rowId: `${componentId}.pipeline.database_id`,
+      status: entry.database_id === wantedPipeline ? "pass" : "fail",
+    });
+  }
+  const views = databaseEntries(config, "D1_MV");
+  const wantedView = mapping?.resources?.["mv-d1"]?.database_id;
+  for (const entry of views) {
+    rows.push({
+      rowId: `${componentId}.mv.database_id`,
+      status: entry.database_id === wantedView ? "pass" : "fail",
+    });
+  }
+  const classes = (config?.durable_objects?.bindings ?? []).map((entry) => entry?.class_name).sort();
+  const wantedClasses = [...(manifest?.durableObjectClasses ?? [])].sort();
+  rows.push({
+    rowId: `${componentId}.do.class-set`,
+    status: JSON.stringify(classes) === JSON.stringify(wantedClasses) ? "pass" : "fail",
+  });
+  if (componentId === "primary") {
+    const consumer = config?.queues?.consumers?.[0];
+    const work = mapping?.resources?.["work-queue"]?.name;
+    const dlq = mapping?.resources?.["dlq-queue"]?.name;
+    rows.push({ rowId: "primary.queue.producer.0", status: config?.queues?.producers?.[0]?.queue === work ? "pass" : "fail" });
+    rows.push({ rowId: "primary.queue.consumer.0", status: consumer?.queue === work ? "pass" : "fail" });
+    rows.push({
+      rowId: "primary.queue.dlq.0",
+      status: consumer?.dead_letter_queue === dlq && dlq !== work ? "pass" : "fail",
+    });
+  } else {
+    rows.push({ rowId: "receiver.queues.absent", status: config?.queues === undefined ? "pass" : "fail" });
+  }
+  return rows;
+}
+
+export function g32Accepts(component, config, expected) {
+  let src = readFileSync(join(root, "scripts/g32-cutover-check.mjs"), "utf8");
+  src = src.replace(/\nconst contract =[\s\S]*?\nfunction arraysEqual/, "\nfunction arraysEqual");
+  src = src.replace("\nfunction assertComponentConfig", "\nexport function assertComponentConfig");
+  src = src.replace(/\nif \(process\.env\.SDT_G32_CUTOVER_FORCE_FAILURE[\s\S]*$/, "\n");
+  const input = JSON.stringify({ component, config, expected });
+  const runner = `
+const src = ${JSON.stringify(src)};
+const mod = await import("data:text/javascript;base64," + Buffer.from(src).toString("base64"));
+const payload = JSON.parse(${JSON.stringify(input)});
+try {
+  mod.assertComponentConfig(payload.config, payload.component, payload.expected);
+  process.stdout.write("ok");
+} catch {
+  process.stdout.write("fail");
+}
+`;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", runner], { encoding: "utf8" });
+  if (result.status !== 0) throw new Error(result.stderr || "g32 overlap bridge failed");
+  if (result.stdout === "ok") return true;
+  if (result.stdout === "fail") return false;
+  throw new Error(`g32 overlap bridge returned ${JSON.stringify(result.stdout)}`);
 }
 
 export function compareOverlap(legacyRows, newRows) {
@@ -435,9 +621,19 @@ export function runSelfTest() {
   const envelope = validateProfile(manifest, mapping);
   const primary = loadJson(manifest.components[0].config);
   const receiver = loadJson(manifest.components[1].config);
-  compareOverlap(overlapRows("primary", primary).concat(overlapRows("receiver", receiver)), overlapRows("primary", primary).concat(overlapRows("receiver", receiver)));
+  const cutover = loadJson("contracts/g32-cutover.json");
+  const legacyBaseline = legacyOverlapRows("primary", primary, cutover.final).concat(legacyOverlapRows("receiver", receiver, cutover.final));
+  const newBaseline = newOverlapRows("primary", primary, mapping, manifest).concat(newOverlapRows("receiver", receiver, mapping, manifest));
+  compareOverlap(legacyBaseline, newBaseline);
+  if (!g32Accepts("primary", primary, cutover.final) || !g32Accepts("receiver", receiver, cutover.final)) {
+    throw new Error("g32 rejected the baseline overlap rows marked pass");
+  }
+  if (legacyBaseline.some((row) => row.status !== "pass")) throw new Error("legacy overlap baseline is not pass");
   const swapped = jcs({ b: 1, a: 2 });
   if (swapped !== jcs({ a: 2, b: 1 })) throw new Error("JCS key order drifted");
+  if (jcs(-0) !== "0" || jcs(1.5) !== "1.5" || jcs({ b: 1, a: -0 }) !== '{"a":0,"b":1}') {
+    throw new Error("JCS number serialization drifted");
+  }
   if (manifestDigest(manifest).digest === manifestDigest(manifest, "sekiban-dcb-ts/g30-bundle/v1").digest) {
     throw new Error("cross-domain digest collided");
   }
@@ -454,10 +650,42 @@ export function runSelfTest() {
       mutations.push(`${name}:${error.diagnostic.reason}`);
     }
   };
-  expect("legacy-fail-new-pass", () => compareOverlap([{ rowId: "a", status: "fail" }], [{ rowId: "a", status: "pass" }]));
-  expect("new-fail-legacy-pass", () => compareOverlap([{ rowId: "a", status: "pass" }], [{ rowId: "a", status: "fail" }]));
-  expect("missing-row", () => compareOverlap([{ rowId: "a", status: "ok" }], []));
-  expect("duplicate-row", () => compareOverlap([{ rowId: "a", status: "ok" }, { rowId: "a", status: "ok" }], [{ rowId: "a", status: "ok" }]));
+  expect("legacy-fail-new-pass", () => {
+    const drifted = structuredClone(primary);
+    drifted.vars = { ...primary.vars, G32_PIPELINE_DATABASE_ID: cutover.bridge.oldPipelineDatabaseId };
+    compareOverlap(
+      legacyOverlapRows("primary", drifted, cutover.final).concat(legacyOverlapRows("receiver", receiver, cutover.final)),
+      newOverlapRows("primary", drifted, mapping, manifest).concat(newOverlapRows("receiver", receiver, mapping, manifest)),
+    );
+  });
+  expect("new-fail-legacy-pass", () => {
+    const mapped = structuredClone(mapping);
+    mapped.resources = {
+      ...mapping.resources,
+      "pipeline-d1": { database_id: "00000000-0000-4000-8000-000000000099" },
+    };
+    compareOverlap(
+      legacyOverlapRows("primary", primary, cutover.final).concat(legacyOverlapRows("receiver", receiver, cutover.final)),
+      newOverlapRows("primary", primary, mapped, manifest).concat(newOverlapRows("receiver", receiver, mapped, manifest)),
+    );
+  });
+  expect("missing-row", () => {
+    const missing = structuredClone(primary);
+    missing.d1_databases = primary.d1_databases.filter((entry) => entry.binding !== "D1");
+    compareOverlap(
+      legacyOverlapRows("primary", missing, cutover.final),
+      newOverlapRows("primary", missing, mapping, manifest),
+    );
+  });
+  expect("duplicate-row", () => {
+    const duplicated = structuredClone(primary);
+    const pipelineBinding = primary.d1_databases.find((entry) => entry.binding === "D1");
+    duplicated.d1_databases = [...primary.d1_databases, { ...pipelineBinding }];
+    compareOverlap(
+      legacyOverlapRows("primary", duplicated, cutover.final),
+      newOverlapRows("primary", duplicated, mapping, manifest),
+    );
+  });
   expect("second-producer", () => validateConfig(manifest, manifest.components[0], {
     ...primary,
     queues: { ...primary.queues, producers: [...primary.queues.producers, { binding: "EXTRA", queue: primary.queues.producers[0].queue }] },
@@ -498,6 +726,45 @@ export function runSelfTest() {
   }));
   expect("deep-merge", () => resolveCompositionInput({ config: { vars: {} }, deepMerge: true }));
   expect("no-tenant", () => validateManifest({ ...manifest, tenantRef: "" }, mapping));
+  expect("missing-map", () => {
+    const partial = structuredClone(mapping);
+    delete partial.resources["doorbell-service"];
+    validateManifest(manifest, partial);
+  });
+  expect("inflated-cardinality", () => validateManifest({
+    ...manifest,
+    cardinalities: {
+      ...manifest.cardinalities,
+      primary: { ...manifest.cardinalities.primary, "producer-binding": 2 },
+    },
+    edges: [...manifest.edges, { id: "primary-producer-2", kind: "producer-binding", from: "primary", to: "work-queue" }],
+  }, mapping));
+  const nextId = "00000000-0000-4000-8000-000000000099";
+  const shifted = structuredClone(manifest);
+  shifted.resources = shifted.resources.map((resource) => (
+    resource.id === "pipeline-d1" ? { ...resource, resourceRef: opaqueRef(resource.providerKind, nextId) } : resource
+  ));
+  if (manifestDigest(shifted).digest === envelope.digest) throw new Error("resource identity did not move the digest");
+  if (JSON.stringify(publishedPayload(shifted)).includes(nextId)) throw new Error("published payload leaked a raw identity");
+  expect("identity-stale", () => validateManifest(manifest, {
+    resources: { ...mapping.resources, "pipeline-d1": { database_id: nextId } },
+  }));
+  try {
+    validateManifest(manifest, {
+      resources: { ...mapping.resources, "pipeline-d1": { database_id: "CANARY-SECRET-VALUE" } },
+    });
+    throw new Error("canary unexpectedly passed");
+  } catch (error) {
+    if (!(error instanceof CompositionDiagnostic)) throw error;
+    const renderedDiagnostic = JSON.stringify(error.diagnostic);
+    if (!renderedDiagnostic.includes("resource-identity-mismatch") || renderedDiagnostic.includes("CANARY-SECRET-VALUE")) {
+      throw new Error("canary leaked or was not redacted");
+    }
+  }
+  for (const sample of ['env.D1', 'env["D1"]', "env?.D1", "const { D1 } = env", "const { D1: alias } = env"]) {
+    if (!rawBindingHits(sample)) throw new Error(`raw binding scan missed ${sample}`);
+  }
+  if (rawBindingHits("pipelineD1(env)")) throw new Error("raw binding scan flagged an accessor");
   const rendered = JSON.stringify(envelope) + JSON.stringify(publishedPayload(manifest));
   if (rendered.includes(mapping.resources["pipeline-d1"].database_id) || rendered.includes("CANARY-SECRET-VALUE")) {
     throw new Error("published digest leaked a raw identity");

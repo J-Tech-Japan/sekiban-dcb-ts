@@ -22,10 +22,10 @@ Unit B deploy-gate switch, thin-wrapper replacement of the G32 checker, a second
 npm run test:g34
 ```
 
-Paste from 2026-09-18:
+Paste from 2026-09-18, after the implementation-review fixes:
 
 ```
-{"result":"g34-provider-composition-self-test-passed","digest":"25d9d41ab85fb5eec1cb213366421309e839133131dca9deb5cf207fea1b46db","mutations":["legacy-fail-new-pass:legacy-fail-new-pass","new-fail-legacy-pass:new-fail-legacy-pass","missing-row:missing-row","duplicate-row:duplicate-row","second-producer:cardinality","receiver-queues:queues-forbidden","second-shard:second-shard","second-manifest:second-manifest","json-only:generated-drift","generated-only:generated-drift","accessor-only:generated-drift","migration-swap:migration-swap","migration-order:migration-order","do-owner:do-migration-owner","kept-var:unresolved-kept-var","deep-merge:deep-merge-forbidden","no-tenant:scope-proof-unavailable"]}
+{"result":"g34-provider-composition-self-test-passed","digest":"b1779add2dddf3a5e30a3c4e8f1368414afa2f061db158d1a93e06d9e1d174ab","mutations":["legacy-fail-new-pass:legacy-fail-new-pass","new-fail-legacy-pass:new-fail-legacy-pass","missing-row:missing-row","duplicate-row:duplicate-row","second-producer:cardinality","receiver-queues:queues-forbidden","second-shard:second-shard","second-manifest:second-manifest","json-only:generated-drift","generated-only:generated-drift","accessor-only:generated-drift","migration-swap:migration-swap","migration-order:migration-order","do-owner:do-migration-owner","kept-var:unresolved-kept-var","deep-merge:deep-merge-forbidden","no-tenant:scope-proof-unavailable","missing-map:scope-proof-unavailable","inflated-cardinality:cardinality","identity-stale:resource-identity-mismatch"]}
 ```
 
 The same command also runs `scripts/g32-cutover-check.mjs` and requires it to exit 0. The published manifest digest does not contain the pipeline `database_id`.

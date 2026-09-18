@@ -44,13 +44,13 @@
     }
   ],
   "resources": [
-    { "id": "dlq-queue", "kind": "physical-resource", "providerKind": "queue", "role": "dlq", "resourceRef": "rref-d40f7123a5e91c86f370" },
-    { "id": "doorbell-service", "kind": "physical-resource", "providerKind": "service", "role": "doorbell", "resourceRef": "rref-0732a456d81c4f1926a3" },
-    { "id": "mv-d1", "kind": "physical-resource", "providerKind": "d1", "role": "MV-D1", "resourceRef": "rref-b28d5f01e3c79a64d15e" },
-    { "id": "pipeline-d1", "kind": "physical-resource", "providerKind": "d1", "role": "pipeline-D1", "resourceRef": "rref-a17c4e90d2b68f53c04d" },
+    { "id": "dlq-queue", "kind": "physical-resource", "providerKind": "queue", "role": "dlq", "resourceRef": "rref-532442271d42b860fae4" },
+    { "id": "doorbell-service", "kind": "physical-resource", "providerKind": "service", "role": "doorbell", "resourceRef": "rref-36875d0e3c29a0f41b1b" },
+    { "id": "mv-d1", "kind": "physical-resource", "providerKind": "d1", "role": "MV-D1", "resourceRef": "rref-5517f568569b4f4cd698" },
+    { "id": "pipeline-d1", "kind": "physical-resource", "providerKind": "d1", "role": "pipeline-D1", "resourceRef": "rref-f2a8864ba7b7c7898e9b" },
     { "id": "primary-do", "kind": "physical-resource", "providerKind": "durable-object", "role": "durable-object", "resourceRef": "rref-e5108234b6fa2d970481", "owner": "primary", "scriptName": null },
     { "id": "receiver-do", "kind": "physical-resource", "providerKind": "durable-object", "role": "durable-object", "resourceRef": "rref-f6219345c70b3e081592", "owner": "receiver", "scriptName": null },
-    { "id": "work-queue", "kind": "physical-resource", "providerKind": "queue", "role": "work-queue", "resourceRef": "rref-c39e6012f4d80b75e26f" }
+    { "id": "work-queue", "kind": "physical-resource", "providerKind": "queue", "role": "work-queue", "resourceRef": "rref-017eadaafa7fc660bed8" }
   ],
   "edges": [
     { "id": "primary-consumer", "kind": "consumer-attachment", "from": "primary", "to": "work-queue" },
