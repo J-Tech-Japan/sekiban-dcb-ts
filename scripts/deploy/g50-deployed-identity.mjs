@@ -10,6 +10,13 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
+import {
+  evaluateTipIdentity,
+  G99_NPM_CONSUMER_TIP_MARKER,
+  G99_TIP_SERVICE,
+} from "./g99-tip-identity.mjs";
+
+export { G99_NPM_CONSUMER_TIP_MARKER };
 
 const root = process.cwd();
 const TOKEN_VARIABLES = Object.freeze([
@@ -89,12 +96,15 @@ export function evaluateIdentity({
   const versionMessage = typeof version?.annotations?.["workers/message"] === "string"
     ? version.annotations["workers/message"]
     : "";
-  const versionMatches = version !== undefined && versionMessage.includes(expectedConfigCommit);
+  const tipMatches = versionMessage.includes(G99_NPM_CONSUMER_TIP_MARKER)
+    && versionMessage.includes(expectedConfigCommit);
+  const versionMatches = version !== undefined && tipMatches;
   const mainMatches = observedMainCommit === mainCommit;
   const configMatches = sha256(expectedConfig) === sha256(mainConfig);
   const runtimeMatches = runtimeDiffPaths.length === 0;
   return Object.freeze({
     versionMatches,
+    tipMatches,
     mainMatches,
     configMatches,
     runtimeMatches,
@@ -115,7 +125,7 @@ function write(path, value) {
 
 function main() {
   const wrangler = required("--wrangler", argument("--wrangler", "./node_modules/.bin/wrangler"));
-  const service = required("--service", argument("--service", "sekiban-dcb-meeting-room-cloudflare-only"));
+  const service = required("--service", argument("--service", G99_TIP_SERVICE));
   const expectedVersion = required("--expected-version", argument("--expected-version"));
   const expectedConfigCommit = required("--expected-config-commit", argument("--expected-config-commit"));
   const mainCommit = required("--main-commit", argument("--main-commit"));
@@ -137,6 +147,24 @@ function main() {
     const versions = command(wrangler, ["versions", "list", "--name", service, "--json"], scrubbedEnvironment());
     document.versions = versions;
     const versionsOutput = requiredCommand("wrangler versions list", versions);
+    const deployments = command(wrangler, ["deployments", "list", "--name", service, "--json"], scrubbedEnvironment());
+    document.deployments = deployments;
+    const deploymentsOutput = requiredCommand("wrangler deployments list", deployments);
+    const tipIdentity = evaluateTipIdentity({
+      deployments: json(deploymentsOutput, "wrangler deployments list"),
+      expectedCommit: expectedConfigCommit,
+      service,
+      expectedVersionId: expectedVersion,
+    });
+    document.tipIdentity = tipIdentity;
+    if (!tipIdentity.ok) {
+      document.identity = null;
+      document.decision = "identity-mismatch-deploy-current-main-required";
+      write(output, document);
+      process.stdout.write(`${JSON.stringify({ output, decision: document.decision, tipIdentity }, null, 2)}\n`);
+      process.exitCode = 3;
+      return;
+    }
     const observedMainCommit = git(["rev-parse", "origin/main"]).trim();
     const expectedConfig = git(["show", `${expectedConfigCommit}:${configPath}`]);
     const mainConfig = git(["show", `${mainCommit}:${configPath}`]);
@@ -156,7 +184,7 @@ function main() {
       ? "reuse-existing-deployment-no-redeploy"
       : "identity-mismatch-deploy-current-main-required";
     write(output, document);
-    process.stdout.write(`${JSON.stringify({ output, decision: document.decision, identity: document.identity }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ output, decision: document.decision, identity: document.identity, tipIdentity }, null, 2)}\n`);
     if (!document.identity.reuseExistingDeployment) process.exitCode = 3;
   } catch (error) {
     document.error = error instanceof Error ? error.message : String(error);

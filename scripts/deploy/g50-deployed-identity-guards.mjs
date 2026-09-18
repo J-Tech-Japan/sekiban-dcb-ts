@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Non-live guards for the SDT-G50 reuse-versus-redeploy identity decision. */
-import { evaluateIdentity } from "./g50-deployed-identity.mjs";
+import { evaluateIdentity, G99_NPM_CONSUMER_TIP_MARKER } from "./g50-deployed-identity.mjs";
 
 function fail(message) {
   throw new Error(`g50-deployed-identity-guards:${message}`);
@@ -16,7 +16,10 @@ const mainCommit = "e4707fdef800e1c2f84c8bebfb7225607861d0c9";
 
 function baseline() {
   return {
-    versions: [{ id: version, annotations: { "workers/message": `SDT-G49 ${configCommit}` } }],
+    versions: [{
+      id: version,
+      annotations: { "workers/message": `${G99_NPM_CONSUMER_TIP_MARKER} ${configCommit}` },
+    }],
     expectedVersion: version,
     expectedConfigCommit: configCommit,
     mainCommit,
@@ -30,6 +33,7 @@ function baseline() {
 function matchingIdentityReusesDeployment() {
   const result = evaluateIdentity(baseline());
   assert(result.reuseExistingDeployment, "matching deployed version/config/runtime was not reusable");
+  assert(result.tipMatches, "matching tip marker must pass");
   return { result: "green", decision: "reuse-existing-deployment-no-redeploy" };
 }
 
@@ -44,7 +48,10 @@ function assertMutantIsRed(label, mutate) {
 const results = {
   matchingIdentity: matchingIdentityReusesDeployment(),
   wrongVersionAnnotationMutant: assertMutantIsRed("wrong version annotation", (input) => {
-    input.versions[0].annotations["workers/message"] = "SDT-G49 another commit";
+    input.versions[0].annotations["workers/message"] = `${G99_NPM_CONSUMER_TIP_MARKER} another commit`;
+  }),
+  missingTipMarkerMutant: assertMutantIsRed("missing npm-consumer tip marker", (input) => {
+    input.versions[0].annotations["workers/message"] = `monorepo tip ${configCommit}`;
   }),
   configDriftMutant: assertMutantIsRed("config drift", (input) => {
     input.mainConfig = '{"name":"changed-normal-config"}\n';

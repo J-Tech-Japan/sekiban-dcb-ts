@@ -5,7 +5,11 @@
  * Speed tests must target sekiban-dcb-meeting-room-cloudflare-only only when the
  * active deployment message proves an npm-consumer tip deploy (g99 script).
  */
-import { evaluateTipIdentity } from "./g99-tip-identity.mjs";
+import {
+  evaluateTipIdentity,
+  G99_NPM_CONSUMER_TIP_MARKER,
+  G99_TIP_SERVICE,
+} from "./g99-tip-identity.mjs";
 
 function fail(message) {
   throw new Error(`g99-tip-identity-guards:${message}`);
@@ -29,11 +33,11 @@ function baseline() {
       {
         created_on: "2026-09-17T21:05:59.631Z",
         versions: [{ version_id: tipVersion, percentage: 100 }],
-        annotations: { "workers/message": `SDT-G99 npm-consumer tip ${tipCommit}` },
+        annotations: { "workers/message": `${G99_NPM_CONSUMER_TIP_MARKER} ${tipCommit}` },
       },
     ],
     expectedCommit: tipCommit,
-    service: "sekiban-dcb-meeting-room-cloudflare-only",
+    service: G99_TIP_SERVICE,
   };
 }
 
@@ -63,9 +67,23 @@ const wrongCommit = evaluateTipIdentity({
 });
 assert(!wrongCommit.ok, "commit mismatch must fail");
 
+const wrongVersion = evaluateTipIdentity({
+  ...baseline(),
+  expectedVersionId: "22222222-2222-2222-2222-222222222222",
+});
+assert(!wrongVersion.ok, "version id mismatch must fail");
+
+const matchingVersion = evaluateTipIdentity({
+  ...baseline(),
+  expectedVersionId: tipVersion,
+});
+assert(matchingVersion.ok, "matching tip version id should pass");
+
 process.stdout.write(`${JSON.stringify({
   matching: { ok: matching.ok },
   wrongWorker: { ok: wrongWorker.ok, reason: wrongWorker.reason },
   missingMarker: { ok: missingMarker.ok, reason: missingMarker.reason },
   wrongCommit: { ok: wrongCommit.ok, reason: wrongCommit.reason },
+  wrongVersion: { ok: wrongVersion.ok, reason: wrongVersion.reason },
+  matchingVersion: { ok: matchingVersion.ok },
 }, null, 2)}\n`);
