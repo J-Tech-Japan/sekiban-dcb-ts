@@ -143,6 +143,7 @@ export const TAG_SQL_SCHEMA_DDL = `
     committed_event_count INTEGER NOT NULL,
     head_suid TEXT NOT NULL,
     reservation_confirmed INTEGER NOT NULL CHECK (reservation_confirmed IN (0, 1)),
+    written_version INTEGER NOT NULL,
     PRIMARY KEY (attempt_id, epoch)
   );
 
@@ -207,6 +208,20 @@ export const TAG_READ_AFTER_THROUGH_SQL = `
 
 export function initializeTagSqlSchema(sql: SqlStorage): void {
   sql.exec(TAG_SQL_SCHEMA_DDL);
+  ensureTagCommitReceiptWrittenVersion(sql);
+}
+
+/**
+ * SDT-G36: `CREATE TABLE IF NOT EXISTS` never alters an existing table, so
+ * an idempotent `ADD COLUMN` backfills `written_version` on pre-G36 stores.
+ */
+export function ensureTagCommitReceiptWrittenVersion(sql: SqlStorage): void {
+  const columns = sql.exec("SELECT name FROM pragma_table_info('tag_commit_receipt')").toArray() as Array<Record<string, unknown>>;
+  if (columns.some((column) => column.name === "written_version")) return;
+  // Nullable on migrated stores so pre-G36 receipts stay NULL (unknown) and
+  // duplicate replay can fail closed instead of substituting head. Fresh
+  // tables enforce NOT NULL via the DDL above; every new write provides it.
+  sql.exec("ALTER TABLE tag_commit_receipt ADD COLUMN written_version INTEGER");
 }
 
 /** A SQL-backed tag object always exposes this capability at runtime. */

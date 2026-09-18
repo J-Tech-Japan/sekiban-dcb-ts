@@ -47,6 +47,7 @@ import {
 } from "../trace/ObservationStream";
 import { canonicalDeclaredTagSet, eventDigestBytes, eventDigestHex } from "./EventDigest";
 import {
+  ensureTagCommitReceiptWrittenVersion,
   hasTagSqlStorage,
   initializeTagSqlSchema,
   TAG_READ_AFTER_SQL,
@@ -2089,6 +2090,7 @@ export class TagDurableObject implements DurableObject {
   private ensureSqlTag(tag: string): void {
     const sql = this.sqlStorage();
     if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
+    ensureTagCommitReceiptWrittenVersion(sql);
     const existing = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
     if (existing !== undefined) {
       if (sqlString(existing.tag, "tag_identity.tag") !== tag) throw new Error("Tag Durable Object identity changed");
@@ -2202,17 +2204,19 @@ export class TagDurableObject implements DurableObject {
     eventCount: number,
     head: string,
     confirmsReservation: boolean,
+    writtenVersion: number,
   ): void {
     sql.exec(`
       INSERT INTO tag_commit_receipt
-        (attempt_id, epoch, committed_at, committed_event_count, head_suid, reservation_confirmed)
-      VALUES (?, ?, ?, ?, ?, ?)
+        (attempt_id, epoch, committed_at, committed_event_count, head_suid, reservation_confirmed, written_version)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(attempt_id, epoch) DO UPDATE SET
         committed_at = excluded.committed_at,
         committed_event_count = excluded.committed_event_count,
         head_suid = excluded.head_suid,
-        reservation_confirmed = excluded.reservation_confirmed
-    `, input.attemptId, input.epoch, committedAt, eventCount, head, confirmsReservation ? 1 : 0);
+        reservation_confirmed = excluded.reservation_confirmed,
+        written_version = excluded.written_version
+    `, input.attemptId, input.epoch, committedAt, eventCount, head, confirmsReservation ? 1 : 0, writtenVersion);
   }
 
   /**
@@ -2269,8 +2273,24 @@ export class TagDurableObject implements DurableObject {
         return { event, obligation, exact };
       });
       // Exact duplicate replay precedes all epoch/token checks by contract.
+      // SDT-G36: replay the stored write transaction's own pair. Never mint
+      // a timestamp and never substitute the current head version.
       if (existingCandidates.every(({ exact }) => exact)) {
-        return { status: 200, body: { status: "duplicate", version } };
+        const receipt = sql.exec<SqlRow>(`
+          SELECT committed_at, written_version FROM tag_commit_receipt
+          WHERE attempt_id = ? AND epoch = ?
+        `, input.attemptId, input.epoch).toArray()[0];
+        if (receipt === undefined) {
+          await this.rearmScheduler(txn);
+          return { ...rejected("duplicate_receipt_missing"), body: { ...rejected("duplicate_receipt_missing").body as JsonObject, version } };
+        }
+        const storedAt = sqlNullableString(receipt.committed_at, "tag_commit_receipt.committed_at");
+        const storedVersion = sqlNullableNumber(receipt.written_version, "tag_commit_receipt.written_version");
+        if (storedAt === null || storedVersion === null) {
+          await this.rearmScheduler(txn);
+          return { ...rejected("duplicate_receipt_unknown"), body: { ...rejected("duplicate_receipt_unknown").body as JsonObject, version } };
+        }
+        return { status: 200, body: { status: "duplicate", version: storedVersion, updatedAt: storedAt } };
       }
 
       const active: SqlRow | undefined = sql.exec<SqlRow>("SELECT * FROM tag_reservation WHERE singleton = 1").toArray()[0];
@@ -2385,7 +2405,7 @@ export class TagDurableObject implements DurableObject {
       if (input.faultInjection === "after-append-before-confirm") {
         throw new AppendTransactionFault("Simulated interruption before atomic commit receipt");
       }
-      this.writeCommittedSqlReceipt(sql, input, committedAt, events.length, head, confirmsReservation);
+      this.writeCommittedSqlReceipt(sql, input, committedAt, events.length, head, confirmsReservation, version + 1);
       if (confirmsReservation) sql.exec("DELETE FROM tag_reservation WHERE singleton = 1");
       await this.rearmScheduler(txn);
       return {
@@ -2394,6 +2414,7 @@ export class TagDurableObject implements DurableObject {
           status: "appended",
           fenceGate: { checked: true, activeFenceCount: 0 },
           version: version + 1,
+          updatedAt: committedAt,
         },
         hopFacts,
       };
@@ -2792,14 +2813,15 @@ export class TagDurableObject implements DurableObject {
       artifact.localMembership, Date.now());
       this.upsertSourcePartitionRegistration(sql, eventServiceId, record.tag, outbox.eventId);
     }
+    ensureTagCommitReceiptWrittenVersion(sql);
     for (const confirmation of record.confirmations) {
       sql.exec(`
         INSERT OR IGNORE INTO tag_commit_receipt
-          (attempt_id, epoch, committed_at, committed_event_count, head_suid, reservation_confirmed)
-        VALUES (?, ?, ?, ?, ?, 1)
+          (attempt_id, epoch, committed_at, committed_event_count, head_suid, reservation_confirmed, written_version)
+        VALUES (?, ?, ?, ?, ?, 1, ?)
       `, confirmation.attemptId, confirmation.epoch, record.updatedAt,
       record.events.filter((event) => event.attemptId === confirmation.attemptId).length,
-      record.head);
+      record.head, record.version);
     }
   }
 
@@ -3245,7 +3267,14 @@ export class TagDurableObject implements DurableObject {
 
         // Required order begins here: exact duplicate is before any epoch or token check.
         if (batchIsExactDuplicate(record, input)) {
-          return { status: 200, body: { status: "duplicate", version: record.version } };
+          const receipt = record.writeReceipts?.[`${input.attemptId}:${input.epoch}`];
+          if (receipt === undefined) {
+            return {
+              ...rejected("duplicate_receipt_unknown"),
+              body: { ...rejected("duplicate_receipt_unknown").body as JsonObject, version: record.version },
+            };
+          }
+          return { status: 200, body: { status: "duplicate", version: receipt.version, updatedAt: receipt.updatedAt } };
         }
 
         const expiry = expireReservation(record);
@@ -3341,10 +3370,17 @@ export class TagDurableObject implements DurableObject {
             ? withMaxEpoch(record.confirmations, input.attemptId, input.epoch)
             : record.confirmations,
         });
-        await this.write(txn, updated, serviceId ?? "");
+        const recorded = {
+          ...updated,
+          writeReceipts: {
+            ...(record.writeReceipts ?? {}),
+            [`${input.attemptId}:${input.epoch}`]: { version: updated.version, updatedAt: updated.updatedAt },
+          },
+        };
+        await this.write(txn, recorded, serviceId ?? "");
         return {
           status: 201,
-          body: { status: "appended", fenceGate, version: updated.version },
+          body: { status: "appended", fenceGate, version: recorded.version, updatedAt: recorded.updatedAt },
         };
       });
       const response = json(result.body, result.status);

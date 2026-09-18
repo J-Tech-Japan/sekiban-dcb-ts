@@ -26,6 +26,10 @@ interface CommitSuccessResponseSeam {
     attemptId: string,
     startedAt: number,
     fault: undefined,
+    traceScope: undefined,
+    writes: {
+      readonly tagWriteFacts: ReadonlyMap<string, { readonly version: number; readonly updatedAt: string }>;
+    },
   ): Promise<unknown>;
 }
 
@@ -219,7 +223,7 @@ describe("SDT-G45 scalar Tag head facts", () => {
     expect(await absentResponse.json()).toMatchObject({ code: "tag_not_found" });
   });
 
-  it("AC2: commit success response requests head facts for every written tag and keeps the fixture bytes", async () => {
+  it("AC2: commit success response uses the append transaction facts and does not read head facts", async () => {
     const eventId = g32EventId("g45-commit-response");
     const candidates: AllocatedCommitCandidate[] = [{
       eventId,
@@ -252,8 +256,15 @@ describe("SDT-G45 scalar Tag head facts", () => {
         "g45-fixture-attempt",
         now,
         undefined,
+        undefined,
+        {
+          tagWriteFacts: new Map([
+            ["room:a", { version: 10, updatedAt: "2026-08-29T12:00:00.000Z" }],
+            ["room:b", { version: 11, updatedAt: "2026-08-29T12:00:00.001Z" }],
+          ]),
+        },
       );
-      expect(paths).toEqual(["/head-facts", "/head-facts"]);
+      expect(paths).toEqual([]);
       const completeBody = JSON.parse(JSON.stringify(complete)) as Record<string, unknown>;
       const semanticCompleteBody = Object.fromEntries(
         Object.entries(completeBody).filter(([key]) => key !== "duration"),

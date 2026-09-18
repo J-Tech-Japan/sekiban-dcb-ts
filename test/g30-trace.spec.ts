@@ -255,7 +255,7 @@ function nonSuccessWorker(
         if (url.pathname === "/cancel") return response({ cancelled: true });
         if (url.pathname === "/append") return scenario === "partial-handoff"
           ? response({ code: "append_failed" }, 500)
-          : response({ appended: true }, 201);
+          : response({ appended: true, version: 5, updatedAt: "2026-08-23T00:00:00.000Z" }, 201);
         if (url.pathname === "/fence/install") return response({ status: "fence-installed" }, 201);
         if (url.pathname === "/state") {
           return response({ version: 5, updatedAt: "2026-08-23T00:00:00.000Z" });
