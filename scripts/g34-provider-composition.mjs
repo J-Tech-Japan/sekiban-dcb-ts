@@ -236,7 +236,7 @@ export function rawBindingHits(text) {
     new RegExp(`\\benv\\s*\\?\\.\\s*(${alt})\\b`),
     new RegExp(`\\benv\\.(${alt})\\b`),
     new RegExp(`\\benv\\s*(?:\\?\\.)?\\s*\\[\\s*["'](${alt})["']\\s*\\]`),
-    new RegExp(`\\{[^}\\n]*\\b(${alt})\\b[^}\\n]*\\}\\s*=\\s*env\\b`),
+    new RegExp(`\\{[\\s\\S]*?\\b(${alt})\\b[\\s\\S]*?\\}\\s*=\\s*env\\b`),
   ];
   return patterns.some((pattern) => pattern.test(text));
 }
@@ -309,6 +309,17 @@ function requireMappingEntries(mapping) {
 export function validateManifest(manifest, mapping) {
   requireMappingEntries(mapping);
   if (tenantRefOf(manifest).length < 16) fail("SCOPE_PROOF_UNAVAILABLE", "tenantRef", "scope-proof-unavailable");
+  const componentIds = (manifest.components ?? []).map((component) => component.id).sort();
+  if (JSON.stringify(componentIds) !== JSON.stringify(["primary", "receiver"])) {
+    fail("CARDINALITY", "components", "cardinality");
+  }
+  for (const id of ["primary", "receiver"]) {
+    const declared = Object.keys(manifest.cardinalities?.[id] ?? {}).sort();
+    const expectedKeys = Object.keys(PROFILE_CARDINALITIES[id]).sort();
+    if (JSON.stringify(declared) !== JSON.stringify(expectedKeys)) {
+      fail("CARDINALITY", `${id}.cardinalities`, "cardinality");
+    }
+  }
   const pipeline = manifest.resources.filter((resource) => resource.role === "pipeline-D1");
   if (pipeline.length !== 1) fail("SECOND_SHARD", "resources.pipeline-D1", "second-shard");
   const resourceIds = [...manifest.resources.map((resource) => resource.id)].sort();
@@ -463,44 +474,74 @@ function databaseEntries(config, binding) {
   return (config?.d1_databases ?? []).filter((entry) => entry?.binding === binding);
 }
 
-export function legacyOverlapRows(componentId, config, expected) {
+function replaceD1(config, binding, entries) {
+  config.d1_databases = (config.d1_databases ?? []).filter((entry) => entry?.binding !== binding);
+  config.d1_databases.push(...entries);
+}
+
+export function legacyOverlapRows(componentId, config, expected, baseline = config) {
+  const probe = (apply) => {
+    const isolated = structuredClone(baseline);
+    apply(isolated);
+    return g32Accepts(componentId, isolated, expected) ? "pass" : "fail";
+  };
   const rows = [];
   const pipelines = databaseEntries(config, "D1");
-  if (pipelines.length === 0) rows.push({ rowId: `${componentId}.pipeline.database_id`, status: "fail" });
-  for (const entry of pipelines) {
-    const idOk = entry.database_id === expected.pipelineDatabase.id;
-    const varOk = config?.vars?.G32_PIPELINE_DATABASE_ID === expected.pipelineDatabase.id;
-    rows.push({ rowId: `${componentId}.pipeline.database_id`, status: idOk && varOk ? "pass" : "fail" });
+  for (const entry of (pipelines.length === 0 ? [null] : pipelines)) {
+    rows.push({
+      rowId: `${componentId}.pipeline.database_id`,
+      status: probe((isolated) => {
+        replaceD1(isolated, "D1", entry === null ? [] : [entry]);
+        isolated.vars = { ...(isolated.vars ?? {}), G32_PIPELINE_DATABASE_ID: config?.vars?.G32_PIPELINE_DATABASE_ID };
+      }),
+    });
   }
   const views = databaseEntries(config, "D1_MV");
-  if (views.length === 0) rows.push({ rowId: `${componentId}.mv.database_id`, status: "fail" });
-  for (const entry of views) {
-    const idOk = entry.database_id === expected.materializedViewDatabase.id;
-    const varOk = config?.vars?.G32_MATERIALIZED_VIEW_DATABASE_ID === expected.materializedViewDatabase.id;
-    rows.push({ rowId: `${componentId}.mv.database_id`, status: idOk && varOk ? "pass" : "fail" });
+  for (const entry of (views.length === 0 ? [null] : views)) {
+    rows.push({
+      rowId: `${componentId}.mv.database_id`,
+      status: probe((isolated) => {
+        replaceD1(isolated, "D1_MV", entry === null ? [] : [entry]);
+        isolated.vars = { ...(isolated.vars ?? {}), G32_MATERIALIZED_VIEW_DATABASE_ID: config?.vars?.G32_MATERIALIZED_VIEW_DATABASE_ID };
+      }),
+    });
   }
-  const classes = (config?.durable_objects?.bindings ?? []).map((entry) => entry?.class_name).sort();
-  const wantedClasses = [...expected.durableObjectNamespaces].sort();
   rows.push({
     rowId: `${componentId}.do.class-set`,
-    status: JSON.stringify(classes) === JSON.stringify(wantedClasses) ? "pass" : "fail",
+    status: probe((isolated) => {
+      isolated.durable_objects = { ...(isolated.durable_objects ?? {}), bindings: config?.durable_objects?.bindings ?? [] };
+    }),
   });
   if (componentId === "primary") {
-    const consumer = config?.queues?.consumers?.[0];
     rows.push({
       rowId: "primary.queue.producer.0",
-      status: config?.queues?.producers?.[0]?.queue === expected.queue ? "pass" : "fail",
+      status: probe((isolated) => {
+        isolated.queues = { ...(isolated.queues ?? {}), producers: config?.queues?.producers ?? [] };
+        isolated.vars = { ...(isolated.vars ?? {}), G32_QUEUE_NAME: config?.vars?.G32_QUEUE_NAME };
+      }),
     });
     rows.push({
       rowId: "primary.queue.consumer.0",
-      status: consumer?.queue === expected.queue ? "pass" : "fail",
+      status: probe((isolated) => {
+        const consumer = { ...(isolated.queues?.consumers?.[0] ?? {}), queue: config?.queues?.consumers?.[0]?.queue };
+        isolated.queues = { ...(isolated.queues ?? {}), consumers: [consumer] };
+      }),
     });
     rows.push({
       rowId: "primary.queue.dlq.0",
-      status: consumer?.dead_letter_queue === expected.deadLetterQueue && consumer?.dead_letter_queue !== expected.queue ? "pass" : "fail",
+      status: probe((isolated) => {
+        const consumer = { ...(isolated.queues?.consumers?.[0] ?? {}), dead_letter_queue: config?.queues?.consumers?.[0]?.dead_letter_queue };
+        isolated.queues = { ...(isolated.queues ?? {}), consumers: [consumer] };
+      }),
     });
   } else {
-    rows.push({ rowId: "receiver.queues.absent", status: config?.queues === undefined ? "pass" : "fail" });
+    rows.push({
+      rowId: "receiver.queues.absent",
+      status: probe((isolated) => {
+        if (config?.queues === undefined) delete isolated.queues;
+        else isolated.queues = config.queues;
+      }),
+    });
   }
   return rows;
 }
@@ -545,7 +586,12 @@ export function newOverlapRows(componentId, config, mapping, manifest) {
   return rows;
 }
 
+const g32AcceptCache = new Map();
+
 export function g32Accepts(component, config, expected) {
+  const key = `${component}\0${JSON.stringify(config)}`;
+  const cached = g32AcceptCache.get(key);
+  if (cached !== undefined) return cached;
   let src = readFileSync(join(root, "scripts/g32-cutover-check.mjs"), "utf8");
   src = src.replace(/\nconst contract =[\s\S]*?\nfunction arraysEqual/, "\nfunction arraysEqual");
   src = src.replace("\nfunction assertComponentConfig", "\nexport function assertComponentConfig");
@@ -564,9 +610,12 @@ try {
 `;
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", runner], { encoding: "utf8" });
   if (result.status !== 0) throw new Error(result.stderr || "g32 overlap bridge failed");
-  if (result.stdout === "ok") return true;
-  if (result.stdout === "fail") return false;
-  throw new Error(`g32 overlap bridge returned ${JSON.stringify(result.stdout)}`);
+  if (result.stdout !== "ok" && result.stdout !== "fail") {
+    throw new Error(`g32 overlap bridge returned ${JSON.stringify(result.stdout)}`);
+  }
+  const accepted = result.stdout === "ok";
+  g32AcceptCache.set(key, accepted);
+  return accepted;
 }
 
 export function compareOverlap(legacyRows, newRows) {
@@ -654,7 +703,7 @@ export function runSelfTest() {
     const drifted = structuredClone(primary);
     drifted.vars = { ...primary.vars, G32_PIPELINE_DATABASE_ID: cutover.bridge.oldPipelineDatabaseId };
     compareOverlap(
-      legacyOverlapRows("primary", drifted, cutover.final).concat(legacyOverlapRows("receiver", receiver, cutover.final)),
+      legacyOverlapRows("primary", drifted, cutover.final, primary).concat(legacyOverlapRows("receiver", receiver, cutover.final, receiver)),
       newOverlapRows("primary", drifted, mapping, manifest).concat(newOverlapRows("receiver", receiver, mapping, manifest)),
     );
   });
@@ -673,7 +722,7 @@ export function runSelfTest() {
     const missing = structuredClone(primary);
     missing.d1_databases = primary.d1_databases.filter((entry) => entry.binding !== "D1");
     compareOverlap(
-      legacyOverlapRows("primary", missing, cutover.final),
+      legacyOverlapRows("primary", missing, cutover.final, primary),
       newOverlapRows("primary", missing, mapping, manifest),
     );
   });
@@ -682,7 +731,7 @@ export function runSelfTest() {
     const pipelineBinding = primary.d1_databases.find((entry) => entry.binding === "D1");
     duplicated.d1_databases = [...primary.d1_databases, { ...pipelineBinding }];
     compareOverlap(
-      legacyOverlapRows("primary", duplicated, cutover.final),
+      legacyOverlapRows("primary", duplicated, cutover.final, primary),
       newOverlapRows("primary", duplicated, mapping, manifest),
     );
   });
@@ -761,7 +810,11 @@ export function runSelfTest() {
       throw new Error("canary leaked or was not redacted");
     }
   }
-  for (const sample of ['env.D1', 'env["D1"]', "env?.D1", "const { D1 } = env", "const { D1: alias } = env"]) {
+  expect("dropped-component", () => validateManifest({
+    ...manifest,
+    components: manifest.components.filter((component) => component.id !== "receiver"),
+  }, mapping));
+  for (const sample of ['env.D1', 'env["D1"]', "env?.D1", "const { D1 } = env", "const { D1: alias } = env", "const {\n  D1\n} = env"]) {
     if (!rawBindingHits(sample)) throw new Error(`raw binding scan missed ${sample}`);
   }
   if (rawBindingHits("pipelineD1(env)")) throw new Error("raw binding scan flagged an accessor");
