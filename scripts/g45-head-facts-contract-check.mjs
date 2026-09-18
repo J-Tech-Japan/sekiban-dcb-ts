@@ -57,13 +57,14 @@ export function assertG45HeadFactsContract(value) {
   requireAbsent(reader, "SELECT event_json FROM tag_event", "head-facts reader");
 
   const success = between(commit, "private async successResponse", "private noApplicationOutcome", "commit success response");
-  requireContains(success, 'this.tagRequest(tag, "/head-facts"', "commit success response");
+  requireContains(success, "writes?.tagWriteFacts.get(tag)", "commit success response");
+  requireAbsent(success, 'this.tagRequest(tag, "/head-facts"', "commit success response");
   requireAbsent(success, 'this.tagRequest(tag, "/state"', "commit success response");
-  requireContains(success, 'stageScope === undefined ? undefined : "S14"', "commit success response span identity");
+  requireContains(success, 'stageScope.fork().span("S14"', "commit success response span identity");
 
   for (const token of [
     "real /head-facts is table-aware",
-    "commit success response requests head facts for every written tag",
+    "commit success response uses the append transaction facts and does not read head facts",
     "real handler head-facts read has a singleton non-event SQL set at every history point",
     "AC3 checker rejects each standalone falsification",
     "historyProportionalLimit",
@@ -103,7 +104,7 @@ function expectRed(mutator, label) {
 
 function selfTest() {
   assertG45HeadFactsContract(snapshot());
-  expectRed((value) => { value.commit = value.commit.replace('this.tagRequest(tag, "/head-facts"', 'this.tagRequest(tag, "/state"'); }, "commit falls back to full state");
+  expectRed((value) => { value.commit = value.commit.replace("private async successResponse", "private async successResponse\nthis.tagRequest(tag, \"/head-facts\""); }, "commit reads head facts on success");
   expectRed((value) => { value.tag = value.tag.replace("private readHeadFacts", "private readG45MutantFacts"); }, "head-facts reader is removed");
   expectRed((value) => { value.test = value.test.replaceAll("intermediateOnlySpike", "endpointOnlySpike"); }, "all-points checker fixture is removed");
   expectRed((value) => { value.test = value.test.replaceAll("constantTagEventLimit", "constantLimitMutationRemoved"); }, "constant tag_event LIMIT fixture is removed");
