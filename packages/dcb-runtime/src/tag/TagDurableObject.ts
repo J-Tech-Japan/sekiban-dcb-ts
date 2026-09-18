@@ -2278,14 +2278,19 @@ export class TagDurableObject implements DurableObject {
       if (existingCandidates.every(({ exact }) => exact)) {
         // Exact duplicate is before the epoch check, so a replay may name a
         // different epoch than the write that stored the receipt. Prefer the
-        // caller's epoch; otherwise the sole receipt for this attempt. A
-        // missing or NULL written_version still fails closed.
+        // caller's epoch, then the receipt whose head is this batch, then the
+        // sole receipt for the attempt. A missing or NULL written_version
+        // still fails closed.
         const receipts = sql.exec<SqlRow>(`
-          SELECT epoch, committed_at, written_version FROM tag_commit_receipt
+          SELECT epoch, committed_at, written_version, head_suid FROM tag_commit_receipt
           WHERE attempt_id = ?
         `, input.attemptId).toArray();
         const sameEpoch = receipts.find((row) => sqlNumber(row.epoch, "tag_commit_receipt.epoch") === input.epoch);
-        const receipt = sameEpoch ?? (receipts.length === 1 ? receipts[0] : undefined);
+        const replayHead = input.candidates.at(-1)?.suid;
+        const byHead = replayHead === undefined
+          ? []
+          : receipts.filter((row) => sqlString(row.head_suid, "tag_commit_receipt.head_suid") === replayHead);
+        const receipt = sameEpoch ?? (byHead.length === 1 ? byHead[0] : undefined) ?? (receipts.length === 1 ? receipts[0] : undefined);
         if (receipt === undefined) {
           await this.rearmScheduler(txn);
           return { ...rejected("duplicate_receipt_missing"), body: { ...rejected("duplicate_receipt_missing").body as JsonObject, version } };
@@ -3276,7 +3281,11 @@ export class TagDurableObject implements DurableObject {
           const receipts = record.writeReceipts ?? {};
           const sameEpoch = receipts[`${input.attemptId}:${input.epoch}`];
           const forAttempt = Object.entries(receipts).filter(([key]) => key.startsWith(`${input.attemptId}:`));
-          const receipt = sameEpoch ?? (forAttempt.length === 1 ? forAttempt[0]?.[1] : undefined);
+          const replayHead = input.candidates.at(-1)?.suid;
+          const byHead = replayHead === undefined
+            ? []
+            : forAttempt.filter(([, value]) => value.headSuid === replayHead);
+          const receipt = sameEpoch ?? (byHead.length === 1 ? byHead[0]?.[1] : undefined) ?? (forAttempt.length === 1 ? forAttempt[0]?.[1] : undefined);
           if (receipt === undefined) {
             return {
               ...rejected("duplicate_receipt_unknown"),
@@ -3383,7 +3392,7 @@ export class TagDurableObject implements DurableObject {
           ...updated,
           writeReceipts: {
             ...(record.writeReceipts ?? {}),
-            [`${input.attemptId}:${input.epoch}`]: { version: updated.version, updatedAt: updated.updatedAt },
+            [`${input.attemptId}:${input.epoch}`]: { version: updated.version, updatedAt: updated.updatedAt, headSuid: updated.head },
           },
         };
         await this.write(txn, recorded, serviceId ?? "");

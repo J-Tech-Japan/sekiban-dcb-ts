@@ -173,6 +173,50 @@ describe("SDT-G36 commit correctness", () => {
     expect((await mismatch.json<{ code: string }>()).code).toBe("bootstrap_permit_digest_mismatch");
   });
 
+  it("replays an earlier exact batch at a different epoch when the attempt has a later write", async () => {
+    const serviceId = `g36-epoch-${crypto.randomUUID()}`;
+    const tag = `orders:g36e-${crypto.randomUUID()}`;
+    const attemptId = `g36-epoch-attempt-${crypto.randomUUID()}`;
+    const firstBody = {
+      attemptId,
+      epoch: 1,
+      candidates: [{
+        eventId: g32EventId(`g36-epoch-first:${tag}`),
+        suid: g32SuidAt(Date.now(), `g36-epoch-first:${tag}`),
+        payload: JSON.stringify({ fixture: "first" }),
+        eventTags: [tag],
+        eventType: "G36EpochFirst",
+        provenance: "g32",
+        allocatorLineageId: "g36-lineage",
+        timestamp: G32_FIXTURE_TIMESTAMP,
+      }],
+    };
+    const first = await tagPost(serviceId, tag, "/append", firstBody);
+    expect(first.status).toBe(201);
+    const firstJson = await first.json<{ version: number; updatedAt: string }>();
+    const second = await tagPost(serviceId, tag, "/append", {
+      attemptId,
+      epoch: 2,
+      candidates: [{
+        eventId: g32EventId(`g36-epoch-second:${tag}`),
+        suid: g32SuidAt(Date.now() + 60_000, `g36-epoch-second:${tag}`),
+        payload: JSON.stringify({ fixture: "second" }),
+        eventTags: [tag],
+        eventType: "G36EpochSecond",
+        provenance: "g32",
+        allocatorLineageId: "g36-lineage",
+        timestamp: G32_FIXTURE_TIMESTAMP,
+      }],
+    });
+    expect(second.status).toBe(201);
+    const replay = await tagPost(serviceId, tag, "/append", { ...firstBody, epoch: 0 });
+    expect(replay.status).toBe(200);
+    const replayJson = await replay.json<{ status: string; version: number; updatedAt: string }>();
+    expect(replayJson.status).toBe("duplicate");
+    expect(replayJson.version).toBe(firstJson.version);
+    expect(replayJson.updatedAt).toBe(firstJson.updatedAt);
+  });
+
   it("bootstrap plan is rejected while a commit holds the write permit, and the commit still writes", async () => {
     const serviceId = `g36-race-${crypto.randomUUID()}`;
     const dump = dumpFor(serviceId);
