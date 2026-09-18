@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "profileId": "g32-cutover",
+  "canonicalizationVersion": "rfc8785",
+  "tenantRef": "tnrf-c4e91a70b2d85f36a18e",
+  "scopeAxes": [
+    "logicalServiceScope",
+    "deploymentComponentScope",
+    "providerTenantScope",
+    "physicalResourceScope"
+  ],
+  "components": [
+    {
+      "id": "primary",
+      "workerName": "sekiban-dcb-meeting-room-cloudflare-only",
+      "config": "samples/meeting-room/wrangler.g32-final-primary.jsonc",
+      "logicalServiceScope": { "sharing": "exclusive", "serviceIdSource": "deploy-var" },
+      "deploymentComponentScope": "primary",
+      "providerTenantScope": { "tenantRef": "tnrf-c4e91a70b2d85f36a18e" },
+      "physicalResourceScope": "opaque-ref",
+      "entrypoints": [
+        {
+          "operation": "fetch",
+          "requiredBindings": ["ALLOCATOR", "BOOTSTRAP", "D1", "D1_MV", "DOWNSTREAM_DOORBELL", "DOWNSTREAM_QUEUE", "JOURNAL", "TAG"],
+          "forbiddenBindings": []
+        }
+      ]
+    },
+    {
+      "id": "receiver",
+      "workerName": "sekiban-dcb-meeting-room-doorbell",
+      "config": "samples/meeting-room/wrangler.g32-final-receiver.jsonc",
+      "logicalServiceScope": { "sharing": "exclusive", "serviceIdSource": "deploy-var" },
+      "deploymentComponentScope": "receiver",
+      "providerTenantScope": { "tenantRef": "tnrf-c4e91a70b2d85f36a18e" },
+      "physicalResourceScope": "opaque-ref",
+      "entrypoints": [
+        {
+          "operation": "fetch",
+          "requiredBindings": ["ALLOCATOR", "BOOTSTRAP", "D1", "D1_MV", "JOURNAL", "TAG"],
+          "forbiddenBindings": ["DOWNSTREAM_QUEUE"]
+        }
+      ]
+    }
+  ],
+  "resources": [
+    { "id": "dlq-queue", "kind": "physical-resource", "providerKind": "queue", "role": "dlq", "resourceRef": "rref-d40f7123a5e91c86f370" },
+    { "id": "doorbell-service", "kind": "physical-resource", "providerKind": "service", "role": "doorbell", "resourceRef": "rref-0732a456d81c4f1926a3" },
+    { "id": "mv-d1", "kind": "physical-resource", "providerKind": "d1", "role": "MV-D1", "resourceRef": "rref-b28d5f01e3c79a64d15e" },
+    { "id": "pipeline-d1", "kind": "physical-resource", "providerKind": "d1", "role": "pipeline-D1", "resourceRef": "rref-a17c4e90d2b68f53c04d" },
+    { "id": "primary-do", "kind": "physical-resource", "providerKind": "durable-object", "role": "durable-object", "resourceRef": "rref-e5108234b6fa2d970481", "owner": "primary", "scriptName": null },
+    { "id": "receiver-do", "kind": "physical-resource", "providerKind": "durable-object", "role": "durable-object", "resourceRef": "rref-f6219345c70b3e081592", "owner": "receiver", "scriptName": null },
+    { "id": "work-queue", "kind": "physical-resource", "providerKind": "queue", "role": "work-queue", "resourceRef": "rref-c39e6012f4d80b75e26f" }
+  ],
+  "edges": [
+    { "id": "primary-consumer", "kind": "consumer-attachment", "from": "primary", "to": "work-queue" },
+    { "id": "primary-dlq", "kind": "dlq-target", "from": "primary-consumer", "to": "dlq-queue" },
+    { "id": "primary-doorbell", "kind": "service-binding", "from": "primary", "to": "doorbell-service", "binding": "DOWNSTREAM_DOORBELL" },
+    { "id": "primary-entrypoint", "kind": "target-entrypoint", "from": "primary-doorbell", "name": "MeetingRoomDownstreamDoorbell" },
+    { "id": "primary-mv", "kind": "physical-resource", "from": "primary", "to": "mv-d1", "binding": "D1_MV" },
+    { "id": "primary-pipeline", "kind": "physical-resource", "from": "primary", "to": "pipeline-d1", "binding": "D1" },
+    { "id": "primary-producer", "kind": "producer-binding", "from": "primary", "to": "work-queue", "binding": "DOWNSTREAM_QUEUE" },
+    { "id": "receiver-mv", "kind": "physical-resource", "from": "receiver", "to": "mv-d1", "binding": "D1_MV" },
+    { "id": "receiver-pipeline", "kind": "physical-resource", "from": "receiver", "to": "pipeline-d1", "binding": "D1" }
+  ],
+  "cardinalities": {
+    "primary": { "producer-binding": 1, "consumer-attachment": 1, "dlq-target": 1, "service-binding": 1, "target-entrypoint": 1 },
+    "receiver": { "producer-binding": 0, "consumer-attachment": 0, "dlq-target": 0, "service-binding": 0, "target-entrypoint": 0 }
+  },
+  "migrationDomains": {
+    "pipeline-D1": ["../../migrations/d1/g32"],
+    "MV-D1": ["../../migrations/mv"],
+    "durable-object": {
+      "primary": { "owner": "primary", "sequence": ["v1", "v2"] },
+      "receiver": { "owner": "receiver", "sequence": ["v1", "v2"] }
+    }
+  },
+  "durableObjectClasses": ["AllocatorDurableObject", "BootstrapCoordinatorDurableObject", "JournalDurableObject", "TagDurableObject"]
+}

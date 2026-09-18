@@ -1,3 +1,4 @@
+import { materializedViewD1, bootstrapBinding, journalBinding, tagBinding, pipelineD1 } from "./generated/provider-composition";
 import type { ExecuteResult } from "@sekiban/dcb-client";
 import {
   createCloudflareOnlyRuntimeWorker,
@@ -91,7 +92,7 @@ async function scheduleMeetingRoomSafeLaneFollowUp(
   serviceId: string,
   followUp: SafeLaneFollowUp,
 ): Promise<void> {
-  if (serviceId.length === 0 || env.BOOTSTRAP === undefined) {
+  if (serviceId.length === 0 || bootstrapBinding(env) === undefined) {
     console.warn("safe_lane_alarm", {
       status: "not-scheduled",
       reason: "bootstrap_binding_or_service_identity_missing",
@@ -100,7 +101,7 @@ async function scheduleMeetingRoomSafeLaneFollowUp(
     });
     return;
   }
-  const coordinator = env.BOOTSTRAP.get(scopeIdFor(env.BOOTSTRAP, {
+  const coordinator = bootstrapBinding(env).get(scopeIdFor(bootstrapBinding(env), {
     serviceId,
     doClass: "bootstrap",
     identity: "coordinator",
@@ -170,7 +171,7 @@ export async function runMeetingRoomSafeLanePass(
   existingCoverage?: GlobalCompletenessCoverage,
   request?: SafeLaneKickRequest,
 ): Promise<void> {
-  if (env.D1 === undefined || env.TAG === undefined || env.D1_MV === undefined) return;
+  if (pipelineD1(env) === undefined || tagBinding(env) === undefined || materializedViewD1(env) === undefined) return;
   const startedAt = Date.now();
   const effectiveTrigger = request?.trigger ?? trigger;
   const passId = request?.passId ?? `${effectiveTrigger}:${String(startedAt)}:${crypto.randomUUID()}`;
@@ -202,7 +203,7 @@ export async function runMeetingRoomSafeLanePass(
   let catchUpError: string | null = null;
   let catchUpObservations: Awaited<ReturnType<typeof catchUpMeetingRoomMaterializedViews>> = [];
   try {
-    const reconciler = new GlobalCompletenessReconciler(env.D1, env.TAG);
+    const reconciler = new GlobalCompletenessReconciler(pipelineD1(env), tagBinding(env));
     const computedCoverage = existingCoverage ?? await (async () => {
       await reconciler.reconcile(serviceId, Date.now());
       return reconciler.coverage(serviceId, Date.now());
@@ -558,13 +559,13 @@ const runtime = createCloudflareOnlyRuntimeWorker({
   },
   deliveryViews: ({ env, ctx }) => meetingRoomDeliveryViews(
     env,
-    env.TAG === undefined ? undefined : createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise)),
+    tagBinding(env) === undefined ? undefined : createG60DurableHopObserver(pipelineD1(env), (promise) => ctx.waitUntil(promise)),
   ),
   beforeLiveProjectionPoll: async ({ env, serviceId, ctx }) => {
     // Unit-only D1 fixtures intentionally omit the Tag authority. Preserve
     // their original unrestricted local catch-up seam; deployed primaries
     // always bind TAG and take the fresh-reconcile path below.
-    if (env.TAG === undefined) {
+    if (tagBinding(env) === undefined) {
       await runMeetingRoomScheduledMaintenance({
         catchUp: async (frontierSuid) => {
           await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid);
@@ -574,7 +575,7 @@ const runtime = createCloudflareOnlyRuntimeWorker({
       });
       return { frontierSuid: undefined };
     }
-    const coverage = await new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(serviceId, Date.now());
+    const coverage = await new GlobalCompletenessReconciler(pipelineD1(env), tagBinding(env)).coverage(serviceId, Date.now());
     // Cron is the backstop, but it must enter the same per-service
     // single-flight/coalescing scheduler as Queue and fence-expiry triggers.
     // The scan result is captured so this scheduled pass uses the same
@@ -593,7 +594,7 @@ const runtime = createCloudflareOnlyRuntimeWorker({
     // Receiver-only G25 fixtures intentionally omit the source authority;
     // they keep their existing transport-only behavior and cron is not
     // meaningful there.
-    if (env.D1 === undefined || env.TAG === undefined || env.D1_MV === undefined) return;
+    if (pipelineD1(env) === undefined || tagBinding(env) === undefined || materializedViewD1(env) === undefined) return;
     scheduleMeetingRoomSafeLaneKick(env as MeetingRoomCloudflareEnv, message.serviceId, ctx, undefined, {
       eventId: message.eventId,
       suid: message.suid,
@@ -927,18 +928,18 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     try {
       const serviceId = serviceIdentity(env);
       if (g42.value.action === "trial") {
-        return json(await runG42JournalProbeTrial(env.JOURNAL, serviceId, g42.value, callerColo(request)));
+        return json(await runG42JournalProbeTrial(journalBinding(env), serviceId, g42.value, callerColo(request)));
       }
       if (g42.value.action === "prepare") {
-        return json(await prepareG42JournalProbeTrial(env.JOURNAL, serviceId, g42.value));
+        return json(await prepareG42JournalProbeTrial(journalBinding(env), serviceId, g42.value));
       }
       if (g42.value.action === "measure") {
-        return json(await measureG42JournalProbeTrial(env.JOURNAL, serviceId, g42.value, callerColo(request)));
+        return json(await measureG42JournalProbeTrial(journalBinding(env), serviceId, g42.value, callerColo(request)));
       }
       if (g42.value.action === "cleanup") {
-        return json(await cleanupG42JournalProbeTrial(env.JOURNAL, serviceId, g42.value));
+        return json(await cleanupG42JournalProbeTrial(journalBinding(env), serviceId, g42.value));
       }
-      return json(await inventoryG42JournalProbeTrial(env.JOURNAL, serviceId, g42.value));
+      return json(await inventoryG42JournalProbeTrial(journalBinding(env), serviceId, g42.value));
     } catch {
       // Conformance authentication grants diagnostic access but does not make
       // internal Journal error text part of a public/protocol response.
@@ -1058,7 +1059,7 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     });
   }
   if (url.pathname === "/conformance/v1/g32-store-state") {
-    if (env.D1 === undefined || env.D1_MV === undefined) {
+    if (pipelineD1(env) === undefined || materializedViewD1(env) === undefined) {
       return json({ error: "G32 new-store bindings are unavailable", code: "g32_store_unavailable" }, 503);
     }
     const serviceId = optionalServiceIdentity(env);
@@ -1066,11 +1067,11 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
       return json({ error: "G32 new-store bindings are unavailable", code: "g32_store_unavailable" }, 503);
     }
     const [events, ops, legacy, mvRows, mvReceipts] = await Promise.all([
-      env.D1.prepare("SELECT COUNT(*) AS count FROM dcb_events WHERE \"ServiceId\" = ?").bind(serviceId).first<{ count: number }>(),
-      env.D1.prepare("SELECT COUNT(*) AS count FROM dcb_event_ops WHERE \"ServiceId\" = ?").bind(serviceId).first<{ count: number }>(),
-      env.D1.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'serialized_dcb_events'").first<{ name: string }>(),
-      env.D1_MV.prepare("SELECT COUNT(*) AS count FROM mv_rows WHERE service_id = ?").bind(serviceId).first<{ count: number }>(),
-      env.D1_MV.prepare("SELECT COUNT(*) AS count FROM mv_wait_receipts WHERE service_id = ?").bind(serviceId).first<{ count: number }>(),
+      pipelineD1(env).prepare("SELECT COUNT(*) AS count FROM dcb_events WHERE \"ServiceId\" = ?").bind(serviceId).first<{ count: number }>(),
+      pipelineD1(env).prepare("SELECT COUNT(*) AS count FROM dcb_event_ops WHERE \"ServiceId\" = ?").bind(serviceId).first<{ count: number }>(),
+      pipelineD1(env).prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'serialized_dcb_events'").first<{ name: string }>(),
+      materializedViewD1(env).prepare("SELECT COUNT(*) AS count FROM mv_rows WHERE service_id = ?").bind(serviceId).first<{ count: number }>(),
+      materializedViewD1(env).prepare("SELECT COUNT(*) AS count FROM mv_wait_receipts WHERE service_id = ?").bind(serviceId).first<{ count: number }>(),
     ]);
     return json({
       task: "SDT-G32",
@@ -1087,14 +1088,14 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     if (suid === null || suid.length === 0) {
       return json({ error: "suid is required", code: "validation_error" }, 400);
     }
-    if (env.D1 === undefined || env.D1_MV === undefined) {
+    if (pipelineD1(env) === undefined || materializedViewD1(env) === undefined) {
       return json({ error: "G31 wait-state bindings are unavailable", code: "projection_unavailable" }, 503);
     }
     // This authenticated diagnostic reads the same two point-lookup ports as
     // the list-query wait. It deliberately fixes the opted-in list view so a
     // witness cannot turn arbitrary request data into a storage selector.
-    const source = new D1EventStore(env.D1);
-    const views = new D1MaterializedViewStore(env.D1_MV);
+    const source = new D1EventStore(pipelineD1(env));
+    const views = new D1MaterializedViewStore(materializedViewD1(env));
     await Promise.all([source.initialize(), views.initialize()]);
     const serviceId = optionalServiceIdentity(env);
     if (serviceId === null) {

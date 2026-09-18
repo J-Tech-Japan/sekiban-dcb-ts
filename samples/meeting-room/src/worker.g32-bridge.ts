@@ -1,3 +1,4 @@
+import { bootstrapBinding, allocatorBinding, tagBinding, pipelineD1 } from "./generated/provider-composition";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { envServiceIdentity, requireServiceIdentity, scopeIdFor } from "@sekiban/dcb-runtime";
 import {
@@ -95,13 +96,13 @@ function parseTags(value: unknown): string[] {
  */
 async function settleBridgeDispositions(env: G32BridgeEnv): Promise<Response> {
   const serviceId = requiredBridgeServiceId(env);
-  if (env.D1 === undefined || env.TAG === undefined || env.ALLOCATOR === undefined || env.BOOTSTRAP === undefined) {
+  if (pipelineD1(env) === undefined || tagBinding(env) === undefined || allocatorBinding(env) === undefined || bootstrapBinding(env) === undefined) {
     return json({ error: "Bridge inventory bindings are unavailable", code: "bridge_bindings_unavailable" }, 503);
   }
-  const rows = await env.D1.prepare("SELECT event_tags FROM serialized_dcb_events WHERE service_id = ?").bind(serviceId).all<{ event_tags: string }>();
+  const rows = await pipelineD1(env).prepare("SELECT event_tags FROM serialized_dcb_events WHERE service_id = ?").bind(serviceId).all<{ event_tags: string }>();
   const tags = [...new Set((rows.results ?? []).flatMap((row) => parseTags(row.event_tags)))].sort();
   const discarded = await Promise.all(tags.map(async (tag) => {
-    const object = env.TAG!.get(scopeIdFor(env.TAG!, {
+    const object = tagBinding(env)!.get(scopeIdFor(tagBinding(env)!, {
       serviceId,
       doClass: "tag",
       identity: tag,
@@ -110,12 +111,12 @@ async function settleBridgeDispositions(env: G32BridgeEnv): Promise<Response> {
     if (!response.ok) throw new Error(`G32 bridge tag disposition failed for ${tag}`);
     return response.json<{ outboxDiscarded?: number }>();
   }));
-  const allocator = env.ALLOCATOR.get(scopeIdFor(env.ALLOCATOR, {
+  const allocator = allocatorBinding(env).get(scopeIdFor(allocatorBinding(env), {
     serviceId,
     doClass: "allocator",
     identity: "allocator",
   }));
-  const bootstrap = env.BOOTSTRAP.get(scopeIdFor(env.BOOTSTRAP, {
+  const bootstrap = bootstrapBinding(env).get(scopeIdFor(bootstrapBinding(env), {
     serviceId,
     doClass: "bootstrap",
     identity: "coordinator",
@@ -125,7 +126,7 @@ async function settleBridgeDispositions(env: G32BridgeEnv): Promise<Response> {
     bootstrap.fetch("https://g32-bridge.internal/g32-bridge/discard", { method: "POST" }),
   ]);
   if (!allocatorResponse.ok || !bootstrapResponse.ok) throw new Error("G32 bridge allocator/bootstrap disposition failed");
-  const pipeline = await env.D1.prepare(
+  const pipeline = await pipelineD1(env).prepare(
     `SELECT
        (SELECT COUNT(*) FROM serialized_dcb_pending_arrivals WHERE service_id = ?) AS pendingArrivals,
        (SELECT COUNT(*) FROM serialized_dcb_delivery_incidents WHERE service_id = ?) AS deliveryIncidents,

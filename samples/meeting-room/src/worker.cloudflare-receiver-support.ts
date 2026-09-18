@@ -1,3 +1,4 @@
+import { tagBinding, pipelineD1 } from "./generated/provider-composition";
 import {
   observeFaultBarrier,
   createG60DurableHopObserver,
@@ -65,7 +66,7 @@ export async function deliverMeetingRoomDoorbell(
   // receiver does, and that binding is the durable RING authority for AC0.
   // Keeping the fixture fallback preserves the existing transport-only G29/G38
   // tests without pretending their in-memory store is a durable ring.
-  if (env.D1 !== undefined) {
+  if (pipelineD1(env) !== undefined) {
     return ringMeetingRoomDoorbell(env, ctx, message, config);
   }
   return applyMeetingRoomDoorbell(env, ctx, message, config);
@@ -81,9 +82,9 @@ async function applyMeetingRoomDoorbell(
   const attemptId = message !== null && typeof message === "object" && typeof (message as { attemptId?: unknown }).attemptId === "string"
     ? (message as { attemptId: string }).attemptId
     : undefined;
-  const durableHopObserver = env.TAG === undefined
+  const durableHopObserver = tagBinding(env) === undefined
     ? undefined
-    : createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise));
+    : createG60DurableHopObserver(pipelineD1(env), (promise) => ctx.waitUntil(promise));
   const configuredViews = testOverrides?.views ?? meetingRoomDeliveryViews(env, durableHopObserver);
   const result = await processDownstreamDoorbell(message, env, {
     ...(testOverrides?.store === undefined ? { storeProvider: createD1StoreProvider() } : { store: testOverrides.store }),
@@ -133,7 +134,7 @@ async function ringMeetingRoomDoorbell(
   const message = rawMessage as Parameters<typeof recordG65DirectRing>[1];
   const ringStartedAt = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const ringOperation = recordG65DirectRing(env.D1!, message, ringStartedAt)
+  const ringOperation = recordG65DirectRing(pipelineD1(env)!, message, ringStartedAt)
     .then((ringOutcome) => ({ status: "completed" as const, ringOutcome }))
     .catch((error) => ({ status: "failed" as const, error }));
   const timeout = new Promise<{ readonly status: "timeout" }>((resolve) => {
@@ -182,9 +183,9 @@ async function applyG65DirectRing(
   fallbackMessage: Parameters<typeof recordG65DirectRing>[1],
   config: ReturnType<typeof readDirectDoorbellConfig>,
 ): Promise<void> {
-  const message = await readG65DirectRing(env.D1!, fallbackMessage) ?? fallbackMessage;
+  const message = await readG65DirectRing(pipelineD1(env)!, fallbackMessage) ?? fallbackMessage;
   const applyStartedAt = Date.now();
-  await markG65DirectApplyStarted(env.D1!, message, applyStartedAt);
+  await markG65DirectApplyStarted(pipelineD1(env)!, message, applyStartedAt);
   try {
     const result = await applyMeetingRoomDoorbell(env, ctx, message, config);
     // DeliveryCore's fast disposition includes the G44 completeness/detector
@@ -208,9 +209,9 @@ async function applyG65DirectRing(
         .filter((view) => config.allowedViews.includes(view.id))
         .map((view) => ({ id: view.id, status: view.status, durationMs: view.durationMs })),
     });
-    await markG65DirectApplyFinished(env.D1!, message, Date.now(), outcome);
+    await markG65DirectApplyFinished(pipelineD1(env)!, message, Date.now(), outcome);
   } catch (error) {
-    await markG65DirectApplyFinished(env.D1!, message, Date.now(), "failed", String(error));
+    await markG65DirectApplyFinished(pipelineD1(env)!, message, Date.now(), "failed", String(error));
     throw error;
   }
 }
