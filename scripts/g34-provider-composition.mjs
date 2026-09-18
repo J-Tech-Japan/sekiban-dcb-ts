@@ -27,7 +27,18 @@ export const PROFILE_CARDINALITIES = {
   },
 };
 const REQUIRED_RESOURCE_IDS = ["dlq-queue", "doorbell-service", "mv-d1", "pipeline-d1", "primary-do", "receiver-do", "work-queue"];
-const REQUIRED_EDGE_IDS = ["primary-consumer", "primary-dlq", "primary-doorbell", "primary-entrypoint", "primary-mv", "primary-pipeline", "primary-producer", "receiver-mv", "receiver-pipeline"];
+const REQUIRED_EDGES = [
+  { id: "primary-consumer", kind: "consumer-attachment", from: "primary", to: "work-queue" },
+  { id: "primary-dlq", kind: "dlq-target", from: "primary-consumer", to: "dlq-queue" },
+  { id: "primary-doorbell", kind: "service-binding", from: "primary", to: "doorbell-service", binding: "DOWNSTREAM_DOORBELL" },
+  { id: "primary-entrypoint", kind: "target-entrypoint", from: "primary-doorbell", name: "MeetingRoomDownstreamDoorbell" },
+  { id: "primary-mv", kind: "physical-resource", from: "primary", to: "mv-d1", binding: "D1_MV" },
+  { id: "primary-pipeline", kind: "physical-resource", from: "primary", to: "pipeline-d1", binding: "D1" },
+  { id: "primary-producer", kind: "producer-binding", from: "primary", to: "work-queue", binding: "DOWNSTREAM_QUEUE" },
+  { id: "receiver-mv", kind: "physical-resource", from: "receiver", to: "mv-d1", binding: "D1_MV" },
+  { id: "receiver-pipeline", kind: "physical-resource", from: "receiver", to: "pipeline-d1", binding: "D1" },
+];
+const REQUIRED_EDGE_IDS = REQUIRED_EDGES.map((edge) => edge.id);
 const MAPPED_RESOURCE_IDS = ["pipeline-d1", "mv-d1", "work-queue", "dlq-queue", "doorbell-service"];
 
 const BINDING_FUNCTIONS = [
@@ -124,20 +135,35 @@ export function digestBytes(payload, domain = DOMAIN) {
     .digest("hex");
 }
 
+function byId(left, right) {
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
+
+function canonicalComponent(component) {
+  return {
+    ...component,
+    entrypoints: (component.entrypoints ?? []).map((entrypoint) => ({
+      ...entrypoint,
+      forbiddenBindings: [...(entrypoint.forbiddenBindings ?? [])].sort(),
+      requiredBindings: [...(entrypoint.requiredBindings ?? [])].sort(),
+    })),
+  };
+}
+
 export function publishedPayload(manifest) {
-  const resources = [...manifest.resources].sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
-  const edges = [...manifest.edges].sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+  const resources = [...manifest.resources].sort(byId);
+  const edges = [...manifest.edges].sort(byId);
   return {
     canonicalizationVersion: manifest.canonicalizationVersion,
     cardinalities: manifest.cardinalities,
-    components: manifest.components,
-    durableObjectClasses: manifest.durableObjectClasses,
+    components: [...manifest.components].sort(byId).map(canonicalComponent),
+    durableObjectClasses: [...manifest.durableObjectClasses].sort(),
     edges,
     migrationDomains: manifest.migrationDomains,
     profileId: manifest.profileId,
     resources,
     schemaVersion: manifest.schemaVersion,
-    scopeAxes: manifest.scopeAxes,
+    scopeAxes: [...manifest.scopeAxes].sort(),
     tenantRef: manifest.tenantRef,
   };
 }
@@ -334,6 +360,12 @@ export function validateManifest(manifest, mapping) {
   if (JSON.stringify(edgeIds) !== JSON.stringify([...REQUIRED_EDGE_IDS].sort())) {
     fail("CARDINALITY", "edges", "cardinality");
   }
+  for (const required of REQUIRED_EDGES) {
+    const found = manifest.edges.find((edge) => edge.id === required.id);
+    for (const [key, value] of Object.entries(required)) {
+      if (found?.[key] !== value) fail("CARDINALITY", `edges.${required.id}.${key}`, "cardinality");
+    }
+  }
   for (const component of manifest.components) {
     requireAxes(component);
     if (component.providerTenantScope?.tenantRef !== manifest.tenantRef) {
@@ -427,12 +459,19 @@ export function validateConfig(manifest, component, config, mapping) {
   } else {
     if (producers.length !== expected["producer-binding"]) fail("CARDINALITY", "primary.producer-binding", "cardinality");
     if (consumers.length !== expected["consumer-attachment"]) fail("CARDINALITY", "primary.consumer-attachment", "cardinality");
-    const work = mappedIdentity("work-queue", mapping.resources?.["work-queue"]);
-    const dlq = mappedIdentity("dlq-queue", mapping.resources?.["dlq-queue"]);
-    if (typeof work !== "string" || typeof dlq !== "string") {
+    const producerEdge = manifest.edges.find((edge) => edge.kind === "producer-binding" && edge.from === component.id);
+    const consumerEdge = manifest.edges.find((edge) => edge.kind === "consumer-attachment" && edge.from === component.id);
+    const dlqEdge = manifest.edges.find((edge) => edge.kind === "dlq-target" && edge.from === `${component.id}-consumer`);
+    const work = mappedIdentity(producerEdge?.to, mapping.resources?.[producerEdge?.to]);
+    const consumerTarget = mappedIdentity(consumerEdge?.to, mapping.resources?.[consumerEdge?.to]);
+    const dlq = mappedIdentity(dlqEdge?.to, mapping.resources?.[dlqEdge?.to]);
+    if (typeof work !== "string" || typeof consumerTarget !== "string" || typeof dlq !== "string") {
       fail("SCOPE_PROOF_UNAVAILABLE", "primary.queue", "scope-proof-unavailable");
     }
-    if (producers[0]?.queue !== work || consumers[0]?.queue !== work) {
+    if (producerEdge.to !== "work-queue" || consumerEdge.to !== "work-queue" || dlqEdge.to !== "dlq-queue") {
+      fail("CARDINALITY", "primary.queue", "cardinality");
+    }
+    if (producers[0]?.queue !== work || consumers[0]?.queue !== consumerTarget) {
       fail("RESOURCE_MISMATCH", "primary.queue", "resource-identity-mismatch");
     }
     if (consumers[0]?.dead_letter_queue !== dlq || dlq === work) fail("CARDINALITY", "primary.dlq-target", "cardinality");
@@ -642,7 +681,8 @@ export function resolveCompositionInput(invocation) {
   const config = invocation.config;
   const selected = invocation.environment === undefined ? config : config.env?.[invocation.environment];
   if (invocation.environment !== undefined && selected === undefined) fail("UNKNOWN_INPUT", "environment", "unknown-input");
-  const vars = { ...(selected?.vars ?? {}) };
+  const resolved = invocation.environment === undefined ? { ...config } : { ...selected };
+  const vars = { ...(resolved.vars ?? {}) };
   if (invocation.environment !== undefined && config.vars !== undefined) {
     for (const key of Object.keys(config.vars)) {
       if (vars[key] === undefined && invocation.keepVars?.includes(key)) {
@@ -654,7 +694,7 @@ export function resolveCompositionInput(invocation) {
   for (const key of invocation.keepVars ?? []) {
     if (vars[key] === undefined) fail("UNRESOLVED_KEPT_VAR", key, "unresolved-kept-var");
   }
-  return vars;
+  return { ...resolved, vars };
 }
 
 export function runSelfTest() {
@@ -810,6 +850,28 @@ export function runSelfTest() {
     ...manifest,
     components: manifest.components.filter((component) => component.id !== "receiver"),
   }, mapping));
+  const reorderedSets = structuredClone(manifest);
+  reorderedSets.components = [...manifest.components].reverse();
+  reorderedSets.durableObjectClasses = [...manifest.durableObjectClasses].reverse();
+  reorderedSets.scopeAxes = [...manifest.scopeAxes].reverse();
+  if (manifestDigest(reorderedSets).digest !== envelope.digest) throw new Error("set order changed the digest");
+  expect("retarget-producer", () => validateManifest({
+    ...manifest,
+    edges: manifest.edges.map((edge) => edge.id === "primary-producer" ? { ...edge, to: "dlq-queue" } : edge),
+  }, mapping));
+  expect("env-no-inherit", () => validateConfig(
+    manifest,
+    manifest.components[0],
+    resolveCompositionInput({
+      environment: "staging",
+      config: {
+        ...primary,
+        vars: { SDT_SERVICE_ID: "top" },
+        env: { staging: { name: primary.name, vars: {}, d1_databases: [] } },
+      },
+    }),
+    mapping,
+  ));
   for (const sample of ['env.D1', 'env["D1"]', "env?.D1", "const { D1 } = env", "const { D1: alias } = env", "const {\n  D1\n} = env"]) {
     if (!rawBindingHits(sample)) throw new Error(`raw binding scan missed ${sample}`);
   }
