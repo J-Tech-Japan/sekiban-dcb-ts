@@ -40,6 +40,10 @@ const REQUIRED_EDGES = [
 ];
 const REQUIRED_EDGE_IDS = REQUIRED_EDGES.map((edge) => edge.id);
 const MAPPED_RESOURCE_IDS = ["pipeline-d1", "mv-d1", "work-queue", "dlq-queue", "doorbell-service"];
+const DO_MIGRATION_CLASSES = {
+  v1: ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"],
+  v2: ["BootstrapCoordinatorDurableObject"],
+};
 
 const BINDING_FUNCTIONS = [
   ["ALLOCATOR", "allocatorBinding"],
@@ -324,6 +328,17 @@ function requireMappingEntries(mapping) {
 export function validateManifest(manifest, mapping) {
   requireMappingEntries(mapping);
   if (tenantRefOf(manifest).length < 16) fail("SCOPE_PROOF_UNAVAILABLE", "tenantRef", "scope-proof-unavailable");
+  const workerNames = manifest.components.map((component) => component.workerName);
+  if (workerNames.some((name) => typeof name !== "string" || name.length === 0) || new Set(workerNames).size !== workerNames.length) {
+    fail("CARDINALITY", "workerName", "cardinality");
+  }
+  const declaredBindings = [...new Set(manifest.components.flatMap((component) => (
+    component.entrypoints ?? []
+  ).flatMap((entrypoint) => [...(entrypoint.requiredBindings ?? []), ...(entrypoint.forbiddenBindings ?? [])])))].sort();
+  const generatedBindings = BINDING_FUNCTIONS.map(([name]) => name).sort();
+  if (JSON.stringify(declaredBindings) !== JSON.stringify(generatedBindings)) {
+    fail("CARDINALITY", "bindings", "cardinality");
+  }
   const componentIds = (manifest.components ?? []).map((component) => component.id).sort();
   if (JSON.stringify(componentIds) !== JSON.stringify(["primary", "receiver"])) {
     fail("CARDINALITY", "components", "cardinality");
@@ -386,6 +401,9 @@ export function validateManifest(manifest, mapping) {
   }
   const primaryDo = resourceById(manifest, "primary-do");
   const receiverDo = resourceById(manifest, "receiver-do");
+  if (primaryDo.owner !== "primary" || receiverDo.owner !== "receiver") {
+    fail("DO_MIGRATION_OWNER", "durable-object.owner", "do-migration-owner");
+  }
   if (primaryDo.resourceRef === receiverDo.resourceRef || primaryDo.scriptName !== null || receiverDo.scriptName !== null) {
     fail("SAME_RESOURCE", "durable-object", "same-resource");
   }
@@ -442,6 +460,13 @@ export function validateConfig(manifest, component, config, mapping) {
   const owned = manifest.migrationDomains["durable-object"][component.id];
   if (JSON.stringify(tags) !== JSON.stringify(owned.sequence)) {
     fail("MIGRATION_ORDER", `${component.id}.durable-object`, "migration-order");
+  }
+  for (const entry of config.migrations ?? []) {
+    const expectedClasses = [...(DO_MIGRATION_CLASSES[entry.tag] ?? [])].sort();
+    const actualClasses = [...(entry.new_sqlite_classes ?? [])].sort();
+    if (expectedClasses.length === 0 || JSON.stringify(actualClasses) !== JSON.stringify(expectedClasses)) {
+      fail("DO_MIGRATION_OWNER", `${component.id}.${entry.tag}`, "do-migration-owner");
+    }
   }
   const classes = (config.durable_objects?.bindings ?? []).map((entry) => entry.class_name).sort();
   if (JSON.stringify(classes) !== JSON.stringify([...manifest.durableObjectClasses].sort())) {
@@ -872,6 +897,35 @@ export function runSelfTest() {
     }),
     mapping,
   ));
+  expect("same-worker", () => validateManifest({
+    ...manifest,
+    components: manifest.components.map((component) => ({ ...component, workerName: "same-worker" })),
+  }, mapping));
+  expect("do-resource-owner", () => {
+    const swapped = structuredClone(manifest);
+    swapped.resources = swapped.resources.map((resource) => (
+      resource.id === "primary-do" ? { ...resource, owner: "receiver" } : resource
+    ));
+    validateManifest(swapped, mapping);
+  });
+  expect("moved-do-class", () => {
+    const moved = structuredClone(primary);
+    moved.migrations = [
+      { tag: "v1", new_sqlite_classes: ["AllocatorDurableObject", "JournalDurableObject"] },
+      { tag: "v2", new_sqlite_classes: ["TagDurableObject", "BootstrapCoordinatorDurableObject"] },
+    ];
+    validateConfig(manifest, manifest.components[0], moved, mapping);
+  });
+  expect("unmapped-binding", () => validateManifest({
+    ...manifest,
+    components: manifest.components.map((component) => component.id === "primary" ? {
+      ...component,
+      entrypoints: component.entrypoints.map((entrypoint) => ({
+        ...entrypoint,
+        requiredBindings: [...entrypoint.requiredBindings, "EXTRA"],
+      })),
+    } : component),
+  }, mapping));
   for (const sample of ['env.D1', 'env["D1"]', "env?.D1", "const { D1 } = env", "const { D1: alias } = env", "const {\n  D1\n} = env"]) {
     if (!rawBindingHits(sample)) throw new Error(`raw binding scan missed ${sample}`);
   }
