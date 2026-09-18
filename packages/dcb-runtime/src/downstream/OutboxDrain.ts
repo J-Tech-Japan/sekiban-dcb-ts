@@ -1,5 +1,12 @@
 import { outboxIdentity, systemPipelineClock, type DownstreamOutboxMessage, type PipelineClock } from "./types";
 import { scopeIdFor } from "../scope/ScopeName";
+import { scopeIdentityMissingResponse } from "../scope/ControlRouteScope";
+import {
+  envServiceIdentity,
+  ServiceIdentityMissingError,
+  type ServiceIdentityEnvironment,
+  type ServiceIdentityProvider,
+} from "../service/ServiceIdentityProvider";
 import type { G60DurableHopObserver } from "../diagnostics/G60DurableHop";
 
 interface OutboxPendingResponse {
@@ -10,7 +17,7 @@ interface OutboxMarkResponse {
   marked: number;
 }
 
-export interface OutboxDrainEnv {
+export interface OutboxDrainEnv extends ServiceIdentityEnvironment {
   TAG: DurableObjectNamespace;
   DOWNSTREAM_QUEUE: Queue<DownstreamOutboxMessage>;
 }
@@ -30,6 +37,8 @@ export interface OutboxDrainOptions {
   readonly acknowledgement?: "transport" | "global-receipt";
   /** G60 observation is scheduled by the active Worker context. */
   readonly durableHopObserver?: G60DurableHopObserver;
+  /** Caller/deployment authority; body.serviceId is never the naming authority. */
+  readonly serviceIdentityProvider?: ServiceIdentityProvider;
 }
 
 export interface DrainResult {
@@ -168,10 +177,28 @@ export async function handleOutboxDrainRequest(
   if (!isDrainRequest(body)) {
     return json({ error: "serviceId and unique non-empty tags are required", code: "invalid_outbox_drain_request" }, 400);
   }
+  const requestedServiceId = body.serviceId;
+  const tags = body.tags;
+  const provider = options.serviceIdentityProvider ?? envServiceIdentity(env);
+  let authority: string;
+  try {
+    authority = provider.forRequest(request).serviceId;
+  } catch (caught) {
+    if (caught instanceof ServiceIdentityMissingError) return scopeIdentityMissingResponse();
+    throw caught;
+  }
+  // Body serviceId is caller-supplied input, not Durable Object naming authority.
+  if (requestedServiceId !== authority) {
+    console.warn({ schema: "sdt.scope/v1", code: "scope.mismatch", route: "outbox-drain" });
+    return json({
+      code: "scope.mismatch",
+      error: "The request service identity is not authorized for this deployment",
+    }, 403);
+  }
   try {
     const results: DrainResult[] = [];
-    for (const tag of body.tags) {
-      results.push(await drainTagOutbox({ serviceId: body.serviceId, tag }, env, systemPipelineClock, options));
+    for (const tag of tags) {
+      results.push(await drainTagOutbox({ serviceId: authority, tag }, env, systemPipelineClock, options));
     }
     return json({ results });
   } catch (error) {

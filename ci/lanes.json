@@ -90,6 +90,8 @@
         {"id": "g64", "command": "npm run test:g64"},
         {"id": "g72", "command": "npm run test:g72:trusted-publishing"},
         {"id": "g93", "command": "npm run test:g93"},
+        {"id": "g35", "command": "npm run test:g35"},
+        {"id": "g35-red", "command": "npm run test:g35:forced-red", "env": {"SDT_G35_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g64-red", "command": "npm run test:g64:forced-red", "env": {"SDT_G64_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g26", "command": "npm run test:g26"},
         {"id": "g27", "command": "npm run test:g27"},

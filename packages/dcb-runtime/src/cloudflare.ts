@@ -331,9 +331,16 @@ export function createCloudflareOnlyRuntimeWorker(
       }
       if (url.pathname === "/internal/downstream/drain" && request.method === "POST") {
         if (durableHopObserver === undefined) {
-          return handleOutboxDrainRequest(request, env, { acknowledgement: "global-receipt" });
+          return handleOutboxDrainRequest(request, env, {
+            acknowledgement: "global-receipt",
+            serviceIdentityProvider: serviceIdentity,
+          });
         }
-        return handleOutboxDrainRequest(request, env, { acknowledgement: "global-receipt", durableHopObserver });
+        return handleOutboxDrainRequest(request, env, {
+          acknowledgement: "global-receipt",
+          durableHopObserver,
+          serviceIdentityProvider: serviceIdentity,
+        });
       }
       if (url.pathname === "/internal/projection/lag") {
         return handleProjectionLag(request, env, composition.projectors, storeProvider, serviceIdentity);
