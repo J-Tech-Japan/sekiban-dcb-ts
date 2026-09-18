@@ -370,7 +370,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         return handleOperatorBootstrap(request, env, storeProvider);
       }
       if (url.pathname === "/internal/downstream/drain" && request.method === "POST") {
-        return handleOutboxDrainRequest(request, env);
+        return handleOutboxDrainRequest(request, env, { serviceIdentityProvider: serviceIdentity });
       }
       if (url.pathname === "/internal/projection/lag") {
         return handleProjectionLag(request, env, composition.projectors, storeProvider, serviceIdentity);

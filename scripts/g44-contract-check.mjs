@@ -101,7 +101,9 @@ export function assertG44Contract(value) {
   requireContains(mark, "this.globalReceiptMatches", "source mark receipt guard");
   const g44Handoff = between(drain, 'if (options.acknowledgement === "global-receipt")', "const mark", "G44 Queue handoff");
   requireAbsent(g44Handoff, "/outbox/mark-delivered", "G44 Queue handoff");
-  requireContains(cloudflare, 'handleOutboxDrainRequest(request, env, { acknowledgement: "global-receipt" })', "Cloudflare G44 drain mode");
+  requireContains(cloudflare, 'acknowledgement: "global-receipt"', "Cloudflare G44 drain mode");
+  requireContains(cloudflare, "serviceIdentityProvider: serviceIdentity", "Cloudflare G35 drain authority");
+  requireContains(cloudflare, "handleOutboxDrainRequest(request, env, {", "Cloudflare outbox drain call");
   requireContains(adapter, "afterGlobalReceipt", "receiver acknowledgement callback");
 
   // AC3/AC4/AC5: scanner takes a compound source snapshot, rejects a changed
