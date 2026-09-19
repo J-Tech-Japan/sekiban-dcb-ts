@@ -72,8 +72,8 @@ export async function runSelfTest() {
   assertNoSilentLedgerMerge(source);
   const silentBad = expect("silent-merge-fixture", () =>
     assertNoSilentLedgerMerge("function mergeLedgerIntoSealed(sealed, ledger) { return sealed.concat(ledger); }"));
-  const silent = expect("silent-merge", () => refuseSilentLedgerMerge(true));
-  const safe = expect("safewindow-seal", () => refuseSafeWindowSeal(true));
+  const silent = expect("silent-merge", () => refuseSilentLedgerMerge());
+  const safe = expect("safewindow-seal", () => refuseSafeWindowSeal());
   if (/\bSafeWindow\b/.test(source)) throw new Error("rotation module must not reference SafeWindow");
   if (maxSortableUniqueId([firstBad, last]) !== last) throw new Error("max helper drifted");
 

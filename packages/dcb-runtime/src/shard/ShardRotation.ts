@@ -150,10 +150,10 @@ export function assertNoSilentLedgerMerge(source: string): void {
   }
 }
 
-export function refuseSilentLedgerMerge(_mergeOnRead: true): never {
+export function refuseSilentLedgerMerge(): never {
   fail("SILENT_MERGE", "ledger", "silent-merge");
 }
 
-export function refuseSafeWindowSeal(_safeWindowAsSeal: true): never {
+export function refuseSafeWindowSeal(): never {
   fail("SAFEWINDOW_SEAL", "safe-window", "safewindow-seal");
 }
