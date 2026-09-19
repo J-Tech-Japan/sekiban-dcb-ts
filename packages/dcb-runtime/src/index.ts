@@ -203,6 +203,26 @@ export {
 } from "./allocator/SortableUniqueId";
 export type { ParsedSortableUniqueId, SortableUniqueIdErrorCode } from "./allocator/SortableUniqueId";
 export {
+  admitActiveWrite,
+  assertNoSilentLedgerMerge,
+  assertStrictlyBefore,
+  createRotationState,
+  maxSortableUniqueId,
+  recordLateArrival,
+  refuseSafeWindowSeal,
+  refuseSealedWrite,
+  refuseSilentLedgerMerge,
+  replaceSealedIdentity,
+  rotateAppend,
+  ShardRotationError,
+} from "./shard/ShardRotation";
+export type {
+  LateArrival,
+  SealedShard,
+  ShardRotationDiagnostic,
+  ShardRotationState,
+} from "./shard/ShardRotation";
+export {
   MAX_PUBLISHED_SAFE_WINDOW_MS,
   PUBLISHED_SAFE_WINDOW_MS,
   safeWindowCeilingExceeded,
