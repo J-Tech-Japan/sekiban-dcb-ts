@@ -28,6 +28,11 @@ readonly QUEUE_TOPOLOGY_FILE="${REPO_ROOT}/.artifacts/g32-queue-topology.json"
 readonly MEASUREMENT_FILE="${REPO_ROOT}/.artifacts/g32-measurement.json"
 
 cd "${REPO_ROOT}"
+
+# Composition gates fail before cleanliness checks and before any wrangler
+# process, including dry-run and d1. The wrapper is the path CI also calls.
+node scripts/g32-cutover-check.mjs
+
 test -x "${WRANGLER_BIN}"
 if [[ "$(git rev-parse HEAD)" != "${SOURCE_COMMIT}" ]]; then
   printf 'G32_SOURCE_COMMIT must equal the sealed checked-out final candidate\n' >&2
@@ -43,7 +48,6 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 # These gates fail before migrations, deployment, or any new-store command.
-node scripts/g32-cutover-check.mjs
 node scripts/g32-candidate-check.mjs --self-test
 node scripts/g32-candidate-check.mjs
 CONFIG_DIGEST="$(node scripts/deploy/g32-config-digest.mjs "${SOURCE_COMMIT}")"

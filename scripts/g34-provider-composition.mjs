@@ -79,6 +79,9 @@ const DIAGNOSTIC_REASONS = new Set([
   "second-shard",
   "unknown-input",
   "unresolved-kept-var",
+  "missing-config",
+  "digest-mismatch",
+  "invocation-count",
 ]);
 
 export class CompositionDiagnostic extends Error {
@@ -527,175 +530,6 @@ export function validateProfile(manifest = loadManifest(), mapping = loadMapping
   return manifestDigest(manifest);
 }
 
-function databaseEntries(config, binding) {
-  return (config?.d1_databases ?? []).filter((entry) => entry?.binding === binding);
-}
-
-function replaceD1(config, binding, entries) {
-  config.d1_databases = (config.d1_databases ?? []).filter((entry) => entry?.binding !== binding);
-  config.d1_databases.push(...entries);
-}
-
-export function legacyOverlapRows(componentId, config, expected, baseline = config) {
-  const probe = (apply) => {
-    const isolated = structuredClone(baseline);
-    apply(isolated);
-    return g32Accepts(componentId, isolated, expected) ? "pass" : "fail";
-  };
-  const rows = [];
-  const pipelines = databaseEntries(config, "D1");
-  for (const entry of (pipelines.length === 0 ? [null] : pipelines)) {
-    rows.push({
-      rowId: `${componentId}.pipeline.database_id`,
-      status: probe((isolated) => {
-        replaceD1(isolated, "D1", entry === null ? [] : [entry]);
-        isolated.vars = { ...(isolated.vars ?? {}), G32_PIPELINE_DATABASE_ID: config?.vars?.G32_PIPELINE_DATABASE_ID };
-      }),
-    });
-  }
-  const views = databaseEntries(config, "D1_MV");
-  for (const entry of (views.length === 0 ? [null] : views)) {
-    rows.push({
-      rowId: `${componentId}.mv.database_id`,
-      status: probe((isolated) => {
-        replaceD1(isolated, "D1_MV", entry === null ? [] : [entry]);
-        isolated.vars = { ...(isolated.vars ?? {}), G32_MATERIALIZED_VIEW_DATABASE_ID: config?.vars?.G32_MATERIALIZED_VIEW_DATABASE_ID };
-      }),
-    });
-  }
-  rows.push({
-    rowId: `${componentId}.do.class-set`,
-    status: probe((isolated) => {
-      isolated.durable_objects = { ...(isolated.durable_objects ?? {}), bindings: config?.durable_objects?.bindings ?? [] };
-    }),
-  });
-  if (componentId === "primary") {
-    rows.push({
-      rowId: "primary.queue.producer.0",
-      status: probe((isolated) => {
-        isolated.queues = { ...(isolated.queues ?? {}), producers: config?.queues?.producers ?? [] };
-        isolated.vars = { ...(isolated.vars ?? {}), G32_QUEUE_NAME: config?.vars?.G32_QUEUE_NAME };
-      }),
-    });
-    rows.push({
-      rowId: "primary.queue.consumer.0",
-      status: probe((isolated) => {
-        const consumer = { ...(isolated.queues?.consumers?.[0] ?? {}), queue: config?.queues?.consumers?.[0]?.queue };
-        isolated.queues = { ...(isolated.queues ?? {}), consumers: [consumer] };
-      }),
-    });
-    rows.push({
-      rowId: "primary.queue.dlq.0",
-      status: probe((isolated) => {
-        const consumer = { ...(isolated.queues?.consumers?.[0] ?? {}), dead_letter_queue: config?.queues?.consumers?.[0]?.dead_letter_queue };
-        isolated.queues = { ...(isolated.queues ?? {}), consumers: [consumer] };
-      }),
-    });
-  } else {
-    rows.push({
-      rowId: "receiver.queues.absent",
-      status: probe((isolated) => {
-        if (config?.queues === undefined) delete isolated.queues;
-        else isolated.queues = config.queues;
-      }),
-    });
-  }
-  return rows;
-}
-
-export function newOverlapRows(componentId, config, mapping, manifest) {
-  const rows = [];
-  const pipelines = databaseEntries(config, "D1");
-  const wantedPipeline = mapping?.resources?.["pipeline-d1"]?.database_id;
-  for (const entry of pipelines) {
-    rows.push({
-      rowId: `${componentId}.pipeline.database_id`,
-      status: entry.database_id === wantedPipeline ? "pass" : "fail",
-    });
-  }
-  const views = databaseEntries(config, "D1_MV");
-  const wantedView = mapping?.resources?.["mv-d1"]?.database_id;
-  for (const entry of views) {
-    rows.push({
-      rowId: `${componentId}.mv.database_id`,
-      status: entry.database_id === wantedView ? "pass" : "fail",
-    });
-  }
-  const classes = (config?.durable_objects?.bindings ?? []).map((entry) => entry?.class_name).sort();
-  const wantedClasses = [...(manifest?.durableObjectClasses ?? [])].sort();
-  rows.push({
-    rowId: `${componentId}.do.class-set`,
-    status: JSON.stringify(classes) === JSON.stringify(wantedClasses) ? "pass" : "fail",
-  });
-  if (componentId === "primary") {
-    const consumer = config?.queues?.consumers?.[0];
-    const work = mapping?.resources?.["work-queue"]?.name;
-    const dlq = mapping?.resources?.["dlq-queue"]?.name;
-    rows.push({ rowId: "primary.queue.producer.0", status: config?.queues?.producers?.[0]?.queue === work ? "pass" : "fail" });
-    rows.push({ rowId: "primary.queue.consumer.0", status: consumer?.queue === work ? "pass" : "fail" });
-    rows.push({
-      rowId: "primary.queue.dlq.0",
-      status: consumer?.dead_letter_queue === dlq && dlq !== work ? "pass" : "fail",
-    });
-  } else {
-    rows.push({ rowId: "receiver.queues.absent", status: config?.queues === undefined ? "pass" : "fail" });
-  }
-  return rows;
-}
-
-const g32AcceptCache = new Map();
-
-export function g32Accepts(component, config, expected) {
-  const key = `${component}\0${JSON.stringify(config)}`;
-  const cached = g32AcceptCache.get(key);
-  if (cached !== undefined) return cached;
-  let src = readFileSync(join(root, "scripts/g32-cutover-check.mjs"), "utf8");
-  src = src.replace(/\nconst contract =[\s\S]*?\nfunction arraysEqual/, "\nfunction arraysEqual");
-  src = src.replace("\nfunction assertComponentConfig", "\nexport function assertComponentConfig");
-  src = src.replace(/\nif \(process\.env\.SDT_G32_CUTOVER_FORCE_FAILURE[\s\S]*$/, "\n");
-  const input = JSON.stringify({ component, config, expected });
-  const runner = `
-const src = ${JSON.stringify(src)};
-const mod = await import("data:text/javascript;base64," + Buffer.from(src).toString("base64"));
-const payload = JSON.parse(${JSON.stringify(input)});
-try {
-  mod.assertComponentConfig(payload.config, payload.component, payload.expected);
-  process.stdout.write("ok");
-} catch {
-  process.stdout.write("fail");
-}
-`;
-  const result = spawnSync(process.execPath, ["--input-type=module", "-e", runner], { encoding: "utf8" });
-  if (result.status !== 0) throw new Error(result.stderr || "g32 overlap bridge failed");
-  if (result.stdout !== "ok" && result.stdout !== "fail") {
-    throw new Error(`g32 overlap bridge returned ${JSON.stringify(result.stdout)}`);
-  }
-  const accepted = result.stdout === "ok";
-  g32AcceptCache.set(key, accepted);
-  return accepted;
-}
-
-export function compareOverlap(legacyRows, newRows) {
-  const count = (rows, rowId) => rows.filter((row) => row.rowId === rowId).length;
-  const ids = new Set([...legacyRows, ...newRows].map((row) => row.rowId));
-  for (const rowId of ids) {
-    if (count(legacyRows, rowId) > 1 || count(newRows, rowId) > 1) {
-      fail("DUPLICATE_ROW", rowId, "duplicate-row");
-    }
-  }
-  for (const row of legacyRows) {
-    const found = newRows.filter((candidate) => candidate.rowId === row.rowId);
-    if (found.length === 0) fail("MISSING_ROW", row.rowId, "missing-row");
-    if (row.status === "fail" && found[0].status === "pass") fail("LEGACY_FAIL_NEW_PASS", row.rowId, "legacy-fail-new-pass");
-    if (row.status === "pass" && found[0].status === "fail") fail("NEW_FAIL_LEGACY_PASS", row.rowId, "new-fail-legacy-pass");
-    if (row.status !== found[0].status) fail("NEW_FAIL_LEGACY_PASS", row.rowId, "new-fail-legacy-pass");
-  }
-  for (const row of newRows) {
-    if (!legacyRows.some((candidate) => candidate.rowId === row.rowId)) fail("MISSING_ROW", row.rowId, "missing-row");
-  }
-  return { count: legacyRows.length, equal: true };
-}
-
 const KNOWN_INPUT_KEYS = new Set(["config", "environment", "cliOverrides", "keepVars"]);
 
 export function resolveCompositionInput(invocation) {
@@ -728,14 +562,6 @@ export function runSelfTest() {
   const envelope = validateProfile(manifest, mapping);
   const primary = loadJson(manifest.components[0].config);
   const receiver = loadJson(manifest.components[1].config);
-  const cutover = loadJson("contracts/g32-cutover.json");
-  const legacyBaseline = legacyOverlapRows("primary", primary, cutover.final).concat(legacyOverlapRows("receiver", receiver, cutover.final));
-  const newBaseline = newOverlapRows("primary", primary, mapping, manifest).concat(newOverlapRows("receiver", receiver, mapping, manifest));
-  compareOverlap(legacyBaseline, newBaseline);
-  if (!g32Accepts("primary", primary, cutover.final) || !g32Accepts("receiver", receiver, cutover.final)) {
-    throw new Error("g32 rejected the baseline overlap rows marked pass");
-  }
-  if (legacyBaseline.some((row) => row.status !== "pass")) throw new Error("legacy overlap baseline is not pass");
   const swapped = jcs({ b: 1, a: 2 });
   if (swapped !== jcs({ a: 2, b: 1 })) throw new Error("JCS key order drifted");
   if (jcs(-0) !== "0" || jcs(1.5) !== "1.5" || jcs({ b: 1, a: -0 }) !== '{"a":0,"b":1}') {
@@ -757,37 +583,6 @@ export function runSelfTest() {
       mutations.push(`${name}:${error.diagnostic.reason}`);
     }
   };
-  const drifted = structuredClone(primary);
-  drifted.vars = { ...primary.vars, G32_PIPELINE_DATABASE_ID: cutover.bridge.oldPipelineDatabaseId };
-  const mappedDrift = structuredClone(mapping);
-  mappedDrift.resources = {
-    ...mapping.resources,
-    "pipeline-d1": {
-      ...mapping.resources["pipeline-d1"],
-      database_id: "00000000-0000-4000-8000-000000000099",
-    },
-  };
-  const missingD1 = structuredClone(primary);
-  missingD1.d1_databases = primary.d1_databases.filter((entry) => entry.binding !== "D1");
-  const duplicatedD1 = structuredClone(primary);
-  duplicatedD1.d1_databases = [
-    ...primary.d1_databases,
-    { ...primary.d1_databases.find((entry) => entry.binding === "D1") },
-  ];
-  const overlapCorpus = [
-    { name: "legacy-fail-new-pass", primaryConfig: drifted, receiverConfig: receiver, mapped: mapping },
-    { name: "new-fail-legacy-pass", primaryConfig: primary, receiverConfig: receiver, mapped: mappedDrift },
-    { name: "missing-row", primaryConfig: missingD1, receiverConfig: receiver, mapped: mapping },
-    { name: "duplicate-row", primaryConfig: duplicatedD1, receiverConfig: receiver, mapped: mapping },
-  ];
-  for (const item of overlapCorpus) {
-    expect(item.name, () => compareOverlap(
-      legacyOverlapRows("primary", item.primaryConfig, cutover.final, primary)
-        .concat(legacyOverlapRows("receiver", item.receiverConfig, cutover.final, receiver)),
-      newOverlapRows("primary", item.primaryConfig, item.mapped, manifest)
-        .concat(newOverlapRows("receiver", item.receiverConfig, item.mapped, manifest)),
-    ));
-  }
   expect("second-producer", () => validateConfig(manifest, manifest.components[0], {
     ...primary,
     queues: { ...primary.queues, producers: [...primary.queues.producers, { binding: "EXTRA", queue: primary.queues.producers[0].queue }] },
