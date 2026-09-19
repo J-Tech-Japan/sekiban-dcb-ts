@@ -93,6 +93,7 @@
         {"id": "g93", "command": "npm run test:g93"},
         {"id": "g99-sample-registry", "command": "npm run test:g99:sample-registry && npm run test:g99:sample-registry -- --self-test"},
         {"id": "g34", "command": "npm run test:g34"},
+        {"id": "g100", "command": "npm run test:g100"},
         {"id": "g35", "command": "npm run test:g35"},
         {"id": "g35-red", "command": "npm run test:g35:forced-red", "env": {"SDT_G35_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g64-red", "command": "npm run test:g64:forced-red", "env": {"SDT_G64_FORCE_FAILURE": "1"}, "expect": "red"},
