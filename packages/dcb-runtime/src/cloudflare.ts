@@ -509,6 +509,26 @@ export {
   MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST,
 } from "./downstream/Doorbell";
 export { deliveryCorrelationId } from "./downstream/DeliveryCore";
+export {
+  admitActiveWrite,
+  assertNoSilentLedgerMerge,
+  assertStrictlyBefore,
+  createRotationState,
+  maxSortableUniqueId,
+  recordLateArrival,
+  refuseSafeWindowSeal,
+  refuseSealedWrite,
+  refuseSilentLedgerMerge,
+  replaceSealedIdentity,
+  rotateAppend,
+  ShardRotationError,
+} from "./shard/ShardRotation";
+export type {
+  LateArrival,
+  SealedShard,
+  ShardRotationDiagnostic,
+  ShardRotationState,
+} from "./shard/ShardRotation";
 export { GlobalCompletenessReconciler } from "./completeness/GlobalCompletenessReconciler";
 export {
   G44_HEALTH_STALE_AFTER_MS,
