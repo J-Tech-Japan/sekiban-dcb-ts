@@ -25,6 +25,7 @@
     "cheap",
     "g21-g25",
     "g32-parity",
+    "g33",
     "g30",
     "g43",
     "g44",
@@ -174,6 +175,21 @@
         {"id": "g32-source", "command": "git clone --filter=blob:none https://github.com/J-Tech-Japan/Sekiban.git .artifacts/g40-sekiban-source && git -C .artifacts/g40-sekiban-source checkout --detach 855feaa93564fef54defec76e9ccff969d4ee01a"},
         {"id": "g32", "command": "npm run test:g32"},
         {"id": "g32-red", "command": "npm run test:g32:forced-red", "env": {"SDT_G32_FORCE_FAILURE": "1"}, "expect": "red"}
+      ]
+    },
+    {
+      "name": "g33",
+      "tier": "local",
+      "services": ["postgres"],
+      "env": {
+        "UseSharedCompilation": "false",
+        "MSBUILDDISABLENODEREUSE": "1",
+        "DOTNET_CLI_USE_MSBUILD_SERVER": "0"
+      },
+      "affectedPaths": ["scripts/g33-live-cross.mjs", "tools/sekiban-live/**", "packages/dcb-runtime/src/store/PostgresEventStore.ts"],
+      "commands": [
+        {"id": "g33-source", "command": "git clone --filter=blob:none https://github.com/J-Tech-Japan/Sekiban.git .artifacts/g33-sekiban-source && git -C .artifacts/g33-sekiban-source checkout --detach 855feaa93564fef54defec76e9ccff969d4ee01a"},
+        {"id": "g33", "command": "npm run test:g33"}
       ]
     },
     {
