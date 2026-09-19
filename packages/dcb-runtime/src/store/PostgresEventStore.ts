@@ -28,6 +28,19 @@ type DbRow = Record<string, unknown>;
 type SqlParameter = string | number | null;
 type SqlClient = ReturnType<typeof postgres>;
 
+export interface LogicalProviderEvent {
+  readonly serviceId: string;
+  readonly id: string;
+  readonly sortableUniqueId: string;
+  readonly eventType: string;
+  readonly payload: string;
+  readonly tags: readonly string[];
+  readonly timestamp: string;
+  readonly causationId: string | null;
+  readonly correlationId: string | null;
+  readonly executedUser: string | null;
+}
+
 /** Coordinates first-use DDL across independently scheduled Worker isolates. */
 const SCHEMA_BOOTSTRAP_LOCK = 84_736_291;
 
@@ -572,6 +585,67 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
     return outcome === "stored"
       ? { outcome, kind: "stored", event: stored }
       : { outcome, kind: outcome, incident: incident! };
+  }
+
+  /**
+   * DDL columns only. C# rows have no provenance and no allocator lineage;
+   * this read must not invent either, and it must not treat Tags as
+   * committed membership.
+   */
+  async readLogicalEvents(serviceId: string): Promise<LogicalProviderEvent[]> {
+    const rows = await this.query(
+      `SELECT "ServiceId" AS service_id, "Id"::text AS event_id,
+              "SortableUniqueId" AS suid, "Payload"::text AS payload,
+              "EventType" AS event_type, "Tags" AS event_tags,
+              "Timestamp"::text AS timestamp, "CausationId" AS causation_id,
+              "CorrelationId" AS correlation_id, "ExecutedUser" AS executed_user
+         FROM dcb_events
+        WHERE "ServiceId" = $1
+        ORDER BY "SortableUniqueId" ASC, "Id" ASC`,
+      [serviceId],
+    );
+    return rows.map((row): LogicalProviderEvent => ({
+      serviceId: asString(row.service_id, "service_id"),
+      id: asString(row.event_id, "event_id"),
+      sortableUniqueId: asString(row.suid, "suid"),
+      eventType: asString(row.event_type, "event_type"),
+      payload: asString(row.payload, "payload"),
+      tags: asStringArray(row.event_tags, "event_tags"),
+      timestamp: canonicalUtcTimestamp(row.timestamp, "timestamp"),
+      causationId: nullableString(row.causation_id, "causation_id"),
+      correlationId: nullableString(row.correlation_id, "correlation_id"),
+      executedUser: nullableString(row.executed_user, "executed_user"),
+    }));
+  }
+
+  /** Insert one DDL row. Does not write dcb_event_ops or a provenance stamp. */
+  async appendLogicalEvent(event: LogicalProviderEvent): Promise<void> {
+    JSON.parse(event.payload);
+    assertSortableUniqueId(event.sortableUniqueId);
+    if (!isRfc4122Uuid(event.id)) {
+      throw new CanonicalEventIdentityConflictError("postgres", event.id, "logical event id must be an RFC 4122 UUID");
+    }
+    assertUtcTimestamp(event.timestamp, event.id);
+    const sql = this.requireSql();
+    await sql.begin(async (transaction) => {
+      await transaction.unsafe(
+        `INSERT INTO dcb_events
+           ("ServiceId", "Id", "SortableUniqueId", "EventType", "Payload", "Tags", "Timestamp", "CausationId", "CorrelationId", "ExecutedUser")
+         VALUES ($1, $2::uuid, $3, $4, $5::text::json, $6::text::jsonb, $7::timestamptz, $8, $9, $10)`,
+        [
+          event.serviceId,
+          event.id,
+          event.sortableUniqueId,
+          event.eventType,
+          event.payload,
+          JSON.stringify(event.tags),
+          event.timestamp,
+          event.causationId,
+          event.correlationId,
+          event.executedUser,
+        ],
+      );
+    });
   }
 
   async readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]> {

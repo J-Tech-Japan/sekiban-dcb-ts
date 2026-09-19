@@ -1,7 +1,7 @@
 {
   "schema": "sdt-g40-ci-step-inventory-allowlist/v1",
   "baselineRef": "origin/main",
-  "reviewedRule": "The G84 manifest is the reviewed authority: historical workflow-run leaves are replaced by manifest dispatch, manifest commands are additions, their recursively expanded package leaves are derived additions, and the retained PR workflow steps remain explicit. Every section is checked by exact normalized command text plus entry identity SHA-256; no wildcard command acceptance is used. SHA or URL rewrites are never allowlisted; the restored historical baseline command is the authority for the retained-history pin. SDT-G96 adds the reviewed cheap-lane command `npm run test:g93` (id `g93`) and its package-script closure leaf `node scripts/sdt-g93-workflow-package-guard.mjs`; that expands addedManifestCommands 135\u2192136 and addedManifestClosure 61\u219262. SDT-G99 updates package.json script leaves for `test:g64:build` (adds dcb-runtime workspace build), `test:g99:tip-identity`, `test:g99:tip-identity:live`, `test:g99:sample-registry`, `test:g99:telemetry-diagnosis`, and `deploy:g99:npm-consumer*`; foundation-g50-guards runs tip-identity and deployed-identity guards; cheap lane adds `g99-sample-registry`. SDT-G35 adds cheap-lane commands `npm run test:g35` (id `g35`) and `npm run test:g35:forced-red` (id `g35-red`) plus package-script closure leaves for the G35 census/confused-deputy guards. Combined with G99 sample-registry, expands addedManifestCommands 136\u2192139 and addedManifestClosure 62\u219265. SDT-G34 adds cheap-lane command `npm run test:g34` (id `g34`) and its package-script closure leaf `node scripts/g34-provider-composition.mjs --check`; that expands addedManifestCommands 139\u2192140 and addedManifestClosure 65\u219266.",
+  "reviewedRule": "The G84 manifest is the reviewed authority: historical workflow-run leaves are replaced by manifest dispatch, manifest commands are additions, their recursively expanded package leaves are derived additions, and the retained PR workflow steps remain explicit. Every section is checked by exact normalized command text plus entry identity SHA-256; no wildcard command acceptance is used. SHA or URL rewrites are never allowlisted; the restored historical baseline command is the authority for the retained-history pin. SDT-G96 adds the reviewed cheap-lane command `npm run test:g93` (id `g93`) and its package-script closure leaf `node scripts/sdt-g93-workflow-package-guard.mjs`; that expands addedManifestCommands 135\u2192136 and addedManifestClosure 61\u219262. SDT-G99 updates package.json script leaves for `test:g64:build` (adds dcb-runtime workspace build), `test:g99:tip-identity`, `test:g99:tip-identity:live`, `test:g99:sample-registry`, `test:g99:telemetry-diagnosis`, and `deploy:g99:npm-consumer*`; foundation-g50-guards runs tip-identity and deployed-identity guards; cheap lane adds `g99-sample-registry`. SDT-G35 adds cheap-lane commands `npm run test:g35` (id `g35`) and `npm run test:g35:forced-red` (id `g35-red`) plus package-script closure leaves for the G35 census/confused-deputy guards. Combined with G99 sample-registry, expands addedManifestCommands 136\u2192139 and addedManifestClosure 62\u219265. SDT-G34 adds cheap-lane command `npm run test:g34` (id `g34`) and its package-script closure leaf `node scripts/g34-provider-composition.mjs --check`; that expands addedManifestCommands 139\u2192140 and addedManifestClosure 65\u219266. SDT-G33 adds local-lane commands for the pinned Sekiban checkout (id `g33-source`) and `npm run test:g33` (id `g33`), plus the package-script closure leaf for that script. It is not on the cheap lane. That expands addedManifestCommands 140\u2192142 and addedManifestClosure 66\u219267.",
   "missingHistoricalWorkflow": {
     "count": 86,
     "entrySetSha256": "5075be9c3c2ce3a650056f6108361a0bfa0dde2a5851fe936c98c305539ded76",
@@ -9,15 +9,15 @@
     "reason": "The pre-G84 workflow-run command leaves were intentionally replaced by the lane manifest; their exact baseline command text remains hashed and reported by the checker."
   },
   "addedManifestCommands": {
-    "count": 140,
-    "entrySetSha256": "4f5feec9abb07d7ea0e1476309a794530d4ac59e1fd1cc434b79f26845005a79",
-    "idSetSha256": "49993fafba85007c71e6f416cdc28a28781cf87d2975d473b2a1623774c43ab4",
+    "count": 142,
+    "entrySetSha256": "451d15be18d57a9437f6d774a7a5f7c1dc1041c8a34e312ff3414301544b9760",
+    "idSetSha256": "63d1b517fa57a72385351f8f83a689a5fb37d0fa0b06912087bf5a30793cc541",
     "reason": "Each manifest lane command is an explicitly reviewed G84 authority entry; changing its lane, command, environment or tier changes this exact set."
   },
   "addedManifestClosure": {
-    "count": 66,
-    "entrySetSha256": "d78b2c50691b0e7aaed6c87e52ca33d97a41dbb5cb6f2e32ee82000abeaa03e2",
-    "idSetSha256": "bbeca6c03601771dc61547ba65c3ae52a4cd0255b257d08485c411d66c92e5d9",
+    "count": 67,
+    "entrySetSha256": "c6a22b97d252940d7060e610fc1e0d8f64431c4ae1dd5906ad4923fe9d5c5a80",
+    "idSetSha256": "88ba5a1011aa1417f85505a3d6dedf02f715c902de3e6b21dfee6449377da599",
     "reason": "These npm/workspace leaves are the exact recursive package-script closure of the reviewed manifest commands, not an untracked command source."
   },
   "addedWorkflowSteps": {

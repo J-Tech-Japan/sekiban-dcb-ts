@@ -58,8 +58,10 @@ interface AllocateInput {
   serviceId?: string;
   bootstrapCommandId?: string;
   bootstrapEpoch?: number;
+  /** Import crossing only. Ordinary commits omit this and still allocate. */
+  requiresImportSeed?: boolean;
 }
-interface SeedInput { importId: string; leaseEpoch: number; highWatermark: string; }
+interface SeedInput { importId: string; leaseEpoch: number; highWatermark: string; storeMaximum?: string; }
 
 interface AllocationSuccess {
   vector: AllocationVector;
@@ -68,6 +70,7 @@ interface AllocationSuccess {
 }
 
 class AllocationTransactionFault extends Error {}
+class ImportSeedRequiredError extends Error {}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -113,7 +116,13 @@ function assertG32State(state: AllocatorState | undefined): void {
 function seedFrom(value: unknown): { value?: SeedInput; error?: string } {
   if (!isObject(value) || !isNonEmptyString(value.importId) || !isNonNegativeInteger(value.leaseEpoch) || !isNonEmptyString(value.highWatermark)) return { error: "importId, leaseEpoch, and highWatermark are required" };
   try { decodeSuid(value.highWatermark); } catch { return { error: "highWatermark must be an allocator SUID" }; }
-  return { value: { importId: value.importId, leaseEpoch: value.leaseEpoch, highWatermark: value.highWatermark } };
+  let storeMaximum: string | undefined;
+  if (value.storeMaximum !== undefined) {
+    if (!isNonEmptyString(value.storeMaximum)) return { error: "storeMaximum must be an allocator SUID" };
+    try { decodeSuid(value.storeMaximum); } catch { return { error: "storeMaximum must be an allocator SUID" }; }
+    storeMaximum = value.storeMaximum;
+  }
+  return { value: { importId: value.importId, leaseEpoch: value.leaseEpoch, highWatermark: value.highWatermark, ...(storeMaximum !== undefined ? { storeMaximum } : {}) } };
 }
 
 function newAllocatorLineageId(): string {
@@ -186,6 +195,7 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
       ...(serviceId !== undefined ? { serviceId } : {}),
       ...(bootstrapCommandId !== undefined ? { bootstrapCommandId } : {}),
       ...(bootstrapEpoch !== undefined ? { bootstrapEpoch } : {}),
+      ...(value.requiresImportSeed === true ? { requiresImportSeed: true } : {}),
     },
   };
 }
@@ -602,6 +612,7 @@ export class AllocatorDurableObject implements DurableObject {
         const state = persistedState === undefined
           ? currentState(lineage)
           : { ...persistedState, allocatorLineageId: lineage, schemaVersion: 5 as const, bootstrapSeed: persistedState.bootstrapSeed ?? null, lastRollbackWarningFingerprint: persistedState.lastRollbackWarningFingerprint ?? null };
+        if (input.requiresImportSeed === true && state.bootstrapSeed === null) throw new ImportSeedRequiredError();
         // This is intentionally before the first transaction write. A clock
         // failure therefore cannot leave a vector, watermark, or warning fact.
         let clockTick: bigint;
@@ -690,6 +701,9 @@ export class AllocatorDurableObject implements DurableObject {
       }
       return json(result.vector, result.created ? 201 : 200);
     } catch (failure) {
+      if (failure instanceof ImportSeedRequiredError) {
+        return error(409, "allocator_seed_required", "commit before import seed");
+      }
       if (failure instanceof AllocationTransactionFault) {
         return error(
           503,
@@ -725,7 +739,10 @@ export class AllocatorDurableObject implements DurableObject {
         return { status: 409, body: { code: "allocator_seed_rejected", error: "allocator already seeded" } };
       }
       if (state.allocatedWatermark !== null) return { status: 409, body: { code: "allocator_seed_rejected", error: "allocator already allocating" } };
-      const updated: AllocatorState = { ...state, allocatedWatermark: input.highWatermark, bootstrapSeed: input };
+      if (input.storeMaximum !== undefined && input.highWatermark < input.storeMaximum) {
+        return { status: 409, body: { code: "allocator_seed_below_store_max", error: "seed below store maximum" } };
+      }
+      const updated: AllocatorState = { ...state, allocatedWatermark: input.highWatermark, bootstrapSeed: { importId: input.importId, leaseEpoch: input.leaseEpoch, highWatermark: input.highWatermark } };
       await txn.put(STATE_KEY, updated); return { status: 201, body: updated };
     });
     return json(result.body, result.status);

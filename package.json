@@ -158,6 +158,7 @@
     "measure:g57:executor": "node scripts/deploy/g57-executor-measure.mjs",
     "test:g53": "npm run build:packages && vitest run --config vitest.config.ts test/g53-scope-identity.spec.ts && node scripts/g53-scope-identity-check.mjs --self-test && node scripts/g53-scope-identity-check.mjs && node scripts/g53-scope-mutation-runner.mjs --self-test && node scripts/g53-scope-mutation-runner.mjs && node scripts/g53-downstream-scope-mutation-runner.mjs --self-test && node scripts/g53-downstream-scope-mutation-runner.mjs && node scripts/deploy/g53-scope-mismatch-e2e.mjs --self-test",
     "test:g53:forced-red": "npm run test:g53 && node -e \"if (process.env.SDT_G53_FORCE_FAILURE === '1') throw new Error('SDT-G53 forced-red CI wiring proof')\"",
+    "test:g33": "npm run build:packages && node scripts/g33-live-cross.mjs --self-test && node scripts/g33-live-cross.mjs --check",
     "test:g34": "node scripts/g34-provider-composition.mjs --check",
     "test:g35": "npm run build:packages && vitest run --config vitest.config.ts test/g35-do-scope.spec.ts && node scripts/g35-do-scope-contract-check.mjs --self-test && node scripts/g35-do-scope-contract-check.mjs && node scripts/g35-confused-deputy-mutation-runner.mjs --self-test && node scripts/g35-confused-deputy-mutation-runner.mjs",
     "test:g35:forced-red": "npm run test:g35 && node -e \"if (process.env.SDT_G35_FORCE_FAILURE === '1') throw new Error('SDT-G35 forced-red CI wiring proof')\"",

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <SekibanSourceRoot Condition="'$(SekibanSourceRoot)' == ''"></SekibanSourceRoot>
+  </PropertyGroup>
+
+  <Target Name="RequirePinnedSekibanSource" BeforeTargets="ResolveProjectReferences">
+    <Error Condition="'$(SekibanSourceRoot)' == ''" Text="SekibanSourceRoot must point to the pinned Sekiban checkout" />
+    <Error Condition="!Exists('$(SekibanSourceRoot)/dcb/src/Sekiban.Dcb.Postgres/Sekiban.Dcb.Postgres.csproj')" Text="SekibanSourceRoot does not contain Sekiban.Dcb.Postgres" />
+  </Target>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SekibanSourceRoot)/dcb/src/Sekiban.Dcb.Postgres/Sekiban.Dcb.Postgres.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.3" />
+  </ItemGroup>
+</Project>
