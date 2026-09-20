@@ -6,11 +6,13 @@ Start here: [`docs/getting-started-cloudflare.md`](docs/getting-started-cloudfla
 (migrate both D1s → deploy → smoke → C-0 notes).
 
 This Worker is a small consumer of the matched npm packages
-(`@sekiban/dcb-{core,domain,client,runtime}@0.2.0`). Its
-domain definitions live in `src/domain.ts`; it does not deep-import a package
-`src` directory or copy the runtime's private registries. For tip Cloudflare
-speed/latency deploys use `./scripts/deploy/g99-npm-consumer-deploy.sh` so the
-Worker resolves packed/registry packages rather than monorepo `file:` links.
+(`@sekiban/dcb-{core,domain,client,runtime}@0.2.0`) plus the unpublished
+workspace helper `@sekiban/dcb-cloudflare`. The helper mounts storage beside
+a caller's own Worker; this sample is not that caller's only application.
+For tip Cloudflare speed/latency deploys use `./scripts/deploy/g99-npm-consumer-deploy.sh`
+(it packs this worktree). The registry `0.2.0` dry-run is `npm run test:g102`.
+Domain definitions live in `src/domain.ts`; the sample does not deep-import a
+package `src` directory.
 
 The application surface is `/api/commands/{create-room,reserve-room,cancel-reservation,release-room}`
 plus the read-only `/api/read/room?roomId=...` and
