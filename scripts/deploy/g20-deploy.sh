@@ -14,18 +14,21 @@ if [[ ! "${SERVICE_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]]; then
   exit 2
 fi
 
-# Migrations are versioned and applied before the Worker is deployed. The
-# runtime never executes DDL and the two bindings remain separate databases.
-"${WRANGLER_BIN}" d1 migrations apply sekiban-dcb-meeting-room-cloudflare-pipeline --config "${CONFIG}" --remote
-"${WRANGLER_BIN}" d1 migrations apply sekiban-dcb-meeting-room-cloudflare-mv --config "${CONFIG}" --remote
+# Migrations and deploy go through the composition helper. This script still
+# owns the G20 service-id gate, the conformance secret, and the deploy flags
+# the helper does not invent (--strict, --var, --message).
+export WRANGLER_BIN
+CLI="${REPO_ROOT}/packages/dcb-cloudflare/dist/cli.js"
+if [[ ! -f "${CLI}" ]]; then
+  npm run build -w @sekiban/dcb-runtime --prefix "${REPO_ROOT}"
+  npm run build -w @sekiban/dcb-cloudflare --prefix "${REPO_ROOT}"
+fi
 
-# A conformance token is read from protected operator storage only. Its value
-# is piped to Wrangler and never appears in command arguments or artifacts.
 if [[ -n "${G20_CONFORMANCE_TOKEN_FILE:-}" ]]; then
   test -f "${G20_CONFORMANCE_TOKEN_FILE}"
   "${WRANGLER_BIN}" secret put CONFORMANCE_TOKEN --name "${WORKER_NAME}" < "${G20_CONFORMANCE_TOKEN_FILE}"
 fi
 
-"${WRANGLER_BIN}" deploy --config "${CONFIG}" --keep-vars --strict \
-  --var "SDT_SERVICE_ID:${SERVICE_ID}" --message "SDT-G20 Cloudflare-only candidate"
+node "${CLI}" deploy --config "${CONFIG}" --keep-vars -- \
+  --strict --var "SDT_SERVICE_ID:${SERVICE_ID}" --message "SDT-G20 Cloudflare-only candidate"
 "${WRANGLER_BIN}" deployments list --name "${WORKER_NAME}"

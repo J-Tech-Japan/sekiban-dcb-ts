@@ -19,6 +19,8 @@
     "packages/dcb-domain/src/**/*.ts",
     "packages/dcb-runtime/src/**/*.ts",
     "packages/dcb-client/src/**/*.ts",
+    "packages/dcb-cloudflare/src/index.ts",
+    "packages/dcb-cloudflare/src/compose.ts",
     "samples/meeting-room/src/**/*.ts",
     "test/**/*.ts",
     "scripts/g29-mapping-contract.d.mts",

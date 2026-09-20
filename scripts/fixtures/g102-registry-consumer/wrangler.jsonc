@@ -1,0 +1,32 @@
+{
+  "name": "sdt-g102-registry-consumer",
+  "main": "worker.ts",
+  "compatibility_date": "2026-08-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "D1",
+      "database_name": "g102-registry-pipeline",
+      "database_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "binding": "D1_MV",
+      "database_name": "g102-registry-mv",
+      "database_id": "00000000-0000-0000-0000-000000000002"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "ALLOCATOR", "class_name": "AllocatorDurableObject" },
+      { "name": "JOURNAL", "class_name": "JournalDurableObject" },
+      { "name": "TAG", "class_name": "TagDurableObject" },
+      { "name": "TAG_STATE", "class_name": "TagStateDurableObject" },
+      { "name": "BOOTSTRAP", "class_name": "BootstrapCoordinatorDurableObject" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"] },
+    { "tag": "v2", "new_sqlite_classes": ["BootstrapCoordinatorDurableObject"] },
+    { "tag": "v3", "new_sqlite_classes": ["TagStateDurableObject"] }
+  ]
+}

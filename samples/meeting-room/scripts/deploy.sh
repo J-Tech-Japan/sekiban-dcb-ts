@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Apply the sample's own remote D1 migrations through the composition helper.
-# The helper reads this sample's wrangler config; it does not own the Worker.
+# Deploy the meeting-room sample through the composition helper.
+# The Worker name and bindings stay in this sample's wrangler config.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -12,4 +12,4 @@ if [[ ! -f "$CLI" ]]; then
   npm run build -w @sekiban/dcb-cloudflare --prefix "$ROOT"
 fi
 
-node "$CLI" migrate --config "$CONFIG"
+node "$CLI" deploy --config "$CONFIG" "$@"

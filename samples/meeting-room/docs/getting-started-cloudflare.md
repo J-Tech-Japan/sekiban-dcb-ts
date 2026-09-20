@@ -1,22 +1,23 @@
 # Getting started: Cloudflare meeting-room sample
 
-This is the canonical Cloudflare Workers sample for **sekiban-dcb-ts**.
+This sample shows one way to consume **sekiban-dcb-ts**. It is not the only
+application. Callers who already have a Worker mount Sekiban storage beside
+their own routes with `@sekiban/dcb-cloudflare`, passing their own wrangler
+config. That helper is a workspace package here and is not published yet.
 
-It consumes the matched npm set (`@sekiban/dcb-core`, `@sekiban/dcb-domain`,
-`@sekiban/dcb-client`, `@sekiban/dcb-runtime` at `0.2.0`). Domain authoring
-lives in `src/domain.ts`; Durable Object classes are re-exported from the
-Worker entry because Cloudflare requires DO classes in the Worker module graph.
+Domain authoring lives in `src/domain.ts`. Durable Object classes are
+re-exported from the Worker entry because Cloudflare requires them in the
+Worker module graph.
 
-In-repo `npm ci` may still workspace-link those packages for developer
-ergonomics. **Tip Cloudflare speed/latency deploys must use the npm-consumer
-path** so the Worker is built from packed/registry packages, not `file:` links:
+## Three consume paths
 
-```sh
-# from repository root
-./scripts/deploy/g99-npm-consumer-deploy.sh
-```
+| Path | What it installs | When |
+|---|---|---|
+| Workspace | this repo's `packages/` via npm workspaces | developing in this repository |
+| Packed tip | `./scripts/deploy/g99-npm-consumer-deploy.sh` (`npm pack` of the current commit) | tip Cloudflare speed/latency deploys |
+| Registry | `@sekiban/dcb-{core,domain,client,runtime}@0.2.0` from registry.npmjs.org | `npm run test:g102` dry-run. This does not deploy the live sample worker |
 
-Dry-run packing/install only: `G99_DRY_RUN=1 ./scripts/deploy/g99-npm-consumer-deploy.sh`.
+In-repo `npm ci` workspace-links the sample. Do not treat that as a registry install.
 
 ## Prerequisites
 
@@ -29,29 +30,31 @@ Dry-run packing/install only: `G99_DRY_RUN=1 ./scripts/deploy/g99-npm-consumer-d
 Skipping migrations after a tip deploy causes `FirstAdmissionAttemptId` /
 schema-drift failures on reserve.
 
-From the **repository root**:
-
-```sh
-CI=true npx wrangler d1 migrations apply sekiban-dcb-meeting-room-cloudflare-pipeline \
-  --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
-
-CI=true npx wrangler d1 migrations apply sekiban-dcb-meeting-room-cloudflare-mv \
-  --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
-```
-
-Or:
+From the **repository root**, after the helper is built (`npm run build -w @sekiban/dcb-cloudflare`):
 
 ```sh
 ./samples/meeting-room/scripts/migrate-remote.sh
 ```
 
+That script calls `dcb-cloudflare migrate --config samples/meeting-room/wrangler.cloudflare-only.jsonc`. The config, database names, and Worker name stay in the sample. Another application passes its own wrangler file to the same CLI.
+
 ## 2. Deploy
 
 ```sh
-npx wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --keep-vars
+./samples/meeting-room/scripts/deploy.sh
 ```
 
+Add `--keep-vars` only when you intend to preserve existing vars. The helper does not add it unless you pass it. `scripts/deploy/g20-deploy.sh` remains the G20 witness: it still checks `G20_SERVICE_ID` and pipes the conformance secret, and it calls this same helper for migrate and deploy.
+
 Note the printed `*.workers.dev` URL.
+
+The packed-tip path remains:
+
+```sh
+./scripts/deploy/g99-npm-consumer-deploy.sh
+```
+
+Dry-run packing/install only: `G99_DRY_RUN=1 ./scripts/deploy/g99-npm-consumer-deploy.sh`.
 
 ## 3. Smoke (create → reserve → read)
 
@@ -117,10 +120,11 @@ To reuse short demo IDs after verify seed / conflicts:
 
 | Package | npm | Sample dependency |
 |---------|-----|-------------------|
-| `@sekiban/dcb-core` | `0.2.0` | workspace `file:` (same version) |
+| `@sekiban/dcb-core` | `0.2.0` | workspace link while developing in this repo |
 | `@sekiban/dcb-domain` | `0.2.0` | via domain authoring / client |
-| `@sekiban/dcb-client` | `0.2.0` | workspace `file:` |
-| `@sekiban/dcb-runtime` | **private** | workspace `file:` (DO re-export) |
+| `@sekiban/dcb-client` | `0.2.0` | workspace link while developing in this repo |
+| `@sekiban/dcb-runtime` | `0.2.0` | workspace link while developing in this repo |
+| `@sekiban/dcb-cloudflare` | not published | workspace `0.1.0`; composition helper, not the application |
 
 The sample must not copy package `src` trees. Sample-local files are domain,
 Worker composition, and UI only.
