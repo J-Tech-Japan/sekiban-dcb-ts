@@ -96,6 +96,7 @@
         {"id": "g100", "command": "npm run test:g100"},
         {"id": "g101", "command": "npm run test:g101"},
         {"id": "g102", "command": "npm run test:g102"},
+        {"id": "g103", "command": "npm run test:g103"},
         {"id": "g35", "command": "npm run test:g35"},
         {"id": "g35-red", "command": "npm run test:g35:forced-red", "env": {"SDT_G35_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g64-red", "command": "npm run test:g64:forced-red", "env": {"SDT_G64_FORCE_FAILURE": "1"}, "expect": "red"},

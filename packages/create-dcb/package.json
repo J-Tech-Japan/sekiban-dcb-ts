@@ -1,0 +1,19 @@
+{
+  "name": "@sekiban/create-dcb",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Create a named Sekiban Cloudflare starter project.",
+  "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/J-Tech-Japan/sekiban-dcb-ts.git",
+    "directory": "packages/create-dcb"
+  },
+  "homepage": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/tree/main/packages/create-dcb#readme",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "bin": { "create-dcb": "./bin/create-dcb.mjs" },
+  "files": ["bin", "template", "README.md", "LICENSE"],
+  "scripts": {},
+  "publishConfig": { "access": "public", "provenance": true }
+}
