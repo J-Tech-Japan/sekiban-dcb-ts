@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{PROJECT_NAME}} booking</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <p class="eyebrow">{{PROJECT_NAME}}</p>
+        <h1>Book a room</h1>
+        <p>Create a room, reserve it, inspect its state, and release it. The small demo is intentionally easy to replace.</p>
+      </header>
+
+      <section class="grid">
+        <form data-command="create-room">
+          <h2>Create room</h2>
+          <label>Room ID <input name="roomId" required placeholder="room-1"></label>
+          <label>Name <input name="name" placeholder="North studio"></label>
+          <button>Create room</button>
+        </form>
+        <form data-command="reserve-room">
+          <h2>Reserve room</h2>
+          <label>Room ID <input name="roomId" required placeholder="room-1"></label>
+          <label>Reservation ID <input name="reservationId" required placeholder="reservation-1"></label>
+          <label>User ID <input name="userId" placeholder="alex"></label>
+          <button>Reserve</button>
+        </form>
+        <form data-command="cancel-reservation">
+          <h2>Cancel reservation</h2>
+          <label>Reservation ID <input name="reservationId" required placeholder="reservation-1"></label>
+          <button>Cancel</button>
+        </form>
+        <form data-command="release-room">
+          <h2>Release room</h2>
+          <label>Room ID <input name="roomId" required placeholder="room-1"></label>
+          <button>Release</button>
+        </form>
+      </section>
+
+      <section class="reads">
+        <h2>Reads</h2>
+        <div class="read-row">
+          <input id="room-read-id" placeholder="room ID">
+          <button data-read="room">Read room</button>
+          <input id="reservation-read-id" placeholder="reservation ID">
+          <button data-read="reservation">Read reservation</button>
+          <button data-read="reservations">List reservations</button>
+        </div>
+      </section>
+
+      <pre id="result" aria-live="polite">Ready.</pre>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
