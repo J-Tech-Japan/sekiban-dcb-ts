@@ -171,7 +171,7 @@ async function helperProbes() {
   const spawned = [];
   const missing = await executeCloudflareCli(["migrate"], {
     readText: () => { throw new Error("should-not-read"); },
-    spawn: async (command) => { spawned.push(command); return 0; },
+    spawn: async (request) => { spawned.push(request); return 0; },
   });
   const remote = planCloudflareCommands(["migrate", "--config", "caller.jsonc"], config);
   const deployed = planCloudflareCommands(["deploy", "--config", "caller.jsonc", "--env", "staging"], config);

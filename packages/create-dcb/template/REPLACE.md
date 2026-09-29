@@ -25,6 +25,9 @@ bindings do not need to change.
 - `migrations/d1/g32/` and `migrations/mv/` — the project-local migration SQL.
 - `scripts/migrate.sh` and `scripts/deploy.sh` — helper-backed lifecycle commands.
 - `package.json` — the published dependency versions and helper scripts.
+- `cloudflare.config.ts` — deliberate cf CLI guard; do not edit or complete it.
+- `public/.assetsignore` — keeps stray cf config files out of Worker assets.
+- `AGENTS.md` — operational guidance for this starter.
 
 The replacement domain must continue to provide the runtime domain/config
 values consumed by `src/worker.ts`, or the Worker shell can be adjusted at

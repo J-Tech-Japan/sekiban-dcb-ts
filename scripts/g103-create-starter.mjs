@@ -25,6 +25,8 @@ const matchedSet = [
 const requiredFiles = [
   "README.md",
   "REPLACE.md",
+  "AGENTS.md",
+  "cloudflare.config.ts",
   "package.json",
   "wrangler.jsonc",
   "src/worker.ts",
@@ -35,6 +37,7 @@ const requiredFiles = [
   "public/index.html",
   "public/app.js",
   "public/styles.css",
+  "public/.assetsignore",
   "scripts/migrate.sh",
   "scripts/deploy.sh",
 ];
@@ -201,11 +204,17 @@ function assertConfig(project, projectName) {
 function assertReplaceManifest(project) {
   const text = readFileSync(join(project, "REPLACE.md"), "utf8");
   for (const file of removableDemoFiles) assert(text.includes(`\`${file}\``), `REPLACE.md omitted ${file}`);
-  for (const kept of ["wrangler.jsonc", "src/worker.ts", "migrations/d1/g32/", "migrations/mv/", "scripts/migrate.sh", "scripts/deploy.sh"]) {
+  for (const kept of ["wrangler.jsonc", "src/worker.ts", "migrations/d1/g32/", "migrations/mv/", "scripts/migrate.sh", "scripts/deploy.sh", "cloudflare.config.ts", "public/.assetsignore", "AGENTS.md"]) {
     assert(text.includes(`\`${kept}\``), `REPLACE.md omitted keep boundary ${kept}`);
   }
+  const guard = readFileSync(join(project, "cloudflare.config.ts"), "utf8");
+  assert(guard.includes("deliberate cf CLI guard") && guard.includes("not an unfinished cf migration"), "cf guard header is not explicit");
+  assert(guard.includes("Do not edit, complete, or delete"), "cf guard header is not a hard keep instruction");
+  const assetsIgnore = readFileSync(join(project, "public/.assetsignore"), "utf8").trim().split(/\r?\n/).sort();
+  assert(JSON.stringify(assetsIgnore) === JSON.stringify(["cloudflare.config.ts", "wrangler.config.ts"]), "public/.assetsignore is not the cf config denylist");
+  assert(!existsSync(join(project, ".cloudflare")) && !existsSync(join(project, ".gitignore")), "starter generated a forbidden cf or git file");
   assert(text.includes("Delete or replace") && text.includes("Keep"), "REPLACE.md is missing its two boundary sections");
-  return { removableDemoFiles, keepsInfrastructure: true };
+  return { removableDemoFiles, keepsInfrastructure: true, cfGuard: true, assetsIgnore: true };
 }
 
 function assertPackage(project) {
