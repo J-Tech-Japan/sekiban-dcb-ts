@@ -39,6 +39,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && esbuild src/compose.ts --bundle --format=esm --platform=neutral --outfile=dist/compose.js && esbuild src/index.ts --bundle --format=esm --platform=neutral --external:@sekiban/dcb-runtime --external:@sekiban/dcb-runtime/cloudflare --outfile=dist/index.js && esbuild src/cli.ts --bundle --format=esm --platform=node --banner:js='#!/usr/bin/env node' --outfile=dist/cli.js",
+    "test": "npm run build && node --test test/cli.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }
