@@ -1009,8 +1009,8 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
       receiverMode: config.receiverMode,
       degradation: config.degradation,
       maxServiceBindingInvocations: config.maxServiceBindingInvocations,
-      pipelineDatabaseId: "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-      materializedViewDatabaseId: "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      pipelineDatabaseId: "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
+      materializedViewDatabaseId: "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID",
       queue: "sekiban-dcb-meeting-room-cloudflare-outbox",
       generation: "v2",
     });
@@ -1022,8 +1022,8 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
       worker: "sekiban-dcb-meeting-room-cloudflare-only",
       sourceCommit: env.G31_SOURCE_COMMIT ?? null,
       serviceId: optionalServiceIdentity(env),
-      pipelineDatabaseId: "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-      materializedViewDatabaseId: "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      pipelineDatabaseId: "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
+      materializedViewDatabaseId: "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID",
       queue: "sekiban-dcb-meeting-room-cloudflare-outbox",
       generation: "v2",
       waitFor: {

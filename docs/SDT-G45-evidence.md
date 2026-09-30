@@ -103,7 +103,7 @@ been authorized by this task. This document deliberately does not invent a
 50–100 request before/after result, a history length, or telemetry medians.
 
 For context only, not as this unit's baseline or acceptance evidence,
-`docs/SDT-G37-speedup-evidence.md` reports end-state descriptive S13/S14
+The historical G37 speedup record reports end-state descriptive S13/S14
 medians of 58/44 ms. The historical G30 384 ms figure is likewise not used as
 today's baseline. Once an explicitly authorized deployed-worker sample is
 run, this section must record the current-main before window and candidate

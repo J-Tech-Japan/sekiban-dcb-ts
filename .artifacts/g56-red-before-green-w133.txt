@@ -1,9 +1,0 @@
-SDT-G56 AC1-AC4 red-before-green receipt
-command: npx vitest run --config vitest.config.ts test/g56-assert-empty.spec.ts
-branch: claude/sdt-g56-local-ac1-ac5-w133
-base: a41839ff8ba117244d55ffcf2ecffd4d3b8df051
-observed: 3 tests failed
-AC1: validateCommitEnvelope returned { error: Response{} } for a V1 consistency tag with lastSortableUniqueId "".
-AC2/AC3: direct Tag /acquire returned HTTP 400 instead of HTTP 201 for lastSortableUniqueId "".
-AC4: Session.readClaims returned head null instead of the required empty-string claim.
-This receipt is preserved as the pre-change red oracle; no product code had been edited when it was captured.

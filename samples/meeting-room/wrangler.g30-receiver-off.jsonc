@@ -15,8 +15,8 @@
     "G32_CUTOVER_PHASE": "final-g32",
     "G32_FREEZE_RELEASE": "after-new-bindings",
     "G32_COMPONENT": "receiver",
-    "G32_PIPELINE_DATABASE_ID": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-    "G32_MATERIALIZED_VIEW_DATABASE_ID": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+    "G32_PIPELINE_DATABASE_ID": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+    "G32_MATERIALIZED_VIEW_DATABASE_ID": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
     "G32_QUEUE_NAME": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox"
   },
   "observability": {
@@ -29,13 +29,13 @@
     {
       "binding": "D1",
       "database_name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline",
-      "database_id": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+      "database_id": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
       "migrations_dir": "../../migrations/d1/g32"
     },
     {
       "binding": "D1_MV",
       "database_name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv",
-      "database_id": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+      "database_id": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
       "migrations_dir": "../../migrations/mv"
     }
   ],

@@ -584,8 +584,8 @@ export function createPacedFallbackSchedule({ w68Recovery, pacedStatePath, now =
       decision: ready ? "start-paced-now" : "wait-until-two-hour-gate",
       statePath: required("pacedStatePath", pacedStatePath),
       protocol: "one discarded accepted warm-up, then exactly 50 accepted commits at least 10000 ms apart; resume-query only the saved 51 CF-Ray values; no third cohort",
-      startCommand: "env G50_OBSERVABILITY_TOKEN_FILE=/Users/tomohisa/.config/sekiban-dcb/observability-token node scripts/deploy/g52-resume-query.mjs --mode start-paced --state .artifacts/sdt-g52-w69-paced-resume.json --base-url https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev --account-id 3ede2188f4cf39a28e0aa3722d3d02c5 --service-id sekiban-dcb-meeting-room-cloudflare-only --version-id 38921aad-9faf-4ac5-bdfd-1348d7214422 --source-commit 6db728122fefc410e7d9639d62302bb107df13be --run-id g52-w69-paced-20260902-01",
-      resumeCommand: "env G50_OBSERVABILITY_TOKEN_FILE=/Users/tomohisa/.config/sekiban-dcb/observability-token node scripts/deploy/g52-resume-query.mjs --mode resume --state .artifacts/sdt-g52-w69-paced-resume.json --account-id 3ede2188f4cf39a28e0aa3722d3d02c5",
+      startCommand: "env G50_OBSERVABILITY_TOKEN_FILE=/path/to/user/.config/sekiban-dcb/observability-token node scripts/deploy/g52-resume-query.mjs --mode start-paced --state .artifacts/ci-local/g52-paced-resume.json --base-url https://example.workers.dev --account-id REPLACE_WITH_ACCOUNT_ID --service-id sekiban-dcb-meeting-room-cloudflare-only --version-id 38921aad-9faf-4ac5-bdfd-1348d7214422 --source-commit 6db728122fefc410e7d9639d62302bb107df13be --run-id g52-w69-paced-20260902-01",
+      resumeCommand: "env G50_OBSERVABILITY_TOKEN_FILE=/path/to/user/.config/sekiban-dcb/observability-token node scripts/deploy/g52-resume-query.mjs --mode resume --state .artifacts/ci-local/g52-paced-resume.json --account-id REPLACE_WITH_ACCOUNT_ID",
     }),
     runnerStatus: "interactive wake does not leave an unattended runner; the next exact action and immutable state path are persisted",
   });
@@ -615,7 +615,7 @@ async function main() {
     const w68Recovery = JSON.parse(readFileSync(w68Path, "utf8"));
     const schedule = createPacedFallbackSchedule({
       w68Recovery,
-      pacedStatePath: argument("--paced-state", ".artifacts/sdt-g52-w69-paced-resume.json"),
+      pacedStatePath: argument("--paced-state", ".artifacts/ci-local/g52-paced-resume.json"),
     });
     writeJsonAtomically(statePath, schedule);
     process.stdout.write(`${JSON.stringify({ mode, decision: schedule.pacedFallback.decision, earliestStartAt: new Date(schedule.pacedFallback.earliestStartAtMs).toISOString(), state: statePath }, null, 2)}\n`);

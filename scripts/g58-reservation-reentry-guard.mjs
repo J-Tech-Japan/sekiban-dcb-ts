@@ -13,7 +13,7 @@ import { resolve } from "node:path";
 
 const root = process.cwd();
 const baselinePath = ".artifacts/sdt-g58-w106-red-baseline.json";
-const reportPath = ".artifacts/sdt-g58-w106-reentry-green.json";
+const reportPath = ".artifacts/ci-local/g58-reservation-reentry.json";
 const unsafePath = "packages/dcb-runtime/src/mv/UnsafeWindowMaterializedView.ts";
 const d1MvPath = "samples/meeting-room/src/d1-mv.ts";
 const catchUpPath = "packages/dcb-runtime/src/mv/MaterializedViewCatchUp.ts";
@@ -165,7 +165,7 @@ function main() {
       upstreamOutboxQueueGlobalAdmission: "held SDT-G60; not modified",
     },
   };
-  mkdirSync(resolve(root, ".artifacts"), { recursive: true });
+  mkdirSync(resolve(root, ".artifacts/ci-local"), { recursive: true });
   writeFileSync(resolve(root, reportPath), `${JSON.stringify(report, null, 2)}\n`, "utf8");
   process.stdout.write(`${JSON.stringify({ guard: "g58-w106-reservation-reentry", status: "green", report: reportPath, baseline: baselinePath })}\n`);
 }

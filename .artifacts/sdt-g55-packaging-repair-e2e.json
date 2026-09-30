@@ -2,7 +2,7 @@
   "schema": "sdt-g55-read-visibility-e2e/v1",
   "task": "SDT-G55",
   "runId": "3fecda14-172b-41df-992c-0f04cd8ce281",
-  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "baseUrl": "https://example.workers.dev",
   "serviceId": "sekiban-dcb-meeting-room-cloudflare-only",
   "startedAt": "2026-09-03T01:27:57.859Z",
   "contract": {
@@ -1241,7 +1241,7 @@
   "status": "failed",
   "failure": "remote D1 query failed: exit 1",
   "wranglerFailure": {
-    "stdout": "\n{\n  \"error\": {\n    \"text\": \"A request to the Cloudflare API (/accounts/3ede2188f4cf39a28e0aa3722d3d02c5/d1/database/b416b212-4d09-413c-9b8d-7660e475772f/query) failed.\",\n    \"notes\": [\n      {\n        \"text\": \"Authentication error [code: 10000]\"\n      }\n    ],\n    \"kind\": \"error\",\n    \"name\": \"APIError\",\n    \"code\": 10000,\n    \"accountTag\": \"3ede2188f4cf39a28e0aa3722d3d02c5\"\n  }\n}\n",
+    "stdout": "\n{\n  \"error\": {\n    \"text\": \"A request to the Cloudflare API (/accounts/REPLACE_WITH_ACCOUNT_ID/d1/database/REPLACE_WITH_CLOUDFLARE_ONLY_MV_D1_ID/query) failed.\",\n    \"notes\": [\n      {\n        \"text\": \"Authentication error [code: 10000]\"\n      }\n    ],\n    \"kind\": \"error\",\n    \"name\": \"APIError\",\n    \"code\": 10000,\n    \"accountTag\": \"REPLACE_WITH_ACCOUNT_ID\"\n  }\n}\n",
     "stderr": "",
     "status": 1
   }

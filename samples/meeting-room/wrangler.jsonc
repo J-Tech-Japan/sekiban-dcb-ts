@@ -12,7 +12,7 @@
     { "binding": "RUNTIME", "service": "sekiban-dcb-meeting-room", "entrypoint": "runtime" }
   ],
   "hyperdrive": [
-    { "binding": "HYPERDRIVE", "id": "c236b7b51ed24bf4b312bc370c61a231" }
+    { "binding": "HYPERDRIVE", "id": "REPLACE_WITH_SAMPLE_HYPERDRIVE_ID" }
   ],
   "queues": {
     "producers": [{ "binding": "DOWNSTREAM_QUEUE", "queue": "serialized-dcb-v1-downstream" }],

@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const sourceFile = "packages/dcb-runtime/src/safeWindow.ts";
-const reportFile = ".artifacts/sdt-g58-w98-lag-red-guard.json";
+const reportFile = ".artifacts/ci-local/g58-lag-hygiene.json";
 const mutation = Object.freeze({
   from: "  return Math.max(0, estimateMs - elapsed);",
   to: "  return Math.max(0, estimateMs);",
@@ -75,7 +75,7 @@ function main() {
   if (readFileSync(absoluteSource, "utf8") !== original) fail("source mutation was not restored");
   if (mutant.exitCode === 0) fail("stale-estimate mutation unexpectedly remained green");
 
-  mkdirSync(resolve(root, ".artifacts"), { recursive: true });
+  mkdirSync(resolve(root, ".artifacts/ci-local"), { recursive: true });
   const evidence = {
     schema: "sdt-g58-ac4-lag-hygiene/v1",
     status: "red-mutant",

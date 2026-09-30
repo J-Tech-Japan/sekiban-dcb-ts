@@ -6,12 +6,12 @@
   "status": "verified",
   "candidateDeployment": {
     "worker": "sekiban-dcb-meeting-room-cloudflare-only",
-    "url": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+    "url": "https://example.workers.dev",
     "candidateVersion": "bc955da5-b00f-4d46-b1f5-56d8df1298e2",
     "restartVersion": "3a5306a8-95f0-4654-898d-333c5057d164",
     "negativeOracleProbeVersion": "a49568da-f3be-4041-aeec-9e416d6c5a8d",
-    "pipelineD1": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-    "materializedViewD1": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+    "pipelineD1": "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
+    "materializedViewD1": "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID",
     "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
     "externalDatabaseBindings": 0,
     "hyperdriveCaching": "disabled"
@@ -72,7 +72,7 @@
       }
     },
     "queryUiE2e": {
-      "command": "python3 scripts/deploy/g15-e2e.py --base-url https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev --include-query-views",
+      "command": "python3 scripts/deploy/g15-e2e.py --base-url https://example.workers.dev --include-query-views",
       "result": "pass",
       "runId": "91b8cb19c6f946afb67c452aefa3ab2b",
       "reservationListStatus": 200,

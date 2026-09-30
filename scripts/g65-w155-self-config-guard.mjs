@@ -6,8 +6,8 @@ import process from "node:process";
 
 const DEFAULT_CONFIG = ".artifacts/wrangler.g65-w155-c.jsonc";
 const ARM = "sekiban-dcb-g60-w155-c";
-const PIPELINE_ID = "ac751211-fde8-4587-9d56-1e9fd8051bc3";
-const MV_ID = "2b60dbcf-0912-4bb2-93aa-77c26cd260e1";
+const PIPELINE_ID = "REPLACE_WITH_G65_W155_C_PIPELINE_D1_ID";
+const MV_ID = "REPLACE_WITH_G65_W155_C_MV_D1_ID";
 const QUEUE = "sekiban-dcb-g60-w155-c-outbox";
 const DLQ = "sekiban-dcb-g60-w155-c-outbox-dlq";
 const ENTRYPOINT = "MeetingRoomDownstreamDoorbell";

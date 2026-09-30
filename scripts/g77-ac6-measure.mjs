@@ -274,8 +274,8 @@ if (report.commit.aggregate.disposition === "inconclusive") {
   report.findings.push("commit aggregate inconclusive (noise dominated)");
 }
 
-mkdirSync(path.join(root, ".artifacts"), { recursive: true });
-writeFileSync(path.join(root, ".artifacts", "g77-ac6-full-report.json"), JSON.stringify(report, null, 2));
+mkdirSync(path.join(root, ".artifacts", "ci-local"), { recursive: true });
+writeFileSync(path.join(root, ".artifacts", "ci-local", "g77-ac6-report.json"), JSON.stringify(report, null, 2));
 console.log(JSON.stringify(report, null, 2));
 
 const exceeded = report.findings.some((finding) => finding.includes("exceeded"));

@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 const root = process.cwd();
 const schema = "sdt-g49-pr98-w46-window-receipt/v1";
 const normalWorker = "sekiban-dcb-meeting-room-cloudflare-only";
-const normalUrl = "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev";
+const normalUrl = "https://example.workers.dev";
 const pipelineDatabase = "sekiban-dcb-meeting-room-cloudflare-pipeline";
 const materializedViewDatabase = "sekiban-dcb-meeting-room-cloudflare-mv";
 

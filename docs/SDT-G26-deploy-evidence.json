@@ -6,7 +6,7 @@
   "candidateDeployment": {
     "primaryWorker": "sekiban-dcb-g26-meeting-room",
     "doorbellWorker": "sekiban-dcb-g26-doorbell",
-    "baseUrl": "https://sekiban-dcb-g26-meeting-room.ttakaoka.workers.dev",
+    "baseUrl": "https://example.workers.dev",
     "serviceId": "g26-fix3-candidate-v10-1b5a8ff",
     "freshExplicitServiceId": true,
     "primaryVersionId": "bf4eb437-74c6-483a-b5fa-994ae2f9b3b6",

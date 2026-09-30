@@ -7,7 +7,7 @@
     "serviceId": "sekiban-dcb-meeting-room-cloudflare-only",
     "versionId": "5610dd9d-2dfa-497b-99e9-9d6903deceab",
     "sourceCommit": "2cfe5c5284caadc836b2b608820b1396dd8da67e",
-    "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev"
+    "baseUrl": "https://example.workers.dev"
   },
   "protocol": {
     "appSurface": "POST /api/commands/create-room",

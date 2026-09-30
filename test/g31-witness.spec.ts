@@ -23,8 +23,8 @@ import measureScriptText from "../scripts/deploy/g31-measure.mjs?raw";
 const expected = {
   worker: "sekiban-dcb-meeting-room-cloudflare-only",
   serviceId: "g25-38219c8-20260820f",
-  pipelineDatabaseId: "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-  materializedViewDatabaseId: "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+  pipelineDatabaseId: "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
+  materializedViewDatabaseId: "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID",
   queue: "sekiban-dcb-meeting-room-cloudflare-outbox",
   generation: "v2",
   waitFor: {

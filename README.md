@@ -1,28 +1,37 @@
 # Serialized DCB V1 5-endpoint runtime
 
 This repository is the Cloudflare Workers implementation of the Serialized DCB
-V1 runtime. The first delivery establishes the TypeScript project and the
-per-commit-attempt Journal Durable Object that makes commit coordination
-durable.
+V1 runtime. It provides the durable allocation, tag, journal, materialized-view,
+and repair components used to coordinate serialized event commits.
+
+## Packages and starter
+
+`dcb-core` provides Cloudflare-independent Serialized DCB definitions and domain algebra.
+`dcb-domain` provides the runtime-free, schema-first DCB domain-authoring surface.
+`dcb-client` provides the typed Serialized DCB V1 client and claim-ledger executor.
+`dcb-runtime` provides the Cloudflare Durable Object and HTTP runtime.
+`dcb-cloudflare` provides the optional composition helper that mounts Sekiban storage beside a caller's Worker.
+`create-dcb` provides the CLI for creating a named Cloudflare starter project.
+`templates/cloudflare-starter` is the booking-starter template used by `create-dcb` (not published to npm).
 
 ## Current scope
 
-The Journal is an internal control component, not one of the five public V1
-HTTP endpoints. It owns one durable record per commit attempt and provides:
+The runtime exposes five public V1 HTTP endpoints for commit, query, list-query,
+tag-latest-sortable, and tag-state operations, plus the authenticated
+`/operator/repair` surface. Its durable components provide:
 
-- all-or-nothing admission of candidates, consistency tags, event tags, owner
-  epoch `0`, initial state/version, and its first alarm;
-- compare-and-swap state transitions, with terminal outcomes immutable and
-  their response reconstructed from the durable Journal record;
-- owner-epoch handoff before tag seals, plus the seal-and-full-requery absence
-  barrier required before terminal failure or partial outcomes;
-- a tested reconciliation table for allocator-vector and durable-record
-  evidence; and
-- alarm rearming with capped exponential backoff before reconciliation, so
-  transient failures do not exhaust the platform retry budget.
+- allocator-issued sortable IDs and durable allocation state;
+- Tag and TagState Durable Objects for event/tag admission, heads, fences, and
+  read state;
+- one durable Journal record per commit attempt, compare-and-swap transitions,
+  immutable terminal outcomes, owner epochs, and alarm-backed reconciliation;
+- materialized-view catch-up with SafeWindow and unsafe-window fencing plus
+  guarded retention and garbage collection; and
+- per-tag operator repair that audits exclusions, persists repair work, and
+  clears eligible fences without rewriting the original commit outcome.
 
-Allocator, tag Durable Objects, public HTTP endpoints, fencing, repair, and
-retention/GC are deliberately outside this first slice.
+The runtime is composed for Cloudflare Workers and is also exercised through
+the local Workers/Vitest harness and the Postgres-backed development lanes.
 
 ## Operator repair CLI
 
@@ -74,7 +83,7 @@ Hyperdrive caching is disabled by the deployment script.
 ### Cloudflare-only quickstart (recommended)
 
 `samples/meeting-room` is the **canonical Cloudflare getting-started sample**.
-Operator path (migrate both D1s → deploy → smoke → reset):
+Operator path (create and configure both D1s → migrate both D1s → deploy → smoke → reset):
 [`samples/meeting-room/docs/getting-started-cloudflare.md`](samples/meeting-room/docs/getting-started-cloudflare.md).
 
 The named `cloudflare-only` sample composes the public runtime entrypoint with
@@ -85,6 +94,11 @@ Cosmos binding in this variant. Its G16 reservation/room query UI reads the
 `D1_MV` backing after the SafeWindow-aware catch-up worker runs.
 
 ```sh
+npx wrangler d1 create sekiban-dcb-meeting-room-cloudflare-pipeline
+npx wrangler d1 create sekiban-dcb-meeting-room-cloudflare-mv
+# Replace the two REPLACE_WITH_CLOUDFLARE_ONLY_*_D1_ID values in
+# samples/meeting-room/wrangler.cloudflare-only.jsonc with the returned IDs.
+
 ./samples/meeting-room/scripts/migrate-remote.sh
 npx wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --keep-vars
 ```
@@ -99,7 +113,15 @@ npm run build:g20
 
 The PG sample remains available as the alternative via
 `samples/meeting-room/wrangler.jsonc`; the library's default provider is still
-Postgres and is never selected by an HTTP request. Set the non-secret
+Postgres and is never selected by an HTTP request. Before deploying that
+variant, create a Hyperdrive config and replace
+`REPLACE_WITH_SAMPLE_HYPERDRIVE_ID` in the same Wrangler file:
+
+```sh
+npx wrangler hyperdrive create sekiban-dcb-meeting-room --connection-string "<your PostgreSQL connection string>"
+```
+
+Set the non-secret
 `SDT_SERVICE_ID` Wrangler var per deployment lifecycle (a new Durable Object
 namespace requires a fresh service identity). The authenticated conformance
 lane and the app-layer UI/e2e harness use that configured identity; internal

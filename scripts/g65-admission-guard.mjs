@@ -58,11 +58,11 @@ function configWiring(configText) {
     if (config.vars?.[key] !== value) missing.push(`vars ${key}=${value}`);
   }
   const d1 = new Map((config.d1_databases ?? []).map((entry) => [entry.binding, entry]));
-  if (d1.get("D1")?.database_id !== "ac751211-fde8-4587-9d56-1e9fd8051bc3") {
-    missing.push("D1 database_id=ac751211-fde8-4587-9d56-1e9fd8051bc3");
+  if (d1.get("D1")?.database_id !== "REPLACE_WITH_G65_W155_C_PIPELINE_D1_ID") {
+    missing.push("D1 database_id=REPLACE_WITH_G65_W155_C_PIPELINE_D1_ID");
   }
-  if (d1.get("D1_MV")?.database_id !== "2b60dbcf-0912-4bb2-93aa-77c26cd260e1") {
-    missing.push("D1_MV database_id=2b60dbcf-0912-4bb2-93aa-77c26cd260e1");
+  if (d1.get("D1_MV")?.database_id !== "REPLACE_WITH_G65_W155_C_MV_D1_ID") {
+    missing.push("D1_MV database_id=REPLACE_WITH_G65_W155_C_MV_D1_ID");
   }
   const queues = config.queues ?? {};
   if (queues.producers?.find((entry) => entry.binding === "DOWNSTREAM_QUEUE")?.queue !== "sekiban-dcb-g60-w155-c-outbox") {

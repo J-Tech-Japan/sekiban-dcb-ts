@@ -555,7 +555,7 @@ function syntheticRegistry({ workersDevEnabled = true, previewsEnabled = true, m
 }
 
 function syntheticWitness(phase, registry, preRegistry = registry) {
-  const result = { phase, capturedAt: "2026-08-24T00:00:00.000Z", accountId: "3ede2188f4cf39a28e0aa3722d3d02c5", workerName: RECEIVER_WORKER, registry };
+  const result = { phase, capturedAt: "2026-08-24T00:00:00.000Z", accountId: "REPLACE_WITH_ACCOUNT_ID", workerName: RECEIVER_WORKER, registry };
   if (phase === "post") {
     const urls = publicUrls(preRegistry);
     return { ...result, preCapturedUrls: urls, rechecks: urls.map((url) => ({ url, status: 404 })) };

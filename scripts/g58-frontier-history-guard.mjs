@@ -14,8 +14,8 @@ import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
 const w119RedPath = ".artifacts/sdt-g58-w119-safe-convergence-diagnosis-guard.json";
-const preFixReportPath = ".artifacts/sdt-g58-w120-frontier-history-red-before-green.json";
-const finalReportPath = ".artifacts/sdt-g58-w120-frontier-history-guard.json";
+const preFixReportPath = ".artifacts/ci-local/g58-frontier-history-before.json";
+const finalReportPath = ".artifacts/ci-local/g58-frontier-history.json";
 
 function read(path) {
   return readFileSync(resolve(root, path), "utf8");
@@ -27,7 +27,7 @@ function readJson(path) {
 
 function writeJson(path, value) {
   const output = resolve(root, path);
-  mkdirSync(resolve(root, ".artifacts"), { recursive: true });
+  mkdirSync(resolve(root, ".artifacts/ci-local"), { recursive: true });
   writeFileSync(output, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 

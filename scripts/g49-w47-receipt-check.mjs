@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 const root = process.cwd();
 const receiptSchema = "sdt-g49-pr98-w46-window-receipt/v1";
 const worker = "sekiban-dcb-meeting-room-cloudflare-only";
-const workerUrl = "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev";
+const workerUrl = "https://example.workers.dev";
 const deployedVersion = "6dd811dd-8b3d-450b-b884-55e6b9095b1d";
 const deployedHead = "7fcd2dbeb18d9841823c101badf8bcc28d3d99bf";
 

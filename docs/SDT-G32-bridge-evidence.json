@@ -75,8 +75,8 @@
   "cutoverBoundary": {
     "oldServiceId": "g25-38219c8-20260820f",
     "oldDatabases": [
-      "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-      "5db45136-f1dd-4f4d-bfe3-b6328193a1ac"
+      "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
+      "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID"
     ],
     "oldFormatReader": "not present in bridge",
     "finalCRequired": "new D1 database IDs, new Queue, new serviceId, and G32 30-digit-only ingress gates"

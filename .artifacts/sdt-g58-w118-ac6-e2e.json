@@ -3,7 +3,7 @@
   "task": "SDT-G58",
   "mode": "single",
   "runId": "49e01282-95e9-4fec-92a6-98f9cb502c05",
-  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "baseUrl": "https://example.workers.dev",
   "serviceId": "sekiban-dcb-meeting-room-cloudflare-only",
   "startedAt": "2026-09-03T17:31:21.958Z",
   "contract": {

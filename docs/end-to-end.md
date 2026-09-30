@@ -7,6 +7,7 @@ The witness records response/admission, unsafe and safe visibility, tag-state,
 query, and per-tick coverage/frontier observations. It persists accepted
 command rows before polling and treats an absent or late clock as censored.
 
-The G66 production configuration proof is kept in `docs/SDT-G66-evidence.md`.
-No end-to-end result is a product pass unless the corresponding raw receipt
-and the fail-closed guard result are present.
+The G66 production configuration proof is a historical deployment record; the
+current tree retains the executable witness and its fail-closed guard, not a
+deployment receipt. No end-to-end result is a product pass unless the
+corresponding raw receipt and guard result are present.
