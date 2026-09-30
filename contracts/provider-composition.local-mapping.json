@@ -1,7 +1,7 @@
 {
   "resources": {
-    "pipeline-d1": { "database_id": "eccf6048-7fc8-4412-a157-9fa180353f6d", "resourceRef": "rref-a17c4e90d2b68f53c04d" },
-    "mv-d1": { "database_id": "c733dfb2-013a-4a5d-a72c-47931a63bac4", "resourceRef": "rref-b28d5f01e3c79a64d15e" },
+    "pipeline-d1": { "database_id": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID", "resourceRef": "rref-a17c4e90d2b68f53c04d" },
+    "mv-d1": { "database_id": "REPLACE_WITH_G32_FINAL_MV_D1_ID", "resourceRef": "rref-b28d5f01e3c79a64d15e" },
     "work-queue": { "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox", "resourceRef": "rref-c39e6012f4d80b75e26f" },
     "dlq-queue": { "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq", "resourceRef": "rref-d40f7123a5e91c86f370" },
     "doorbell-service": { "service": "sekiban-dcb-meeting-room-doorbell-g38", "resourceRef": "rref-0732a456d81c4f1926a3" }

@@ -16,7 +16,7 @@ const testPath = "test/g58-safe-lane-diagnosis.spec.ts";
 const workerPath = "samples/meeting-room/src/worker.cloudflare-only.ts";
 const runtimePath = "packages/dcb-runtime/src/cloudflare.ts";
 const baselineReportPath = ".artifacts/sdt-g58-w96-red-guard.json";
-const reportPath = ".artifacts/sdt-g58-w97-green-guard.json";
+const reportPath = ".artifacts/ci-local/g58-safe-lane-diagnosis.json";
 
 function read(path) {
   return readFileSync(resolve(root, path), "utf8");
@@ -80,7 +80,7 @@ function runWitness() {
     stdout,
     stderr,
   };
-  mkdirSync(resolve(root, ".artifacts"), { recursive: true });
+  mkdirSync(resolve(root, ".artifacts/ci-local"), { recursive: true });
   writeFileSync(resolve(root, reportPath), `${JSON.stringify(evidence, null, 2)}\n`);
   if (result.status !== 0) fail(`same-tick frontier witness remains red (exit ${result.status}); inspect ${reportPath}`);
   process.stdout.write(`${JSON.stringify({ guard: "g58-w97-same-tick-frontier", status: "green", report: reportPath, baseline: baselineReportPath, exitCode: result.status })}\n`);

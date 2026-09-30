@@ -1,4 +1,0 @@
-command: env -u CLOUDFLARE_API_TOKEN -u CF_API_TOKEN -u CLOUDFLARE_API_KEY -u CF_API_KEY -u WRANGLER_API_TOKEN node scripts/deploy/g58-safe-lane-e2e.mjs --mode paced --paced-count 10 --pace-ms 10000 --poll-ms 2000 --continue-after-unsafe --base-url https://sekiban-dcb-g60-w155-c.ttakaoka.workers.dev --service-id sekiban-dcb-g60-w155-c --token-file /private/tmp/sdt-g65-wake141-token.pdPTFB/conformance-token --report .artifacts/sdt-g67-w142-rerehearsal-candidate-cohort.json
-credential-variable-state: CLOUDFLARE_API_TOKEN=UNSET CF_API_TOKEN=UNSET CLOUDFLARE_API_KEY=UNSET CF_API_KEY=UNSET WRANGLER_API_TOKEN=UNSET
-{"task":"SDT-G58","mode":"paced","status":"completed","runId":"ef40d7f2-67b1-4967-972d-cc838d5e0ab1","output":"/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g67-w142/.artifacts/sdt-g67-w142-rerehearsal-candidate-cohort.json"}
-exit_code: 0

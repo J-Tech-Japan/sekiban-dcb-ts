@@ -114,8 +114,8 @@
     "worker": "sekiban-dcb-meeting-room-cloudflare-only",
     "receiver": "sekiban-dcb-meeting-room-doorbell",
     "serviceId": "g32-9043d626fe1149cb",
-    "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-    "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+    "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+    "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
     "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
     "deadLetterQueue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq",
     "durableObjectNamespaces": [
@@ -144,8 +144,8 @@
     "status": "not-applicable-full-wipe",
     "rationale": "G32 specifies a new serviceId and new D1 databases because old prefixed SUID values cannot coexist with C# 30-digit SUIDs. No old application rows are copied or read.",
     "wipeAllowlistInventory": {
-      "oldPipelineDatabaseId": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-      "oldMaterializedViewDatabaseId": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      "oldPipelineDatabaseId": "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
+      "oldMaterializedViewDatabaseId": "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID",
       "oldServiceId": "g25-38219c8-20260820f",
       "oldQueue": "sekiban-dcb-meeting-room-cloudflare-outbox",
       "preInventory": {
@@ -222,7 +222,7 @@
       "resources": {
         "d1": [
           {
-            "uuid": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+            "uuid": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
             "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv",
             "created_at": "2026-08-22T22:36:07.946Z",
             "version": "production",
@@ -231,7 +231,7 @@
             "jurisdiction": null
           },
           {
-            "uuid": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+            "uuid": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
             "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline",
             "created_at": "2026-08-22T22:36:03.482Z",
             "version": "production",
@@ -240,7 +240,7 @@
             "jurisdiction": null
           },
           {
-            "uuid": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+            "uuid": "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID",
             "name": "sekiban-dcb-meeting-room-cloudflare-mv",
             "created_at": "2026-08-19T21:31:34.567Z",
             "version": "production",
@@ -249,7 +249,7 @@
             "jurisdiction": null
           },
           {
-            "uuid": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+            "uuid": "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
             "name": "sekiban-dcb-meeting-room-cloudflare-pipeline",
             "created_at": "2026-08-19T21:31:30.027Z",
             "version": "production",
@@ -261,11 +261,11 @@
         "queues": "⛅️ wrangler 4.125.0\n────────────────────\n┌──────────────────────────────────┬──────────────────────────────────────────────────────────┬─────────────────────────────┬─────────────────────────────┬───────────┬───────────┐\n│ id                               │ name                                                     │ created_on                  │ modified_on                 │ producers │ consumers │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ f66824d9da4a462dac913dc7b3ea5247 │ sekiban-dcb-g26-outbox                                   │ 2026-08-21T04:27:18.317127Z │ 2026-08-21T04:27:18.317127Z │ 1         │ 1         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 969db07663b74715a813e7c0f102343e │ sekiban-dcb-g26-outbox-dlq                               │ 2026-08-21T04:27:25.479556Z │ 2026-08-21T04:27:25.479556Z │ 0         │ 0         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 3b375bb4e5d8483bae87855d7b32f59f │ sekiban-dcb-meeting-room-cloudflare-outbox               │ 2026-08-19T21:31:52.677077Z │ 2026-08-19T21:31:52.677077Z │ 2         │ 1         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 291d155f2cb84aa689a95f0cf916bb3b │ sekiban-dcb-meeting-room-cloudflare-outbox-dlq           │ 2026-08-20T15:21:02.65316Z  │ 2026-08-20T15:21:02.65316Z  │ 0         │ 0         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ a8f591e7053743e79e2e9ade49e52ba4 │ sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox     │ 2026-08-22T22:36:17.163684Z │ 2026-08-22T22:36:17.163684Z │ 0         │ 0         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 6e67ddcde0dd48faac784548ad3e185d │ sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq │ 2026-08-22T22:36:11.87905Z  │ 2026-08-22T22:36:11.87905Z  │ 0         │ 0         │\n└──────────────────────────────────┴──────────────────────────────────────────────────────────┴─────────────────────────────┴─────────────────────────────┴───────────┴───────────┘"
       },
       "excludedCutoverResources": [
-        "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-        "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+        "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
+        "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID",
         "sekiban-dcb-meeting-room-cloudflare-outbox",
-        "eccf6048-7fc8-4412-a157-9fa180353f6d",
-        "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+        "REPLACE_WITH_G32_FINAL_MV_D1_ID",
         "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
         "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq"
       ]
@@ -283,8 +283,8 @@
       "component": "primary",
       "configDigest": "bd51c1e3db48aacc521cf065ff7704bb3e4c00a0e3727132eacdf788aff302c2",
       "serviceId": "g32-9043d626fe1149cb",
-      "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-      "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+      "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+      "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
       "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
       "freezeRelease": "after-new-bindings",
       "cutoverFenceFingerprint": "f798974e2725498201154c6996f80d40e6b5a82df01daca5ca555f010aa96356",
@@ -314,8 +314,8 @@
       "component": "receiver",
       "configDigest": "bd51c1e3db48aacc521cf065ff7704bb3e4c00a0e3727132eacdf788aff302c2",
       "serviceId": "g32-9043d626fe1149cb",
-      "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-      "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+      "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+      "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
       "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
       "freezeRelease": "after-new-bindings",
       "cutoverFenceFingerprint": "f798974e2725498201154c6996f80d40e6b5a82df01daca5ca555f010aa96356",
@@ -376,7 +376,7 @@
       "resources": {
         "d1": [
           {
-            "uuid": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+            "uuid": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
             "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv",
             "created_at": "2026-08-22T22:36:07.946Z",
             "version": "production",
@@ -385,7 +385,7 @@
             "jurisdiction": null
           },
           {
-            "uuid": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+            "uuid": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
             "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline",
             "created_at": "2026-08-22T22:36:03.482Z",
             "version": "production",
@@ -394,7 +394,7 @@
             "jurisdiction": null
           },
           {
-            "uuid": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+            "uuid": "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID",
             "name": "sekiban-dcb-meeting-room-cloudflare-mv",
             "created_at": "2026-08-19T21:31:34.567Z",
             "version": "production",
@@ -403,7 +403,7 @@
             "jurisdiction": null
           },
           {
-            "uuid": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+            "uuid": "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
             "name": "sekiban-dcb-meeting-room-cloudflare-pipeline",
             "created_at": "2026-08-19T21:31:30.027Z",
             "version": "production",
@@ -440,7 +440,7 @@
   },
   "fixedNMeasurement": {
     "task": "SDT-G32",
-    "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+    "baseUrl": "https://example.workers.dev",
     "startedAt": "2026-08-22T23:23:57.188Z",
     "latency": {
       "sampleCount": 10,
@@ -1056,8 +1056,8 @@
       "worker": "sekiban-dcb-meeting-room-cloudflare-only",
       "receiver": "sekiban-dcb-meeting-room-doorbell",
       "serviceId": "g32-9043d626fe1149cb",
-      "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-      "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+      "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+      "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
       "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
       "deadLetterQueue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq",
       "durableObjectNamespaces": [
@@ -1551,8 +1551,8 @@
         "component": "primary",
         "configDigest": "bd51c1e3db48aacc521cf065ff7704bb3e4c00a0e3727132eacdf788aff302c2",
         "serviceId": "g32-9043d626fe1149cb",
-        "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-        "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+        "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
         "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
         "freezeRelease": "after-new-bindings",
         "cutoverFenceFingerprint": "69005a0773f2264cff7dee28a252c4be8d0344b35e02123bdd4f18432f78ad99",
@@ -1582,8 +1582,8 @@
         "component": "receiver",
         "configDigest": "bd51c1e3db48aacc521cf065ff7704bb3e4c00a0e3727132eacdf788aff302c2",
         "serviceId": "g32-9043d626fe1149cb",
-        "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-        "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+        "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
         "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
         "freezeRelease": "after-new-bindings",
         "cutoverFenceFingerprint": "69005a0773f2264cff7dee28a252c4be8d0344b35e02123bdd4f18432f78ad99",
@@ -2208,7 +2208,7 @@
     },
     "fixedNMeasurement": {
       "task": "SDT-G32",
-      "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+      "baseUrl": "https://example.workers.dev",
       "startedAt": "2026-08-23T00:13:48.564Z",
       "latency": {
         "sampleCount": 10,
@@ -2900,12 +2900,12 @@
       "bindingEquivalentMigrationChecks": [
         {
           "binding": "D1",
-          "databaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+          "databaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
           "result": "No migrations to apply"
         },
         {
           "binding": "D1_MV",
-          "databaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+          "databaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
           "result": "No migrations to apply"
         }
       ],
@@ -2921,8 +2921,8 @@
       "worker": "sekiban-dcb-meeting-room-cloudflare-only",
       "receiver": "sekiban-dcb-meeting-room-doorbell",
       "serviceId": "g32-9043d626fe1149cb",
-      "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-      "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+      "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+      "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
       "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
       "deadLetterQueue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq",
       "durableObjectNamespaces": [
@@ -3836,8 +3836,8 @@
         "component": "primary",
         "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f",
         "serviceId": "g32-9043d626fe1149cb",
-        "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-        "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+        "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
         "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
         "freezeRelease": "after-new-bindings",
         "cutoverFenceFingerprint": "c1489c8eecda965455c3c5ebaf678720872e214dab903505d30296f54e00b475",
@@ -3867,8 +3867,8 @@
         "component": "receiver",
         "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f",
         "serviceId": "g32-9043d626fe1149cb",
-        "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-        "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+        "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
         "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
         "freezeRelease": "after-new-bindings",
         "cutoverFenceFingerprint": "c1489c8eecda965455c3c5ebaf678720872e214dab903505d30296f54e00b475",
@@ -4913,7 +4913,7 @@
     },
     "fixedNMeasurement": {
       "task": "SDT-G32",
-      "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+      "baseUrl": "https://example.workers.dev",
       "startedAt": "2026-08-23T02:16:31.148Z",
       "latency": {
         "sampleCount": 10,
@@ -5542,8 +5542,8 @@
       "worker": "sekiban-dcb-meeting-room-cloudflare-only",
       "receiver": "sekiban-dcb-meeting-room-doorbell",
       "serviceId": "g32-9043d626fe1149cb",
-      "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-      "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+      "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+      "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
       "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
       "deadLetterQueue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq",
       "durableObjectNamespaces": [
@@ -6877,8 +6877,8 @@
         "component": "primary",
         "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f",
         "serviceId": "g32-9043d626fe1149cb",
-        "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-        "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+        "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
         "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
         "freezeRelease": "after-new-bindings",
         "cutoverFenceFingerprint": "b3050a3e64faf1d7fb7801eeb66b455e11c1481968344c0b808f091a2e66d0e9",
@@ -6908,8 +6908,8 @@
         "component": "receiver",
         "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f",
         "serviceId": "g32-9043d626fe1149cb",
-        "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-        "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+        "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
         "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
         "freezeRelease": "after-new-bindings",
         "cutoverFenceFingerprint": "b3050a3e64faf1d7fb7801eeb66b455e11c1481968344c0b808f091a2e66d0e9",
@@ -8374,7 +8374,7 @@
     },
     "fixedNMeasurement": {
       "task": "SDT-G32",
-      "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+      "baseUrl": "https://example.workers.dev",
       "startedAt": "2026-08-23T02:45:33.156Z",
       "latency": {
         "sampleCount": 10,
@@ -9042,8 +9042,8 @@
         "worker": "sekiban-dcb-meeting-room-cloudflare-only",
         "receiver": "sekiban-dcb-meeting-room-doorbell",
         "serviceId": "g32-9043d626fe1149cb",
-        "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-        "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+        "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
         "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
         "deadLetterQueue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq",
         "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f"
@@ -9297,7 +9297,7 @@
         "recorder": {
           "status": "passed",
           "dryRun": true,
-          "output": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.artifacts/g32-forward-c6-preseal-evidence-preview.json"
+          "output": "/path/to/repo/.artifacts/g32-forward-c6-preseal-evidence-preview.json"
         },
         "digestRecalculation": {
           "status": "passed",
@@ -9321,8 +9321,8 @@
       "worker": "sekiban-dcb-meeting-room-cloudflare-only",
       "receiver": "sekiban-dcb-meeting-room-doorbell",
       "serviceId": "g32-9043d626fe1149cb",
-      "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-      "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+      "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+      "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
       "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
       "deadLetterQueue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq",
       "durableObjectNamespaces": [
@@ -11496,8 +11496,8 @@
         "component": "primary",
         "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f",
         "serviceId": "g32-9043d626fe1149cb",
-        "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-        "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+        "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
         "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
         "freezeRelease": "after-new-bindings",
         "cutoverFenceFingerprint": "fab7cd0045f5e568c0d72cfadc9dfe6f5bc2236903773e3ea2ede81cfaf1cf19",
@@ -11527,8 +11527,8 @@
         "component": "receiver",
         "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f",
         "serviceId": "g32-9043d626fe1149cb",
-        "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
-        "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "pipelineDatabaseId": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID",
+        "materializedViewDatabaseId": "REPLACE_WITH_G32_FINAL_MV_D1_ID",
         "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
         "freezeRelease": "after-new-bindings",
         "cutoverFenceFingerprint": "fab7cd0045f5e568c0d72cfadc9dfe6f5bc2236903773e3ea2ede81cfaf1cf19",
@@ -13833,7 +13833,7 @@
     },
     "fixedNMeasurement": {
       "task": "SDT-G32",
-      "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+      "baseUrl": "https://example.workers.dev",
       "startedAt": "2026-08-23T04:49:39.353Z",
       "latency": {
         "sampleCount": 10,

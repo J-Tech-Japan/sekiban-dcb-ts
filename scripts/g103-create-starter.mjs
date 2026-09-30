@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,12 +11,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const registry = "https://registry.npmjs.org";
 const liveWorker = "sekiban-dcb-meeting-room-cloudflare-only";
-const liveDatabaseIds = [
-  "f26d1299-82d9-4a64-8647-bc2ec86326ac",
-  "b416b212-4d09-413c-9b8d-7660e475772f",
-  "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-  "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
-];
+// Keep the forbidden-resource check independent of the literal IDs. The
+// values are intentionally represented only by digests so the guard cannot
+// reintroduce private resource identifiers into this public tree.
+const liveDatabaseIdDigests = new Set([
+  "7288bf125a1f49e88b8bfd1c76fa3ab24294845454b968bad94dd4ed28722442",
+  "b5f348694a36c5c3aa9475374d6852a3a28d1633ec4e620abd97c255a378186e",
+  "06c3a6da88a09bf01c2e4d6130b57880b4a920bdf3d6fac41d968c983ec36d89",
+  "f595955dabe1d23dd6c505629633d17a066e320681ca8dece81bf089493c3b6a",
+]);
 const matchedSet = [
   "@sekiban/dcb-core",
   "@sekiban/dcb-domain",
@@ -81,6 +85,41 @@ function fail(message) {
 
 function assert(condition, message) {
   if (!condition) fail(message);
+}
+
+function assertNoLiveDatabaseIds(text, label, forbiddenDigests = liveDatabaseIdDigests) {
+  const tokenPatterns = [
+    /(?=([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}))/gi,
+    /(?=([0-9a-f]{32}))/gi,
+  ];
+  for (const tokenPattern of tokenPatterns) {
+    for (const match of text.matchAll(tokenPattern)) {
+      const token = match[1];
+      const digest = createHash("sha256").update(token.toLowerCase()).digest("hex");
+      assert(!forbiddenDigests.has(digest), `${label} contains a forbidden database identifier`);
+    }
+  }
+}
+
+function expectForbiddenDatabaseId(text, label, forbiddenDigests = liveDatabaseIdDigests) {
+  try {
+    assertNoLiveDatabaseIds(text, label, forbiddenDigests);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("contains a forbidden database identifier")) return;
+    throw error;
+  }
+  fail(`${label} unexpectedly passed the forbidden database identifier check`);
+}
+
+function assertNoLiveDatabaseIdMutants() {
+  const syntheticUuid = randomUUID();
+  const syntheticHex = randomBytes(16).toString("hex");
+  const syntheticForbiddenDigests = new Set([syntheticUuid, syntheticHex].map((token) =>
+    createHash("sha256").update(token.toLowerCase()).digest("hex")));
+  expectForbiddenDatabaseId(`prefix${syntheticUuid}`, "prefixed database identifier mutant", syntheticForbiddenDigests);
+  expectForbiddenDatabaseId(`${syntheticUuid}suffix`, "suffixed database identifier mutant", syntheticForbiddenDigests);
+  expectForbiddenDatabaseId(`before_${syntheticHex}_after`, "underscore-joined database identifier mutant", syntheticForbiddenDigests);
+  expectForbiddenDatabaseId(`REPLACE_WITH_${syntheticUuid}`, "REPLACE_WITH-prefixed database identifier mutant", syntheticForbiddenDigests);
 }
 
 function run(command, args, options = {}) {
@@ -163,7 +202,7 @@ function assertInventory(project) {
   assert(!allText.includes("sekiban-dcb-meeting-room"), "meeting-room resource name leaked into generated project");
   assert(!allText.includes("meeting-room"), "meeting-room name leaked into generated project");
   assert(!allText.includes(liveWorker), "live Worker name leaked into generated project");
-  for (const id of liveDatabaseIds) assert(!allText.includes(id), `live database UUID leaked into generated project: ${id}`);
+  assertNoLiveDatabaseIds(allText, "generated project");
 
   return {
     files,
@@ -180,7 +219,7 @@ function assertConfig(project, projectName) {
   const names = resourceNames(projectName);
   assert(!/G32_[A-Z0-9_]+/.test(text), "wrangler config contains a G32_* variable");
   assert(!text.includes("meeting-room"), "wrangler config contains a meeting-room name");
-  for (const id of liveDatabaseIds) assert(!text.includes(id), `wrangler config contains live database UUID ${id}`);
+  assertNoLiveDatabaseIds(text, "wrangler config");
   assert(config.name === names.worker, "Worker name was not derived from the slug");
   assert(config.vars?.SDT_SERVICE_ID === names.service, "service ID was not derived from the slug");
   const databases = config.d1_databases;
@@ -337,6 +376,7 @@ function dryRun(project, proofRoot, config) {
 async function main() {
   assert(process.argv.includes("--check") && process.argv.length === 3, "usage: node scripts/g103-create-starter.mjs --check");
   assert(process.env.G32_DEPLOY_LIVE !== "1", "refusing to run while G32_DEPLOY_LIVE=1");
+  assertNoLiveDatabaseIdMutants();
 
   run("npm", ["run", "build", "-w", "@sekiban/dcb-runtime"]);
   run("npm", ["run", "build", "-w", "@sekiban/dcb-cloudflare"]);

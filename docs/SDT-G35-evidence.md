@@ -83,7 +83,7 @@ dispatch/progress must stop claiming G35 未起草 and point here.
 
 ## Related baseline
 
-- `docs/SDT-G53-evidence.md` — deployed scoped naming + control-route e2e
+- G53 scope record — deployed scoped naming + control-route e2e
 - `docs/SDT-G41-evidence.md` (if present) — JOURNAL removed from commit path
-- Host design: `intents/sekiban-dcb-ts/design/g35-contract-draft-v1.md`
-- Host means: `intents/sekiban-dcb-ts/intent-tree/means/18-do-coordination-adapter.md`
+- Design record: the retained domain-authoring and scope-contract records in
+  this repository.

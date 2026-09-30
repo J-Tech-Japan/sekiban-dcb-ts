@@ -8,10 +8,8 @@ Under SDT-G32, the registered event payload name is also the durable C#
 The TypeScript sample is the executable reference for the wire-compatible
 meeting-room example.
 
-The design decision is recorded in
-[ADR-0001 — domain authoring and decider](https://github.com/J-Tech-Japan/SekibanDcbTsHost/blob/main/intents/sekiban-dcb-ts/design/adr-0001-domain-authoring-decider.md)
-and the source means in
-[means/15-domain-authoring](https://github.com/J-Tech-Japan/SekibanDcbTsHost/blob/main/intents/sekiban-dcb-ts/intent-tree/means/15-domain-authoring.md).
+The design decision and its means/15 source rationale are recorded in the
+reviewed domain-authoring record for this repository.
 
 The C# side below is pinned to the checked-in template at
 [`Sekiban@4fbd867`](https://github.com/J-Tech-Japan/Sekiban/blob/4fbd8679b3a2eb2ef2e0694bc3152a59e6dda411/templates/Sekiban.Dcb.Templates/content/Sekiban.Dcb.Orleans.Decider/SekibanDcbDecider.MeetingRoomModels/Events/EquipmentReservation/EquipmentReservationCancelled.cs).

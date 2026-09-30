@@ -1335,8 +1335,8 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
   it("rejects an unsealed D1 database identity before migration listing", () => {
     const config = {
       d1_databases: [
-        { binding: "D1", database_id: "eccf6048-7fc8-4412-a157-9fa180353f6d", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
-        { binding: "D1_MV", database_id: "c733dfb2-013a-4a5d-a72c-47931a63bac4", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
+        { binding: "D1", database_id: "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
+        { binding: "D1_MV", database_id: "REPLACE_WITH_G32_FINAL_MV_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
       ],
     };
     const runbook = [
@@ -1355,8 +1355,8 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
   it("rejects a direct durable database-name migration lookup", () => {
     const config = {
       d1_databases: [
-        { binding: "D1", database_id: "eccf6048-7fc8-4412-a157-9fa180353f6d", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
-        { binding: "D1_MV", database_id: "c733dfb2-013a-4a5d-a72c-47931a63bac4", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
+        { binding: "D1", database_id: "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
+        { binding: "D1_MV", database_id: "REPLACE_WITH_G32_FINAL_MV_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
       ],
     };
     const runbook = [
@@ -1374,8 +1374,8 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
   it("rejects a cwd-relative config before remote migration listing", () => {
     const config = {
       d1_databases: [
-        { binding: "D1", database_id: "eccf6048-7fc8-4412-a157-9fa180353f6d", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
-        { binding: "D1_MV", database_id: "c733dfb2-013a-4a5d-a72c-47931a63bac4", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
+        { binding: "D1", database_id: "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
+        { binding: "D1_MV", database_id: "REPLACE_WITH_G32_FINAL_MV_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
       ],
     };
     const runbook = [
@@ -1393,8 +1393,8 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
   it("rejects a migration listing that inherits the telemetry account override", () => {
     const config = {
       d1_databases: [
-        { binding: "D1", database_id: "eccf6048-7fc8-4412-a157-9fa180353f6d", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
-        { binding: "D1_MV", database_id: "c733dfb2-013a-4a5d-a72c-47931a63bac4", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
+        { binding: "D1", database_id: "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
+        { binding: "D1_MV", database_id: "REPLACE_WITH_G32_FINAL_MV_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
       ],
     };
     const runbook = [

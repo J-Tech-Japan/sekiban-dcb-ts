@@ -5,7 +5,7 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 readonly WRANGLER_BIN="${WRANGLER_BIN:-${REPO_ROOT}/node_modules/.bin/wrangler}"
 readonly DEPLOY_SERVICE_ID="${G15_SERVICE_ID:-}"
-readonly HYPERDRIVE_ID="c236b7b51ed24bf4b312bc370c61a231"
+readonly HYPERDRIVE_ID="REPLACE_WITH_SAMPLE_HYPERDRIVE_ID"
 
 cd "${REPO_ROOT}"
 test -x "${WRANGLER_BIN}"

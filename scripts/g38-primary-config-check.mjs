@@ -15,6 +15,10 @@ function clone(value) {
   return structuredClone(value);
 }
 
+function atPointer(value, pointer) {
+  return pointer.split("/").slice(1).reduce((current, key) => current?.[key], value);
+}
+
 function differences(before, after, pointer = "") {
   if (Object.is(before, after)) return [];
   if (Array.isArray(before) && Array.isArray(after)) {
@@ -36,10 +40,16 @@ function verify(beforeBytes, currentBytes) {
   assert.equal(sha256(beforeBytes), manifest.baselineSha256, "G38 primary pre-change file digest differs from the sealed baseline");
   const before = JSON.parse(beforeBytes.toString("utf8"));
   const current = JSON.parse(currentBytes.toString("utf8"));
-  const allowed = manifest.allowedChange;
-  assert.equal(before.services?.[0]?.service, allowed.from, "G38 primary baseline binding must equal the old receiver");
-  assert.equal(current.services?.[0]?.service, allowed.to, "G38 primary config must retarget only to the G38 receiver");
-  assert.deepEqual(differences(before, current), [allowed.pointer], "G38 primary config changed outside the single sealed service-binding target");
+  const allowedChanges = manifest.allowedChanges;
+  assert.ok(Array.isArray(allowedChanges) && allowedChanges.length > 0, "G38 primary allowlist must enumerate allowed changes");
+  const expectedPointers = allowedChanges.map((change) => change.pointer).sort();
+  assert.deepEqual(differences(before, current).sort(), expectedPointers, "G38 primary config changed outside the sealed allowlist");
+  for (const change of allowedChanges) {
+    if (Object.hasOwn(change, "from")) {
+      assert.equal(atPointer(before, change.pointer), change.from, `G38 primary baseline mismatch at ${change.pointer}`);
+    }
+    assert.equal(atPointer(current, change.pointer), change.to, `G38 primary current value mismatch at ${change.pointer}`);
+  }
 }
 
 function expectFailure(action, label) {

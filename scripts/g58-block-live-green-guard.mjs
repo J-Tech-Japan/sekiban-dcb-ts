@@ -12,7 +12,7 @@ import { resolve } from "node:path";
 
 const root = process.cwd();
 const baselinePath = ".artifacts/sdt-g58-w103-red-guard.json";
-const reportPath = ".artifacts/sdt-g58-w104-green-guard.json";
+const reportPath = ".artifacts/ci-local/g58-block-live-green-guard.json";
 const runtimePath = "packages/dcb-runtime/src/cloudflare.ts";
 const livePath = "packages/dcb-runtime/src/projection/LiveProjectionWorker.ts";
 const projectionPath = "packages/dcb-runtime/src/projection/ProjectionRuntime.ts";
@@ -164,7 +164,7 @@ function main() {
       upstreamOutboxQueueGlobalAdmission: "held SDT-G60; not modified",
     },
   };
-  mkdirSync(resolve(root, ".artifacts"), { recursive: true });
+  mkdirSync(resolve(root, ".artifacts/ci-local"), { recursive: true });
   writeFileSync(resolve(root, reportPath), `${JSON.stringify(report, null, 2)}\n`, "utf8");
   process.stdout.write(`${JSON.stringify({ guard: "g58-w104-block-live-green", status: "green", report: reportPath, baseline: baselinePath })}\n`);
 }

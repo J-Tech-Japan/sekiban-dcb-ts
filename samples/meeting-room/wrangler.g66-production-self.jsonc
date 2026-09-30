@@ -31,13 +31,13 @@
     {
       "binding": "D1",
       "database_name": "sekiban-dcb-meeting-room-cloudflare-pipeline",
-      "database_id": "f26d1299-82d9-4a64-8647-bc2ec86326ac",
+      "database_id": "REPLACE_WITH_CLOUDFLARE_ONLY_PIPELINE_D1_ID",
       "migrations_dir": "../../migrations/d1/g32"
     },
     {
       "binding": "D1_MV",
       "database_name": "sekiban-dcb-meeting-room-cloudflare-mv",
-      "database_id": "b416b212-4d09-413c-9b8d-7660e475772f",
+      "database_id": "REPLACE_WITH_CLOUDFLARE_ONLY_MV_D1_ID",
       "migrations_dir": "../../migrations/mv"
     }
   ],

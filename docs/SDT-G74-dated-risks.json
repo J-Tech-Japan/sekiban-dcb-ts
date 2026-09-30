@@ -6,21 +6,21 @@
       "risk": "allocator-to-source ordering gap",
       "observedBasis": "SDT-G69 #133 closed not_planned 2026-09-10; SDT-G70 #137 closed not_planned 2026-09-09; SDT-G77 #154 closed 2026-09-15 (PR #185); certificate-gated safe-view advance landed with default false",
       "disposition": "closed for v1 scope; v1 adds no general ordering guarantee beyond the G77 certificate producer",
-      "evidence": "docs/SDT-G70C-evidence.md; https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/185"
+      "evidence": "G74 dated-risk record; https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/185"
     },
     {
       "key": "safe-lane-latency",
       "risk": "safe-lane latency",
       "observedBasis": "SDT-G66 run sdtg66w164-8042cfc, 2026-09-07T19:17:49.862Z to 19:20:30.920Z; paced 10,000 ms (actual 11,965–12,959 ms); safe response-relative p50/p95 45,355/55,942 ms, 10/10 within 180,000 ms",
       "disposition": "observed figure with run identity, not an SLA",
-      "evidence": ".artifacts/sdt-g66-w164-production-corrected.json"
+      "evidence": "G74 dated-risk record"
     },
     {
       "key": "unsafe-lane-latency",
       "risk": "unsafe-lane first-visibility latency",
       "observedBasis": "same SDT-G66 W164 cohort; unsafe response-relative p50/p95 2,366/4,650 ms; 10/10 within 5,000 ms bound",
       "disposition": "observed figure with run identity, not an SLA; naming authorizes no runtime fix",
-      "evidence": ".artifacts/sdt-g66-w164-production-corrected.json"
+      "evidence": "G74 dated-risk record"
     },
     {
       "key": "wasm-no-tags-wit-abi",
@@ -55,7 +55,7 @@
       "risk": "published graph",
       "observedBasis": "registry check 2026-09-16: @sekiban/dcb-core@0.2.0, @sekiban/dcb-domain@0.2.0, @sekiban/dcb-client@0.2.0 published; 0.1.0 remains on registry; runtime publish tracked separately",
       "disposition": "0.2.0 matched set published; 0.1.0 retained as historical baseline",
-      "evidence": "docs/SDT-G90-evidence.md § Post-0.2.0 g64 dry-run adaptation; docs/SDT-G74-0.1.0-receipt.json"
+      "evidence": "post-0.2.0 release record; docs/SDT-G74-0.1.0-receipt.json"
     }
   ]
 }

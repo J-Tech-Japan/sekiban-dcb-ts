@@ -25,7 +25,31 @@ In-repo `npm ci` workspace-links the sample. Do not treat that as a registry ins
 - Logged-in Wrangler (`npx wrangler login`)
 - Repo root: `npm install`
 
-## 1. Apply both remote D1 migrations (mandatory)
+## 1. Create resources and configure IDs
+
+From the repository root, create the two remote D1 databases used by the
+Cloudflare-only sample:
+
+```sh
+npx wrangler d1 create sekiban-dcb-meeting-room-cloudflare-pipeline
+npx wrangler d1 create sekiban-dcb-meeting-room-cloudflare-mv
+```
+
+Replace `REPLACE_WITH_CLOUDFLARE_ONLY_PIPELINE_D1_ID` and
+`REPLACE_WITH_CLOUDFLARE_ONLY_MV_D1_ID` in
+`samples/meeting-room/wrangler.cloudflare-only.jsonc` with the returned IDs
+before migrating or deploying.
+
+The alternative Postgres sample also needs a Hyperdrive config. Create one
+with the connection string for the Postgres database and replace
+`REPLACE_WITH_SAMPLE_HYPERDRIVE_ID` in `samples/meeting-room/wrangler.jsonc`
+with the returned ID:
+
+```sh
+npx wrangler hyperdrive create sekiban-dcb-meeting-room --connection-string "<your PostgreSQL connection string>"
+```
+
+## 2. Apply both remote D1 migrations (mandatory)
 
 Skipping migrations after a tip deploy causes `FirstAdmissionAttemptId` /
 schema-drift failures on reserve.
@@ -38,7 +62,7 @@ From the **repository root**, after the helper is built (`npm run build -w @seki
 
 That script calls `dcb-cloudflare migrate --config samples/meeting-room/wrangler.cloudflare-only.jsonc`. The config, database names, and Worker name stay in the sample. Another application passes its own wrangler file to the same CLI.
 
-## 2. Deploy
+## 3. Deploy
 
 ```sh
 ./samples/meeting-room/scripts/deploy.sh
@@ -56,7 +80,7 @@ The packed-tip path remains:
 
 Dry-run packing/install only: `G99_DRY_RUN=1 ./scripts/deploy/g99-npm-consumer-deploy.sh`.
 
-## 3. Smoke (create → reserve → read)
+## 4. Smoke (create → reserve → read)
 
 Use fresh IDs (or reset first — see below):
 

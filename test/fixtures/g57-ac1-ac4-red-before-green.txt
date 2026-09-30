@@ -1,6 +1,6 @@
 SDT-G57 C-12 red-before-green receipt
 command: npx vitest run --config vitest.config.ts test/g57-executor.spec.ts
-working-directory: /Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g57-w126
+working-directory: /path/to/repo/.g57-w126
 exitCode: 1
 runner: Vitest 4.1.10
 result: 4 tests failed before the facade/transport implementation existed

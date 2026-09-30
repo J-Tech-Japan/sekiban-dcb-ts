@@ -597,8 +597,8 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
     // mutation must not be hidden by the other fan-out rows.
     id: "s14-member-index",
     file: source.commit,
-    from: "      const response = await this.tagRequest(tag, \"/head-facts\", undefined, stageScope?.fork(), stageScope === undefined ? undefined : \"S14\", { memberIndex, attemptId });",
-    to: "      const response = await this.tagRequest(tag, \"/head-facts\", undefined, stageScope?.fork(), stageScope === undefined ? undefined : \"S14\", { attemptId });",
+    from: '          : await stageScope.fork().span("S14", { tag, memberIndex, attemptId }, async () => read()));',
+    to: '          : await stageScope.fork().span("S14", { tag, attemptId }, async () => read()));',
     target: "emits S14 member identity from the real CommitWorker completion path",
     unrelated: "moves only the real accepted root onto the accepted face",
   },

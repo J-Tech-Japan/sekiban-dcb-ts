@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const w110Report = ".artifacts/sdt-g58-w110-red-guard.json";
-const reportPath = ".artifacts/sdt-g58-w111-green-guard.json";
+const reportPath = ".artifacts/ci-local/g58-live-poll-green.json";
 const runtimePath = "packages/dcb-runtime/src/cloudflare.ts";
 const livePath = "packages/dcb-runtime/src/projection/LiveProjectionWorker.ts";
 const projectionPath = "packages/dcb-runtime/src/projection/ProjectionRuntime.ts";
@@ -136,7 +136,7 @@ function main() {
     schema: "sdt-g58-w111-live-poll-green-repair/v1",
     status: "green",
     task: "SDT-G58-LIVE-POLL-GREEN-REPAIR-W111",
-    predecessor: { commit: "aa6f101", report: "sdt-g58-live-poll-diagnosis-w110.md", immutableRedBaseline: baseline },
+    predecessor: { commit: "aa6f101", immutableRedBaseline: baseline },
     repair: {
       observer: "scheduled poll records one attempt timestamp and one terminal outcome per registered projector; observation failures are ancillary and cannot alter projection semantics",
       outcomes: ["never-invoked", "invoked-and-threw", "invoked-but-no-work", "explicitly-gated", "advanced"],
@@ -147,7 +147,7 @@ function main() {
     focusedTest: focused,
     bounds: { safeWindowFloorMs: 20000, safeWindowCeilingMs: 120000, unsafeBoundMs: 5000, noDeployment: true, noNewRequests: true },
   };
-  mkdirSync(resolve(root, ".artifacts"), { recursive: true });
+  mkdirSync(resolve(root, ".artifacts/ci-local"), { recursive: true });
   writeFileSync(resolve(root, reportPath), `${JSON.stringify(report, null, 2)}\n`, "utf8");
   process.stdout.write(`${JSON.stringify({ guard: "g58-w111-live-poll-green-repair", status: report.status, report: reportPath, focused: focused.exitCode })}\n`);
 }

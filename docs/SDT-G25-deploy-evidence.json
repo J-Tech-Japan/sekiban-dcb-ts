@@ -5,7 +5,7 @@
   "sourceCommit": "38219c8a6526a0209295e9f06450cce9e2217004",
   "candidateDeployment": {
     "worker": "sekiban-dcb-meeting-room-cloudflare-only",
-    "url": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+    "url": "https://example.workers.dev",
     "serviceId": "g25-38219c8-20260820f",
     "version": "942eb5a5-22c9-4e68-921e-edb51e9e753b",
     "migrationsApplied": ["0002_unsafe_window_materialized_views.sql", "0003_checkpoint_ahead_hardening.sql", "0004_unsafe_window_failure_findings.sql"]
@@ -98,7 +98,7 @@
         },
         {
           "timestamp": "2026-08-20T17:21:20Z",
-          "command": "GET https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev/api/read/reservations?pageNumber=1&pageSize=1",
+          "command": "GET https://example.workers.dev/api/read/reservations?pageNumber=1&pageSize=1",
           "result": "PASS; HTTP 503 with existing V1 body code projection_unavailable"
         },
         {
@@ -108,7 +108,7 @@
         },
         {
           "timestamp": "2026-08-20T17:22:24Z",
-          "command": "wrangler d1 execute sekiban-dcb-meeting-room-cloudflare-mv --remote --command '<join checkpoint findings to active generations>'; GET https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev/api/read/reservations?pageNumber=1&pageSize=1",
+          "command": "wrangler d1 execute sekiban-dcb-meeting-room-cloudflare-mv --remote --command '<join checkpoint findings to active generations>'; GET https://example.workers.dev/api/read/reservations?pageNumber=1&pageSize=1",
           "result": "PASS; active finding count 0 and HTTP list read recovered with 200"
         },
         {

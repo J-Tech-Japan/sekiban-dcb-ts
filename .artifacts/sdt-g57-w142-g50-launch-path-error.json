@@ -1,9 +1,0 @@
-{
-  "schema": "sdt-g57-w142-local-launch-receipt/v1",
-  "command": "./node_modules/.bin/node scripts/deploy/g57-executor-measure.mjs --base-url https://sekiban-dcb-g60-w155-c.ttakaoka.workers.dev --source-commit 23a0e5c06ab4b75c94461ddea28f2da4e254df04 --version-id b040a282-54d5-41d6-8a84-c0b75c10aa75 --service-id sekiban-dcb-g60-w155-c --samples 10 --min-inter-sample-ms 10000 --cold-first",
-  "exitCode": 127,
-  "classification": "local-runner-executable-path-error",
-  "stderr": "zsh: ./node_modules/.bin/node: no such file or directory",
-  "remoteRequestsStarted": false,
-  "correctiveAction": "reran the same harness with the repository node executable"
-}

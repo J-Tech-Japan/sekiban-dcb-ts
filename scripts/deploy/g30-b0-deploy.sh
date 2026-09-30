@@ -21,7 +21,7 @@ readonly PRIMARY_D1_BINDINGS=(
   "D1"
   "D1_MV"
 )
-readonly BASE_URL="${G30_PRIMARY_BASE_URL:-https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev}"
+readonly BASE_URL="${G30_PRIMARY_BASE_URL:-https://example.workers.dev}"
 readonly SOURCE_COMMIT="${G30_SOURCE_COMMIT:-$(git -C "${REPO_ROOT}" rev-parse HEAD)}"
 readonly ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
 readonly TRACE_TOKEN_FILE="${G30_OBSERVABILITY_TOKEN_FILE:-}"

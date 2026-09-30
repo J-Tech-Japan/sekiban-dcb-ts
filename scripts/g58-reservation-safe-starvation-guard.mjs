@@ -17,7 +17,7 @@ import { resolve } from "node:path";
 const root = process.cwd();
 const receiptPath = ".artifacts/sdt-g58-w102-safe-proof-cohort.json";
 const receiptLogPath = ".artifacts/sdt-g58-w102-safe-proof-cohort.log";
-const reportPath = ".artifacts/sdt-g58-w105-reservation-safe-starvation.json";
+const reportPath = ".artifacts/ci-local/g58-reservation-safe-starvation.json";
 const runtimePath = "packages/dcb-runtime/src/cloudflare.ts";
 const workerPath = "samples/meeting-room/src/worker.cloudflare-only.ts";
 const mvPath = "samples/meeting-room/src/d1-mv.ts";
@@ -398,7 +398,7 @@ function main() {
     preservedEvidence: {
       w102Failure: "safe lane or live projections did not reach 063924025118818000001227710475 by safeWindowMs + 120000ms",
       w103RedReceipt: ".artifacts/sdt-g58-w103-red-guard.json (unchanged)",
-      w104GreenReceipt: ".artifacts/sdt-g58-w104-green-guard.json (unchanged)",
+      w104GreenReceipt: ".artifacts/ci-local/g58-block-live-green-guard.json (unchanged)",
       lateUnsafeObservationMs: 5289,
       unsafeBoundMs: 5000,
       lateObservationClassification: "miss/eventual-only; never an unsafe pass",
@@ -414,7 +414,7 @@ function main() {
       noDeploymentOrCohort: true,
     },
   };
-  mkdirSync(resolve(root, ".artifacts"), { recursive: true });
+  mkdirSync(resolve(root, ".artifacts/ci-local"), { recursive: true });
   writeFileSync(resolve(root, reportPath), `${JSON.stringify(report, null, 2)}\n`, "utf8");
   process.stdout.write(`${JSON.stringify({ guard: "g58-w105-reservation-safe-starvation", status: report.status, report: reportPath, scheduledCoverageTicks: groups.length, httpHealthSamples: receipt.healthSnapshots.length })}\n`);
 }

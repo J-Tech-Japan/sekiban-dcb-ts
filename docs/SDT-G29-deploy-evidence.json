@@ -93,8 +93,8 @@
     "deployedRuntimeCommit": "c5fff88620af3883b95639004dda08197618cc7e",
     "worker": "sekiban-dcb-meeting-room-cloudflare-only",
     "serviceId": "g25-38219c8-20260820f",
-    "pipelineDatabaseId": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-    "materializedViewDatabaseId": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+    "pipelineDatabaseId": "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
+    "materializedViewDatabaseId": "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID",
     "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
     "generation": "v2",
     "receiverMode": "separate",
@@ -392,8 +392,8 @@
     "receiverMode": "separate",
     "degradation": "queued-degraded",
     "maxServiceBindingInvocations": 32,
-    "pipelineDatabaseId": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-    "materializedViewDatabaseId": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+    "pipelineDatabaseId": "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
+    "materializedViewDatabaseId": "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID",
     "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
     "generation": "v2",
     "data": {
@@ -1050,8 +1050,8 @@
       "receiverMode": "separate",
       "degradation": "queued-degraded",
       "maxServiceBindingInvocations": 32,
-      "pipelineDatabaseId": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-      "materializedViewDatabaseId": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      "pipelineDatabaseId": "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
+      "materializedViewDatabaseId": "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID",
       "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
       "generation": "v2"
     },
@@ -1067,7 +1067,7 @@
   },
   "fixedNMeasurement": {
     "task": "SDT-G29",
-    "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+    "baseUrl": "https://example.workers.dev",
     "startedAt": "2026-08-22T08:59:38.742Z",
     "topology": {
       "task": "SDT-G29",
@@ -1089,8 +1089,8 @@
       "receiverMode": "separate",
       "degradation": "queued-degraded",
       "maxServiceBindingInvocations": 32,
-      "pipelineDatabaseId": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-      "materializedViewDatabaseId": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      "pipelineDatabaseId": "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID",
+      "materializedViewDatabaseId": "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID",
       "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
       "generation": "v2"
     },

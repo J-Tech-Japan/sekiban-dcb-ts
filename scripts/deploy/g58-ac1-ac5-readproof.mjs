@@ -257,7 +257,7 @@ if (process.argv.includes("--self-test")) {
     windowMs: positiveInteger("--window-ms", argument("--window-ms", "150000"), 1),
     pollMs: positiveInteger("--poll-ms", argument("--poll-ms", "10000"), 100),
   };
-  const output = resolve(required("--report", argument("--report", ".artifacts/sdt-g58-w94-ac1-ac5-readproof.json")));
+  const output = resolve(required("--report", argument("--report", ".artifacts/ci-local/g58-readproof.json")));
   run(options).then((report) => {
     writeReport(output, report);
     process.stdout.write(`${JSON.stringify({ task: report.task, status: report.status, output })}\n`);

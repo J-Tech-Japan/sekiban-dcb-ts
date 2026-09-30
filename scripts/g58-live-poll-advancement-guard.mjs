@@ -15,7 +15,7 @@ import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const receiptPath = ".artifacts/sdt-g58-w112-paced-cohort.json";
-const reportPath = ".artifacts/sdt-g58-w112-green-guard.json";
+const reportPath = ".artifacts/ci-local/g58-live-poll-advancement.json";
 const projectionPath = "packages/dcb-runtime/src/projection/ProjectionRuntime.ts";
 const testPath = "test/g58-live-poll-advancement-repair.spec.ts";
 
@@ -183,7 +183,7 @@ function main() {
     focusedTest: focused,
     bounds: { unsafeBoundMs: 5000, safeWindowFloorMs: 20000, safeWindowCeilingMs: 120000, noTokenContents: true },
   };
-  mkdirSync(resolve(root, ".artifacts"), { recursive: true });
+  mkdirSync(resolve(root, ".artifacts/ci-local"), { recursive: true });
   writeFileSync(resolve(root, reportPath), `${JSON.stringify(report, null, 2)}\n`, "utf8");
   process.stdout.write(`${JSON.stringify({ guard: "g58-w112-live-poll-advancement", status: "green", report: reportPath })}\n`);
 }

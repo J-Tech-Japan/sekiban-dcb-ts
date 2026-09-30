@@ -139,14 +139,18 @@
         {"id": "g40-coverage", "command": "node scripts/g40-ci-coverage-check.mjs"},
         {"id": "g40-mutation", "command": "node scripts/g40-ci-mutation-proof.mjs"},
         {"id": "g40-verify-self-test", "command": "node scripts/g40-verify-needs.mjs --self-test"},
-        {"id": "g40-ignored-paths", "command": "node scripts/g40-ignored-paths-check.mjs"}
+        {"id": "g40-ignored-paths", "command": "node scripts/g40-ignored-paths-check.mjs"},
+        {"id": "public-tree-self-test", "command": "npm run test:public-tree:self-test"},
+        {"id": "public-tree", "command": "npm run test:public-tree"},
+        {"id": "references-self-test", "command": "npm run test:references:self-test"},
+        {"id": "references", "command": "npm run test:references"}
       ]
     },
     {
       "name": "g21-g25",
       "tier": "local",
       "services": ["postgres"],
-      "affectedPaths": ["test/bootstrap.spec.ts", "test/g22-*.ts", "test/g23-*.ts", "test/g24-*.ts", "test/g25-*.ts", "scripts/g22-*.mjs", "scripts/g24-*.mjs"],
+      "affectedPaths": ["test/bootstrap.spec.ts", "test/g22-*.ts", "test/g23-*.ts", "test/g24-*.ts", "test/g25-*.ts", "scripts/g22-*.mjs", "test/g24-*.mjs"],
       "commands": [
         {"id": "g21", "command": "npm run test:g21"},
         {"id": "g21-red", "command": "npm run test:g21:forced-red", "env": {"SDT_G21_FORCE_FAILURE": "1"}, "expect": "red"},

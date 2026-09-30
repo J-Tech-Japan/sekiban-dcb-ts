@@ -14,7 +14,7 @@ import { resolve } from "node:path";
 const root = process.cwd();
 const witnessPath = "scripts/deploy/g58-safe-lane-e2e.mjs";
 const baselinePath = ".artifacts/sdt-g58-w99-paced-cohort.json";
-const reportPath = ".artifacts/sdt-g58-w100-cohort-evidence-guard.json";
+const reportPath = ".artifacts/ci-local/g58-cohort-evidence-guard.json";
 
 function read(path) {
   return readFileSync(resolve(root, path), "utf8");
@@ -114,7 +114,7 @@ function selfTest() {
 function main() {
   const contract = assertCohortEvidenceContract(read(witnessPath));
   const baseline = baselineReceipt();
-  mkdirSync(resolve(root, ".artifacts"), { recursive: true });
+  mkdirSync(resolve(root, ".artifacts/ci-local"), { recursive: true });
   writeFileSync(resolve(root, reportPath), `${JSON.stringify({
     schema: "sdt-g58-cohort-evidence/v1",
     status: "pass",

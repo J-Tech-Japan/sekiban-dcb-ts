@@ -17,15 +17,15 @@
   "preWitness": {
     "phase": "pre",
     "capturedAt": "2026-08-24T10:09:07.562Z",
-    "accountId": "3ede2188f4cf39a28e0aa3722d3d02c5",
+    "accountId": "REPLACE_WITH_ACCOUNT_ID",
     "workerName": "sekiban-dcb-meeting-room-doorbell",
     "registry": {
-      "accountSubdomain": "ttakaoka",
+      "accountSubdomain": "operator",
       "settings": {
         "workersDevEnabled": true,
         "previewsEnabled": true
       },
-      "workersDevUrl": "https://sekiban-dcb-meeting-room-doorbell.ttakaoka.workers.dev",
+      "workersDevUrl": "https://example.workers.dev",
       "versionedPreviewUrls": [],
       "aliases": [],
       "activeDeployment": {
@@ -44,15 +44,15 @@
   "postWitness": {
     "phase": "post",
     "capturedAt": "2026-08-24T10:09:16.949Z",
-    "accountId": "3ede2188f4cf39a28e0aa3722d3d02c5",
+    "accountId": "REPLACE_WITH_ACCOUNT_ID",
     "workerName": "sekiban-dcb-meeting-room-doorbell",
     "registry": {
-      "accountSubdomain": "ttakaoka",
+      "accountSubdomain": "operator",
       "settings": {
         "workersDevEnabled": false,
         "previewsEnabled": false
       },
-      "workersDevUrl": "https://sekiban-dcb-meeting-room-doorbell.ttakaoka.workers.dev",
+      "workersDevUrl": "https://example.workers.dev",
       "versionedPreviewUrls": [],
       "aliases": [],
       "activeDeployment": {
@@ -68,11 +68,11 @@
       }
     },
     "preCapturedUrls": [
-      "https://sekiban-dcb-meeting-room-doorbell.ttakaoka.workers.dev"
+      "https://example.workers.dev"
     ],
     "rechecks": [
       {
-        "url": "https://sekiban-dcb-meeting-room-doorbell.ttakaoka.workers.dev",
+        "url": "https://example.workers.dev",
         "status": 404
       }
     ]

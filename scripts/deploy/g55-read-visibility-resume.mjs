@@ -209,7 +209,7 @@ function selfTest() {
 if (process.argv.includes("--self-test")) {
   selfTest();
 } else {
-  const output = resolve(required("--output", argument("--output", ".artifacts/sdt-g55-oauth-resume.json")));
+  const output = resolve(required("--output", argument("--output", ".artifacts/ci-local/g55-oauth-resume.json")));
   const options = {
     input: resolve(required("--input", argument("--input", ".artifacts/sdt-g55-packaging-repair-e2e.json"))),
     serviceId: required("--service-id", argument("--service-id", DEFAULT_SERVICE_ID)),

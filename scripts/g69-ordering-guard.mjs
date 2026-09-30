@@ -18,7 +18,7 @@ const catchUpFile = "packages/dcb-runtime/src/mv/MaterializedViewCatchUp.ts";
 const receiptFile = "packages/dcb-runtime/src/diagnostics/G69AdmissionAttempt.ts";
 const g22File = "test/g22-bootstrap-d1.spec.ts";
 const configFile = "vitest.g69.config.ts";
-const reportFile = ".artifacts/sdt-g69-ordering-red-green.json";
+const reportFile = ".artifacts/ci-local/g69-ordering.json";
 const batchOrderAnchor = `      await this.assertSourceBatchOrder(
         serviceId,
         materializer.id,
@@ -224,7 +224,7 @@ function main() {
       outputTail: tail(mutant.stdout + mutant.stderr),
     });
   }
-  mkdirSync(resolve(root, ".artifacts"), { recursive: true });
+  mkdirSync(resolve(root, ".artifacts/ci-local"), { recursive: true });
   writeFileSync(resolve(root, reportFile), `${JSON.stringify({
     schema: "sdt-g69-ordering-red-green/v1",
     status: "pass",

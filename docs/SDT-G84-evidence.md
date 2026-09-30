@@ -253,7 +253,7 @@ The final retry used isolated `NUGET_PACKAGES` and `NUGET_HTTP_CACHE_PATH` under
 
 ```text
 CSC : error CS2012: Cannot open
-'/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g84-w242/tools/sekiban-parity/obj/Debug/net10.0/SekibanParity.dll'
+'/path/to/repo/.g84-w242/tools/sekiban-parity/obj/Debug/net10.0/SekibanParity.dll'
 for writing -- Access to the path ... is denied.
 ```
 

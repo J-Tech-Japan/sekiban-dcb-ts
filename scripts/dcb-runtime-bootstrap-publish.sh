@@ -6,16 +6,16 @@
 # → verify npm view → print Trusted Publisher registration URLs.
 #
 # Usage (MUST run from repository root):
-#   cd /home/parallels/dev/work/sekiban-dcb-ts-g97-impl
+#   cd /path/to/repo
 #   ./scripts/dcb-runtime-bootstrap-publish.sh --dry-run
 #   ./scripts/dcb-runtime-bootstrap-publish.sh
 #   npm run publish:g99:runtime-bootstrap
 #
 # Absolute paths (this worktree):
-#   root:    /home/parallels/dev/work/sekiban-dcb-ts-g97-impl
-#   script:  /home/parallels/dev/work/sekiban-dcb-ts-g97-impl/scripts/dcb-runtime-bootstrap-publish.sh
-#   package: /home/parallels/dev/work/sekiban-dcb-ts-g97-impl/packages/dcb-runtime
-#   receipt: /home/parallels/dev/work/sekiban-dcb-ts-g97-impl/.artifacts/sdt-g99-runtime-bootstrap-publish.json
+#   root:    /path/to/repo
+#   script:  /path/to/repo/scripts/dcb-runtime-bootstrap-publish.sh
+#   package: /path/to/repo/packages/dcb-runtime
+#   receipt: /path/to/repo/.artifacts/sdt-g99-runtime-bootstrap-publish.json
 #
 # Prerequisites:
 #   - npm login as a maintainer of the @sekiban scope (OTP / 2FA as prompted)

@@ -110,12 +110,12 @@ function run(options) {
 }
 
 const options = {
-  wrangler: required("--wrangler", argument("--wrangler", "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/node_modules/.bin/wrangler")),
+  wrangler: required("--wrangler", argument("--wrangler", "/path/to/repo/node_modules/.bin/wrangler")),
   config: required("--config", argument("--config", "samples/meeting-room/wrangler.cloudflare-only.jsonc")),
   worker: required("--worker", argument("--worker", "sekiban-dcb-meeting-room-cloudflare-only")),
   pipeline: required("--pipeline", argument("--pipeline", "sekiban-dcb-meeting-room-cloudflare-pipeline")),
   mv: required("--mv", argument("--mv", "sekiban-dcb-meeting-room-cloudflare-mv")),
-  output: required("--output", argument("--output", ".artifacts/sdt-g66-w160-production-c0-reset.json")),
+  output: required("--output", argument("--output", ".artifacts/ci-local/g66-production-reset.json")),
 };
 
 try {

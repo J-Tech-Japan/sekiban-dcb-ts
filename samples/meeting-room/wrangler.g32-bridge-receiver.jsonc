@@ -11,8 +11,8 @@
     "G32_FREEZE_TOKEN_FINGERPRINT": "unsealed"
   },
   "d1_databases": [
-    { "binding": "D1", "database_name": "sekiban-dcb-meeting-room-cloudflare-pipeline", "database_id": "3c3b1641-7969-4d72-97a9-2ea65085c9bb", "migrations_dir": "../../migrations/d1" },
-    { "binding": "D1_MV", "database_name": "sekiban-dcb-meeting-room-cloudflare-mv", "database_id": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac", "migrations_dir": "../../migrations/mv" }
+    { "binding": "D1", "database_name": "sekiban-dcb-meeting-room-cloudflare-pipeline", "database_id": "REPLACE_WITH_SAMPLE_DOORBELL_PIPELINE_D1_ID", "migrations_dir": "../../migrations/d1" },
+    { "binding": "D1_MV", "database_name": "sekiban-dcb-meeting-room-cloudflare-mv", "database_id": "REPLACE_WITH_SAMPLE_DOORBELL_MV_D1_ID", "migrations_dir": "../../migrations/mv" }
   ],
   "durable_objects": {
     "bindings": [

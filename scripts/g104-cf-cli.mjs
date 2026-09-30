@@ -240,9 +240,17 @@ async function checkPlansAndSpawns() {
   const sample = cli.planCloudflareCommands(["migrate", "--config", "samples/meeting-room/wrangler.cloudflare-only.jsonc"], sampleConfig);
   assert.deepEqual(starter, pinned.starter, "starter Wrangler migration plan drifted from the pinned main plan");
   assert.deepEqual(sample, pinned.sample, "meeting-room Wrangler migration plan drifted from the pinned main plan");
+  // The committed sample is intentionally sealed with placeholders.  Exercise
+  // the offline plan with distinct synthetic UUIDs so the production CLI keeps
+  // its real-UUID validation without reintroducing a live identifier.
+  const samplePlanFixture = sampleConfig
+    .replace("REPLACE_WITH_CLOUDFLARE_ONLY_PIPELINE_D1_ID", uuidA)
+    .replace("REPLACE_WITH_CLOUDFLARE_ONLY_MV_D1_ID", uuidB);
+  check(samplePlanFixture !== sampleConfig, "sample Cloudflare plan fixture must replace sealed IDs");
+
   const sampleCf = cli.planCloudflareOperations(
     ["migrate", "--config", "samples/meeting-room/wrangler.cloudflare-only.jsonc", "--cli", "cf"],
-    sampleConfig,
+    samplePlanFixture,
     { cwd: root, env: safeEnv() },
   );
   for (const plan of sampleCf) {

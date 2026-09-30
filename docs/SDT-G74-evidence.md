@@ -122,7 +122,7 @@ Status: **posted** on GitHub; owner acknowledgements **missing** (window open un
 | consumer | venue | URL | ack status |
 |---|---|---|---|
 | SekibanWasmRuntime | #283 | https://github.com/J-Tech-Japan/SekibanWasmRuntime/issues/283#issuecomment-5689253773 | posted |
-| SekibanAsAService | #1914 | https://github.com/J-Tech-Japan/SekibanAsAService/issues/1914#issuecomment-5689254043 | posted |
+| downstream consumer | #1914 | consultation record | posted |
 | Sekiban | new #1247 | https://github.com/J-Tech-Japan/Sekiban/issues/1247 | posted |
 
 Exact hash consulted: `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db`. PR #176 remains parked until AC10 is satisfied.

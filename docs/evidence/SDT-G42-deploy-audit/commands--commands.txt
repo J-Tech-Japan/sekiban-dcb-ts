@@ -1,6 +1,0 @@
-wrangler deploy --config samples/meeting-room/wrangler.g37-primary.jsonc --dry-run --strict --outdir .artifacts/g42-deploy-85bebb3d1f8f-build --outfile worker.js --metafile bundle-meta.json --var SDT_SERVICE_ID:g32-9043d626fe1149cb
-wrangler deployments list --name sekiban-dcb-meeting-room-cloudflare-only --json
-wrangler versions view <active-version> --name sekiban-dcb-meeting-room-cloudflare-only --json
-wrangler deploy --config samples/meeting-room/wrangler.g37-primary.jsonc --keep-vars --strict --secrets-file [protected] --var SDT_SERVICE_ID:g32-9043d626fe1149cb --message SDT-G42 P1 probe g32-9043d626fe1149cb 85bebb3d1f8fdd310f3a4f62b60d65e30ea8780a
-wrangler deployments list --name sekiban-dcb-meeting-room-cloudflare-only --json
-wrangler versions view <deployed-version> --name sekiban-dcb-meeting-room-cloudflare-only --json

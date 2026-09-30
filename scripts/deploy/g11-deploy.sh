@@ -8,7 +8,7 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 readonly WORKER_NAME="serialized-dcb-v1-runtime"
 readonly QUEUE_NAME="serialized-dcb-v1-outbox"
-readonly HYPERDRIVE_ID="c236b7b51ed24bf4b312bc370c61a231"
+readonly HYPERDRIVE_ID="REPLACE_WITH_SAMPLE_HYPERDRIVE_ID"
 readonly WRANGLER_BIN="${WRANGLER_BIN:-${REPO_ROOT}/node_modules/.bin/wrangler}"
 
 if [[ ! -x "${WRANGLER_BIN}" ]]; then
