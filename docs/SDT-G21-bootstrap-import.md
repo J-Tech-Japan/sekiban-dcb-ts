@@ -54,8 +54,9 @@ and those wrapper checks may enter `READY`, after which normal command admission
 is released. An empty dump does not manufacture an event or a sentinel head;
 the first normal allocation establishes the next authority fact.
 
-An import failure does not automatically transition to `FAILED`: the
-coordinator remains fenced in `IMPORTING`, where the operator can resume the
+An import failure after `/import` has entered `IMPORTING` does not
+automatically transition to `FAILED`: the coordinator remains fenced in
+`IMPORTING`, where the operator can resume the
 import or abort it. Only the operator `/abort` route writes `FAILED` with
 `operator_abort`; abort retains the failed plan and does not clear target state.
 The normal write path remains the Tag authority path described in the

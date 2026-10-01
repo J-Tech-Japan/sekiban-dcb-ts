@@ -126,8 +126,9 @@ of event truth.
    validates the complete versioned dump, canonical digest, counts, tag
    counts, SUID order, and high watermark; checks explicit fresh-target
    evidence; and persists the import plan, dump, digest, lease, fencing epoch,
-   and progress. No provider admission or Tag/allocator import write precedes
-   this plan boundary.
+   and progress. No Tag or allocator import write precedes this plan
+   boundary. The operator import route does not itself check that a plan
+   exists before provider admission, so run `/plan` first.
 2. During the later import operation, the operator also parses the dump and
    the provider adapter performs PipelineStore admission. This is a separate
    provider-side write, not a coordinator state- or epoch-gated operation. The
@@ -142,8 +143,9 @@ of event truth.
    or allocator reread. Only successful coordinator verification and the
    optional checks allow `READY` and release normal command admission.
 
-An import error does not automatically enter `FAILED`: it remains fenced in
-`IMPORTING`, where the operator can resume or abort. Only the operator abort
+An error after import starts does not automatically enter `FAILED`: it
+remains fenced in `IMPORTING`, where the operator can resume or abort.
+Rejections before that point leave the earlier state unchanged. Only the operator abort
 route writes `FAILED` with `operator_abort`. `READY` permanently closes the
 coordinator's import route and each Tag's `/bootstrap/admit` import route;
 that closure does not make provider-adapter PipelineStore admission part of the
@@ -230,8 +232,8 @@ the runtime library enforces every deployment choice.
   explicit authority read, repair check, or conformance assertion. The
   observation vocabulary is documented in [commit tracing](commit-tracing.md),
   without assigning durable authority to tracing. This is backed by runtime
-  code: tracing and observations take no part in commit, fence, or repair
-  decisions.
+  code: tracing and observations never choose a commit, fence, or repair
+  branch.
 * Configured authority is distinct from observed remote state. A binding or
   route can declare where writes belong, while a remote response only proves
   the facts it actually returned. This is a design principle, not a single
