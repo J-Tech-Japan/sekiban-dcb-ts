@@ -4,6 +4,9 @@ This repository is the Cloudflare Workers implementation of the Serialized DCB
 V1 runtime. It provides the durable allocation, tag, journal, materialized-view,
 and repair components used to coordinate serialized event commits.
 
+The [architecture guide](docs/architecture.md) explains the authority model,
+result handling, visibility rules, and component composition.
+
 ## Packages and starter
 
 `dcb-core` provides Cloudflare-independent Serialized DCB definitions and domain algebra.

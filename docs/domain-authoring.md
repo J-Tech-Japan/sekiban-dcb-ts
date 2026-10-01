@@ -8,8 +8,9 @@ Under SDT-G32, the registered event payload name is also the durable C#
 The TypeScript sample is the executable reference for the wire-compatible
 meeting-room example.
 
-The design decision and its means/15 source rationale are recorded in the
-reviewed domain-authoring record for this repository.
+The design decision and its public rationale are recorded in the [architecture
+guide](architecture.md), including the [result and repair
+matrix](architecture.md#result-and-repair-matrix).
 
 The C# side below is pinned to the checked-in template at
 [`Sekiban@4fbd867`](https://github.com/J-Tech-Japan/Sekiban/blob/4fbd8679b3a2eb2ef2e0694bc3152a59e6dda411/templates/Sekiban.Dcb.Templates/content/Sekiban.Dcb.Orleans.Decider/SekibanDcbDecider.MeetingRoomModels/Events/EquipmentReservation/EquipmentReservationCancelled.cs).
