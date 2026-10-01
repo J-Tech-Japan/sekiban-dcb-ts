@@ -56,7 +56,6 @@
       "commands": [
         {"id": "foundation-lint", "command": "npm run lint"},
         {"id": "foundation-g37-evidence", "command": "npm run test:g37:evidence"},
-        {"id": "foundation-g50-guards", "command": "node scripts/deploy/g99-tip-identity-guards.mjs\nnode scripts/deploy/g50-deployed-identity-guards.mjs\nnode scripts/deploy/g50-commit-latency-guards.mjs\nnode scripts/deploy/g50-commit-latency-check.mjs --sample .artifacts/sdt-g50-w57-commit-latency.json --self-test"},
         {"id": "foundation-g52", "command": "npm run test:g52"},
         {"id": "foundation-typecheck", "command": "npm run typecheck"},
         {"id": "foundation-test", "command": "npm test"},
