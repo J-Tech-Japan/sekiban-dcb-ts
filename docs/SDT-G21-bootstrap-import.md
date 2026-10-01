@@ -60,7 +60,9 @@ automatically transition to `FAILED`: the coordinator remains fenced in
 after `/import` reaches `VERIFYING` stays fenced in `VERIFYING`: before `/ready`
 starts closing Tag import routes the operator can abort and import again from
 `FAILED`; after that, the operator retries `/ready` with the same import ID and
-fencing epoch. Only the operator `/abort` route writes `FAILED` with
+fencing epoch through the scoped `/bootstrap/{serviceId}/ready` control route,
+because the operator wrapper exposes only plan, import, status, abort, and
+export. Only the operator `/abort` route writes `FAILED` with
 `operator_abort`; abort retains the failed plan and does not clear target state.
 The normal write path remains the Tag authority path described in the
 [architecture guide](architecture.md#two-authoritative-scopes).

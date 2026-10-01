@@ -149,7 +149,9 @@ operator can resume or abort. A failure after `/import` reaches `VERIFYING`
 stays fenced in `VERIFYING`. Before `/ready` starts closing Tag import routes,
 the operator can abort and import again from `FAILED`. Once `/ready` has
 started, some Tag import routes may already be closed, so the operator retries
-`/ready` with the same import ID and fencing epoch; Tag close is idempotent.
+`/ready` with the same import ID and fencing epoch through the scoped
+`/bootstrap/{serviceId}/ready` control route; Tag close is idempotent. The
+operator wrapper exposes only plan, import, status, abort, and export.
 Rejections before `/import` enters `IMPORTING` leave the coordinator state
 unchanged, although provider admission may already have written PipelineStore
 delivery rows. Only the operator abort route writes `FAILED` with `operator_abort`. `READY` permanently closes the
