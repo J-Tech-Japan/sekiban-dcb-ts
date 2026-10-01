@@ -93,7 +93,7 @@ if [[ "$(git rev-parse HEAD)" != "${SOURCE_COMMIT}" || -n "$(git status --porcel
 fi
 
 # These checks run before any remote operation. `--check` is target read-only;
-# the host authority owns generation/sealing and target-side write is forbidden.
+# the repository-owned authority owns generation/sealing and writes on the target side are forbidden.
 node scripts/commit-trace-contract.mjs --check
 node scripts/commit-trace-contract.mjs --self-test
 node scripts/g30-b0-contract.mjs --self-test

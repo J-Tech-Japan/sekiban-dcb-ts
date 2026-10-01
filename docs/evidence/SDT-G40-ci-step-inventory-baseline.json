@@ -7,7 +7,7 @@
     "ref": "origin/main"
   },
   "runStepCount": 89,
-  "leafCommandCount": 174,
+  "leafCommandCount": 173,
   "leafCommands": [
     {
       "id": "npm-script:057f94e1b606e8ad455f844be0758880bd05ff71315d0bd7adbaf525a28f62b3",
@@ -118,12 +118,6 @@
       "npmScript": "test"
     },
     {
-      "id": "npm-script:3d19d10cc849e796c2a2f99d84d4b0dc9990f5470cc177a06257aa4d4d830ff9",
-      "type": "npm-script",
-      "command": "node scripts/g38-packet-contract-check.mjs --self-test && node scripts/g38-packet-contract-check.mjs",
-      "npmScript": "test:g38:packet"
-    },
-    {
       "id": "npm-script:3d4f3cc1c7f10babec985ddaba6fc9be237066d3c990f6345979037650566981",
       "type": "npm-script",
       "command": "npm run test:g31:candidate",
@@ -158,6 +152,12 @@
       "type": "npm-script",
       "command": "node scripts/g38-receiver-surface-check.mjs --self-test && node scripts/g38-receiver-surface-check.mjs",
       "npmScript": "test:g38:receiver-surface"
+    },
+    {
+      "id": "npm-script:4ee4d25dd4596219c99fb41172f43ab7226018e43aae041753d4e7049c7183b4",
+      "type": "npm-script",
+      "command": "npm run test:g38:primary-config && npm run test:g38:receiver-surface && npm run test:g38:tombstone && vitest run --config vitest.config.ts test/g38-receiver-surface.spec.ts",
+      "npmScript": "test:g38:prep"
     },
     {
       "id": "npm-script:4f7e83512d16e65030a290d4be84f87ff2160ce41071e7be4dcea2c48d0c4f83",
@@ -464,12 +464,6 @@
       "type": "npm-script",
       "command": "npm run build:packages && node scripts/g13-consumer-fixture.mjs",
       "npmScript": "test:consumer"
-    },
-    {
-      "id": "npm-script:ee33f471ca663c3a17a09a1531b23693649275ab90b57a1d9e840f4f7a5c4a84",
-      "type": "npm-script",
-      "command": "npm run test:g38:packet && npm run test:g38:primary-config && npm run test:g38:receiver-surface && npm run test:g38:tombstone && vitest run --config vitest.config.ts test/g38-receiver-surface.spec.ts",
-      "npmScript": "test:g38:prep"
     },
     {
       "id": "npm-script:efc3410d791d366d25682cd3a37adf151eb7946291a064b6ba7821ab04572381",

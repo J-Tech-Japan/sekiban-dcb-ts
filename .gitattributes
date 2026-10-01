@@ -1,0 +1,11 @@
+contracts/commit-trace-normative.md -text
+contracts/bootstrap-import-normative.md -text
+contracts/epoch-reasons.curated.json -text
+scripts/commit-trace-generate.mjs -text
+contracts/RENDERED-VIEWS.md -text
+contracts/commit-trace-manifest.json -text
+contracts/epoch-namespace-allowlist.json -text
+scripts/commit-trace-contract.mjs -text
+scripts/g30-ac5-structural-check.mjs -text
+contracts/commit-trace-bundle.json -text
+contracts/commit-trace-pin.json -text

@@ -6,7 +6,7 @@ import type { DurableObjectHandlerObservation } from "./ObservationStream";
  * Trace-only commit attribution support.
  *
  * This module deliberately has no dependency on the commit protocol or on
- * Durable Object storage. It turns the host-owned manifest into the runtime
+ * Durable Object storage. It turns the repository-owned manifest into the runtime
  * vocabulary and delegates real parentage to Cloudflare's active async
  * tracing context. The in-memory records are an observation adapter used by
  * unit tests and the B0 evidence tooling; they never cross a public wire.
@@ -1027,7 +1027,7 @@ export interface NativeCommitSpanInput {
   readonly schema: CommitTraceSchema;
   /** The manifest face governs the complete emitted attribute set. */
   readonly face: CommitTraceFace;
-  /** Exact host-manifest row emitted by this callback boundary. */
+  /** Exact repository manifest row emitted by this callback boundary. */
   readonly rowId: string;
   readonly correlationId: string;
   /** Repair roots may cover more than one attempt. */
@@ -1085,7 +1085,7 @@ export interface NativeReconcileRootIdentity {
 /**
  * A reconciliation fact becomes available only after durable recovery reads.
  * R00 remains open for the handler's whole callback, so it is the sole span
- * to which the host contract permits this late attribute.
+ * to which the repository contract permits this late attribute.
  */
 export interface NativeReconcileRootFacts {
   setRecoveryKind(kind: string): void;

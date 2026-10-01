@@ -1,19 +1,15 @@
 #!/usr/bin/env node
-/**
- * Structural negative oracle for the amended AC5 wording. The active target
- * packet/body/implementation-note surfaces must agree with the frozen
- * bounded-loss contract. The sealed host means/19 baseline is represented by
- * its bundle digest; historical evidence is intentionally out of scope.
- */
+/** Structural negative oracle for the bounded-loss contract and its public source. */
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 
 const root = process.cwd();
-const HOST_MEANS_19_PATH = "intents/sekiban-dcb-ts/intent-tree/means/19-commit-latency.md";
-const HOST_MEANS_19_DIGEST = "sha256:173ef152786cbeacb468eac5776ef35db3303d594dfbf12c69d5200653b3f571";
+const NORMATIVE_PATH = "contracts/commit-trace-normative.md";
 
 export const G30_AC5_NORMATIVE_SURFACES = Object.freeze([
   "contracts/commit-trace-bundle.json",
+  NORMATIVE_PATH,
   "docs/SDT-G30-pr-body.md",
   "docs/SDT-G30-oracle-map.md",
   "docs/commit-tracing.md",
@@ -26,6 +22,7 @@ const G30_AC5_ACTIVE_ASSERTION_SURFACES = Object.freeze([
   "docs/SDT-G30-pr-body.md",
   "docs/SDT-G30-oracle-map.md",
   "docs/commit-tracing.md",
+  NORMATIVE_PATH,
   "scripts/g30-b0-contract.mjs",
   "scripts/deploy/g30-trace-export.mjs",
   "scripts/deploy/g30-b0-record-evidence.mjs",
@@ -48,7 +45,7 @@ function forbidText(texts, path, expression, description) {
 }
 
 /** Reads every active normative surface; expected values are never generated from a scan. */
-export function assertAc5StructuralContract(read = readTarget) {
+export function assertAc5StructuralContract(read = readTarget, { requiredWordingPaths = ["docs/SDT-G30-pr-body.md", "docs/SDT-G30-oracle-map.md", "docs/commit-tracing.md", NORMATIVE_PATH] } = {}) {
   const texts = new Map(G30_AC5_NORMATIVE_SURFACES.map((path) => [path, read(path)]));
   for (const path of G30_AC5_ACTIVE_ASSERTION_SURFACES) {
     if (typeof texts.get(path) !== "string" || texts.get(path).length === 0) fail(`${path} is unavailable`);
@@ -66,11 +63,12 @@ export function assertAc5StructuralContract(read = readTarget) {
   requireText(texts, "scripts/g30-ac5-mutation-runner.mjs", /id: "root-absent-envelope"/, "the root-absent envelope mutation label");
   let bundle;
   try { bundle = JSON.parse(texts.get("contracts/commit-trace-bundle.json")); } catch { fail("contracts/commit-trace-bundle.json is not valid JSON"); }
-  const means19 = Array.isArray(bundle?.hostOnlyInputs)
-    ? bundle.hostOnlyInputs.find((entry) => entry?.hostPath === HOST_MEANS_19_PATH)
+  const normativeEntry = Array.isArray(bundle?.authorityFiles)
+    ? bundle.authorityFiles.find((entry) => entry?.path === NORMATIVE_PATH)
     : undefined;
-  if (means19?.digest !== HOST_MEANS_19_DIGEST) fail("sealed means/19 baseline digest is absent or stale");
-  for (const path of ["docs/SDT-G30-pr-body.md", "docs/SDT-G30-oracle-map.md", "docs/commit-tracing.md"]) {
+  const normativeDigest = "sha256:" + createHash("sha256").update(texts.get(NORMATIVE_PATH), "utf8").digest("hex");
+  if (normativeEntry?.digest !== normativeDigest) fail("normative digest differs from its bundle entry");
+  for (const path of requiredWordingPaths) {
     requireText(texts, path, /schemaCompleteCount\s*>=\s*85|85\/100/, "the bounded-loss delivery contract");
     requireText(texts, path, /rank-1\.\.5/, "the exact rank-1..5 tail contract");
     requireText(texts, path, /root-absent/, "the root-absent UNKNOWN stage");
@@ -91,25 +89,56 @@ export function assertAc5StructuralContract(read = readTarget) {
 export function selfTest() {
   const baseline = new Map(G30_AC5_NORMATIVE_SURFACES.map((path) => [path, readTarget(path)]));
   assertAc5StructuralContract((path) => baseline.get(path));
+  const baselineBundle = JSON.parse(baseline.get("contracts/commit-trace-bundle.json"));
+  const baselineNormativeDigest = baselineBundle.authorityFiles.find((entry) => entry.path === NORMATIVE_PATH)?.digest;
   const mutations = [
-    ["docs/SDT-G30-pr-body.md", "schemaCompleteCount >= 85", "schemaCompleteCount >= 84"],
-    ["docs/SDT-G30-oracle-map.md", "rank-1..5", "p95-threshold tail"],
-    ["docs/commit-tracing.md", "root-absent", "root absent"],
-    ["scripts/g30-b0-contract.mjs", "G30_MIN_SCHEMA_COMPLETE_COUNT = 85", "G30_MIN_SCHEMA_COMPLETE_COUNT = 84"],
-    ["contracts/commit-trace-bundle.json", HOST_MEANS_19_DIGEST, "sha256:0000000000000000000000000000000000000000000000000000000000000000"],
-    ["scripts/g30-ac5-mutation-runner.mjs", "id: \"accept-84\"", "id: \"accept-83\""],
-    ["scripts/deploy/g30-b0-record-evidence.mjs", "joined per-hop p50/p95 are joined-cohort conditional descriptive estimates", "whole-cohort estimates"],
+    { id: "delivery-floor", path: "docs/SDT-G30-pr-body.md", from: "schemaCompleteCount >= 85", to: "schemaCompleteCount >= 84" },
+    { id: "tail-label", path: "docs/SDT-G30-oracle-map.md", from: "rank-1..5", to: "p95-threshold tail" },
+    { id: "root-absent-label", path: "docs/commit-tracing.md", from: "root-absent", to: "root absent" },
+    { id: "contract-floor", path: "scripts/g30-b0-contract.mjs", from: "G30_MIN_SCHEMA_COMPLETE_COUNT = 85", to: "G30_MIN_SCHEMA_COMPLETE_COUNT = 84" },
+    { id: "normative-bundle-digest", path: "contracts/commit-trace-bundle.json", from: baselineNormativeDigest, to: "sha256:0000000000000000000000000000000000000000000000000000000000000000" },
+    {
+      id: "normative-required-wording",
+      path: NORMATIVE_PATH,
+      from: "schemaCompleteCount >= 85",
+      to: "schemaCompleteCount >= 84",
+      after: (altered) => {
+        const alteredBundle = JSON.parse(altered.get("contracts/commit-trace-bundle.json"));
+        const entry = alteredBundle.authorityFiles.find((candidate) => candidate.path === NORMATIVE_PATH);
+        if (entry === undefined) fail("self-test normative entry is missing");
+        entry.digest = "sha256:" + createHash("sha256").update(altered.get(NORMATIVE_PATH), "utf8").digest("hex");
+        altered.set("contracts/commit-trace-bundle.json", JSON.stringify(alteredBundle, null, 2) + "\n");
+      },
+    },
+    { id: "acceptance-boundary", path: "scripts/g30-ac5-mutation-runner.mjs", from: "id: \"accept-84\"", to: "id: \"accept-83\"" },
+    { id: "conditional-estimate-label", path: "scripts/deploy/g30-b0-record-evidence.mjs", from: "joined per-hop p50/p95 are joined-cohort conditional descriptive estimates", to: "whole-cohort estimates" },
   ];
-  for (const [path, from, to] of mutations) {
-    const altered = new Map(baseline);
-    const source = altered.get(path);
-    if (source?.split(from).length !== 2) fail(`self-test mutation anchor is not unique: ${path}`);
-    altered.set(path, source.replace(from, to));
-    let red = false;
-    try { assertAc5StructuralContract((candidate) => altered.get(candidate)); } catch { red = true; }
-    if (!red) fail(`self-test mutation stayed green: ${path}`);
+  const runMutations = (requiredWordingPaths) => {
+    for (const { id, path, from, to, after } of mutations) {
+      const altered = new Map(baseline);
+      const source = altered.get(path);
+      if (source?.split(from).length !== 2) fail(`self-test mutation anchor is not unique: ${path}`);
+      altered.set(path, source.replace(from, to));
+      after?.(altered);
+      let red = false;
+      try {
+        assertAc5StructuralContract((candidate) => altered.get(candidate), { requiredWordingPaths });
+      } catch {
+        red = true;
+      }
+      if (!red) fail(`self-test mutation stayed green: ${id}`);
+    }
   }
-  return Object.freeze({ surfaces: G30_AC5_NORMATIVE_SURFACES.length, mutations: mutations.length });
+  const requiredWordingPaths = ["docs/SDT-G30-pr-body.md", "docs/SDT-G30-oracle-map.md", "docs/commit-tracing.md", NORMATIVE_PATH];
+  runMutations(requiredWordingPaths);
+  let missingNormativeProof = false;
+  try {
+    runMutations(requiredWordingPaths.filter((path) => path !== NORMATIVE_PATH));
+  } catch (error) {
+    missingNormativeProof = String(error).includes("normative-required-wording");
+  }
+  if (!missingNormativeProof) fail("self-test removing the normative required-wording check stayed green");
+  return Object.freeze({ surfaces: G30_AC5_NORMATIVE_SURFACES.length, mutations: mutations.map(({ id }) => id), proof: "normative-required-wording-is-covered" });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
