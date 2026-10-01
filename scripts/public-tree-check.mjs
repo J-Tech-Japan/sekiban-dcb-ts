@@ -10,8 +10,6 @@ const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const schema = "sdt-g105-public-tree/v1";
 
 const artifactAllowlist = new Set([
-  ".artifacts/sdt-g50-w57-commit-latency.json",
-  ".artifacts/sdt-g55-packaging-repair-e2e.json",
   ".artifacts/sdt-g58-w102-safe-proof-cohort.json",
   ".artifacts/sdt-g58-w102-safe-proof-cohort.log",
   ".artifacts/sdt-g58-w103-red-guard.json",
