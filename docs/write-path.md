@@ -5,6 +5,9 @@ commit. It describes the response boundary and the two derived delivery lanes;
 it does not change the V1 JSON envelope, the Tag event format, the Queue
 contract, or the G44 safe-lane fence.
 
+For caller-facing result meanings and repair actions, see the [result and
+repair matrix](architecture.md#result-and-repair-matrix).
+
 ## Durable acceptance and derived work
 
 For an accepted append, the Tag Durable Object commits the event, its outbox
@@ -133,23 +136,6 @@ the actual attempt boundary. `received_at` in
 authored/arrival fields, not completion observations, and are not used as
 global-visibility timing.
 
-## Measured context carried into G65
-
-These are the measurements that motivate the local contract, preserved from the
-SDT-G60 packet and evidence; they are not a new deployed G65 result:
-
-| Path or measurement | n | p50 | p95 | over 5,000 ms |
-| --- | ---: | ---: | ---: | ---: |
-| SDT-G60 direct doorbell | — | 189 ms | 337 ms | 0 |
-| SDT-G60 Queue delivery | — | 1.4–2.7 s | tens of seconds observed | observed long tail |
-| SDT-G60 safe visibility | — | 42–95 s | — | not the unsafe contract |
-| G52 snapshot-root baseline | 1 | ~520 ms | — | — |
-| pre-G60 client response | — | 1,308 ms | — | — |
-
-The G60 values are historical observations, not an assertion that the local
-half has deployed them. AC5/AC6 must remeasure the deployed arm, including the
-unchanged 5,000 ms unsafe-visible contract and the client-response target.
-
 ## Required failure classes and test evidence
 
 The local guard and focused test cover these classes:
@@ -172,35 +158,3 @@ SDT-G65. It is not a claim that D1, the receiver, or the platform will always
 finish within the budget. Crash, duplicate, partial-fanout, D1-outage, and
 sustained-write cases must retain the durable outbox/Queue recovery path and
 must not weaken ordering, reservation/fence, or G44 proof obligations.
-
-## AC5 deployed cohort plan for the source-universe carve-out
-
-The later same-arm AC5 cohort must record both D1-unavailable behaviors as
-distinct cases rather than treating them as one generic outage:
-
-| Case | Expected public result | Required evidence |
-| --- | --- | --- |
-| Brand-new tag, configured G44 registration unavailable or hanging | Typed retryable `503 partition_registration_unavailable`; no event/obligation/receipt | bounded refusal duration, response body, and zero local event rows |
-| Brand-new tag, no D1 binding or no configured G44 store | Ordinary pre-G65 durable local commit; no registration wait/refusal | response timing/body, persisted local event/outbox/receipt, and explicit absence of a registration attempt |
-| Already-registered tag, D1 unavailable during commit | Durable commit succeeds with unchanged V1 body and `x-sdt-global-admission: not-admitted` (or `unknown` only for a bounded admission timeout) | commit response timing, header, persisted local event/outbox/receipt, explicit RYOW miss, and Queue-after-restore exactly-once recovery |
-
-The cohort must preserve the cold first sample, save raw receipts immediately,
-and report the rows separately. The configured-store case is a refused write
-that the caller may retry; it is not a censored 504. The unconfigured case and
-the registered-tag outage case are accepted local
-durability with downstream admission deferred; it must not be misreported as a
-registration failure. All safe-lane/G44, Queue ordering, reservation/fence,
-V1-body, and 5,000 ms contracts remain unchanged.
-
-## Local Queue/DLQ configuration diagnosis
-
-No Wrangler or Cloudflare call is part of this local checkpoint. The retained
-W155-C arm configuration was inspected read-only at
-`.artifacts/wrangler.g65-w155-c.jsonc`: the primary uses the existing
-`DOWNSTREAM_QUEUE` producer and the consumer retains `max_batch_timeout: 1`,
-`max_retries: 3`, and DLQ `sekiban-dcb-g60-w155-c-outbox-dlq`; its
-`DOWNSTREAM_DOORBELL` service binding remains the existing receiver. The
-canonical production-shaped config is
-`samples/meeting-room/wrangler.cloudflare-only.jsonc`, whose migration path is
-`../../migrations/d1/g32`. This inspection establishes the local Queue/DLQ
-check path without changing the arm, queue, receiver, or deployment state.

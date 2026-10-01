@@ -42,7 +42,7 @@ committed result carries `head` and per-tag `heads`; those portable snapshots
 can be carried into the next command. The assert-empty snapshot uses the
 empty string consistency head, while an unclaimed tag remains omitted.
 
-Other typed outcomes include `scope.mismatch`, `consistency_conflict`,
-`unknown_outcome`, and transport/credential errors. The transport still emits
+The caller action for every typed outcome is defined in the [result and repair
+matrix](architecture.md#result-and-repair-matrix). The transport still emits
 only the official V1 `version`, `eventCandidates`, `consistencyTags`, and
 base64 payload members.
