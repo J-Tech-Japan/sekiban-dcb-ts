@@ -143,9 +143,12 @@ of event truth.
    or allocator reread. Only successful coordinator verification and the
    optional checks allow `READY` and release normal command admission.
 
-An error after import starts does not automatically enter `FAILED`: it
-remains fenced in `IMPORTING`, where the operator can resume or abort.
-Rejections before that point leave the earlier state unchanged. Only the operator abort
+An error during `/import`, after it has entered `IMPORTING`, does not
+automatically enter `FAILED`: it remains fenced in `IMPORTING`, where the
+operator can resume or abort. A failure after `/import` reaches `VERIFYING`
+stays fenced in `VERIFYING`; the operator aborts and then imports again from
+`FAILED`. Rejections before `/import` enters `IMPORTING` leave the coordinator
+state unchanged, although provider admission may already have written. Only the operator abort
 route writes `FAILED` with `operator_abort`. `READY` permanently closes the
 coordinator's import route and each Tag's `/bootstrap/admit` import route;
 that closure does not make provider-adapter PipelineStore admission part of the

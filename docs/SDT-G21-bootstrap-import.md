@@ -57,7 +57,8 @@ the first normal allocation establishes the next authority fact.
 An import failure after `/import` has entered `IMPORTING` does not
 automatically transition to `FAILED`: the coordinator remains fenced in
 `IMPORTING`, where the operator can resume the
-import or abort it. Only the operator `/abort` route writes `FAILED` with
+import or abort it. A failure after `/import` reaches `VERIFYING` stays fenced
+in `VERIFYING`; the operator aborts and imports again from `FAILED`. Only the operator `/abort` route writes `FAILED` with
 `operator_abort`; abort retains the failed plan and does not clear target state.
 The normal write path remains the Tag authority path described in the
 [architecture guide](architecture.md#two-authoritative-scopes).
