@@ -17,9 +17,7 @@
       "purpose": "GitHub backstop for every manifest lane"
     }
   },
-  "pathsIgnore": [
-    "docs/SDT-G84-evidence.md"
-  ],
+  "pathsIgnore": [],
   "requiredLanes": [
     "foundation",
     "cheap",
@@ -74,6 +72,7 @@
       "services": ["postgres"],
       "affectedPaths": ["package.json", "package-lock.json", "packages/**", "templates/**", "test/**", "scripts/**", "vitest*.ts", "tsconfig*.json", ".github/workflows/**", "ci/lanes.json"],
       "commands": [
+        {"id": "commit-trace-seal", "command": "node scripts/commit-trace-contract.mjs --check"},
         {"id": "g28-build", "command": "npm run build:packages"},
         {"id": "g28-compile-fail", "command": "npm run test:g28:compile-fail"},
         {"id": "g28-compile-fail-red", "command": "npm run test:g28:compile-fail:forced-red", "env": {"SDT_G28_COMPILE_FAIL_FORCE_FAILURE": "1"}, "expect": "red"},
@@ -135,9 +134,12 @@
         {"id": "g45-red", "command": "npm run test:g45:forced-red", "env": {"SDT_G45_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g41", "command": "npm run test:g41"},
         {"id": "g41-red", "command": "npm run test:g41:forced-red", "env": {"SDT_G41_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g40-coverage-self-test", "command": "node scripts/g40-ci-coverage-check.mjs --self-test"},
         {"id": "g40-coverage", "command": "node scripts/g40-ci-coverage-check.mjs"},
+        {"id": "g40-mutation-self-test", "command": "node scripts/g40-ci-mutation-proof.mjs --self-test"},
         {"id": "g40-mutation", "command": "node scripts/g40-ci-mutation-proof.mjs"},
         {"id": "g40-verify-self-test", "command": "node scripts/g40-verify-needs.mjs --self-test"},
+        {"id": "g40-ignored-paths-self-test", "command": "node scripts/g40-ignored-paths-check.mjs --self-test"},
         {"id": "g40-ignored-paths", "command": "node scripts/g40-ignored-paths-check.mjs"},
         {"id": "public-tree-self-test", "command": "npm run test:public-tree:self-test"},
         {"id": "public-tree", "command": "npm run test:public-tree"},
@@ -149,7 +151,7 @@
       "name": "g21-g25",
       "tier": "local",
       "services": ["postgres"],
-      "affectedPaths": ["test/bootstrap.spec.ts", "test/g22-*.ts", "test/g23-*.ts", "test/g24-*.ts", "test/g25-*.ts", "scripts/g22-*.mjs", "test/g24-*.mjs"],
+      "affectedPaths": ["test/bootstrap.spec.ts", "test/g22-*.ts", "test/g23-*.ts", "test/g24-*.ts", "test/g25-*.ts", "scripts/g22-*.mjs", "test/g24-*.mjs", "scripts/deploy/g53-scope-mismatch-e2e.mjs", "scripts/g53-downstream-scope-mutation-runner.mjs", "scripts/g53-scope-identity-check.mjs", "scripts/g53-scope-mutation-runner.mjs", "scripts/g54-accepted-positive-mutation-runner.mjs", "scripts/g54-envelope-mutation-runner.mjs", "scripts/g54-interop-runner.mjs", "scripts/g56-assert-empty-guard.mjs", "scripts/g56-assert-empty-mutation-runner.mjs", "scripts/g73-g54-shape-mutation-runner.mjs", "test/g53-scope-identity.spec.ts", "test/g54-accepted-positive.spec.ts", "test/g54-envelope-boundary.spec.ts", "test/g54-interop.spec.ts", "test/g56-assert-empty.spec.ts"],
       "commands": [
         {"id": "g21", "command": "npm run test:g21"},
         {"id": "g21-red", "command": "npm run test:g21:forced-red", "env": {"SDT_G21_FORCE_FAILURE": "1"}, "expect": "red"},
@@ -178,7 +180,7 @@
         "MSBUILDDISABLENODEREUSE": "1",
         "DOTNET_CLI_USE_MSBUILD_SERVER": "0"
       },
-      "affectedPaths": ["test/g32-*.ts", "scripts/g32-*.mjs", "tools/sekiban-parity/**"],
+      "affectedPaths": ["test/g32-*.ts", "scripts/g32-*.mjs", "tools/sekiban-parity/**", "scripts/deploy/g32-queue-topology.mjs", "scripts/g22-bootstrap-cosmos-contract.mjs", "scripts/store-contract.mjs"],
       "commands": [
         {"id": "g32-source", "command": "git clone --filter=blob:none https://github.com/J-Tech-Japan/Sekiban.git .artifacts/g40-sekiban-source && git -C .artifacts/g40-sekiban-source checkout --detach 855feaa93564fef54defec76e9ccff969d4ee01a"},
         {"id": "g32", "command": "npm run test:g32"},
@@ -204,7 +206,7 @@
       "name": "g30",
       "tier": "local",
       "services": ["postgres"],
-      "affectedPaths": ["test/g30-*.ts", "scripts/g30-*.mjs", "scripts/deploy/g30-*.mjs", "scripts/deploy/g30-*.sh"],
+      "affectedPaths": ["test/g30-*.ts", "scripts/g30-*.mjs", "scripts/deploy/g30-*.mjs", "scripts/deploy/g30-*.sh", "scripts/commit-trace-*.mjs", "contracts/commit-trace-bundle.json", "contracts/commit-trace-pin.json", "contracts/*-normative.md", "contracts/epoch-*.json", "contracts/RENDERED-VIEWS.md", "scripts/deploy/g37-sample-guards.mjs", "scripts/deploy/g50-commit-latency-guards.mjs", "scripts/deploy/g51-ingestion-poll-guards.mjs", "scripts/deploy/g51-probe-ladder-guards.mjs", "scripts/g51-journal-native-regression-check.mjs", "scripts/g51-native-span-mutation-runner.mjs", "test/g51-app-surface-ray-relay.spec.ts"],
       "commands": [
         {"id": "g30", "command": "npm run test:g30"},
         {"id": "g51", "command": "npm run test:g51"},
@@ -228,7 +230,7 @@
       "name": "g44",
       "tier": "local",
       "services": ["postgres"],
-      "affectedPaths": ["test/g44-*.ts", "test/g58-*.ts", "test/g62-*.ts", "test/g67-*.ts", "scripts/g44-*.mjs", "scripts/g58-*.mjs", "scripts/g62-*.mjs", "scripts/g67-*.mjs"],
+      "affectedPaths": ["test/g44-*.ts", "test/g58-*.ts", "test/g62-*.ts", "test/g67-*.ts", "scripts/g44-*.mjs", "scripts/g58-*.mjs", "scripts/g62-*.mjs", "scripts/g67-*.mjs", "scripts/deploy/g58-ac1-ac5-readproof.mjs", "scripts/deploy/g58-safe-lane-e2e.mjs", "scripts/g61-retained-frontier-guard.mjs", "scripts/g75-certificate-scope-guard.mjs", "scripts/g75-certificate-scope-mutation-runner.mjs", "test/g75-certificate-scope.spec.ts"],
       "commands": [
         {"id": "g44", "command": "npm run test:g44"},
         {"id": "g75", "command": "npm run test:g75:certificate-scope"},
@@ -259,7 +261,7 @@
       "name": "local-e2e",
       "tier": "local",
       "services": ["postgres"],
-      "affectedPaths": ["test/d1-*.ts", "test/g19-*.ts", "test/g16-*.ts", "test/meeting-room.spec.ts", "scripts/g13-*.mjs", "scripts/deploy/g15-*.py", "scripts/deploy/g15-*.sh", "samples/meeting-room/**"],
+      "affectedPaths": ["test/d1-*.ts", "test/g19-*.ts", "test/g16-*.ts", "test/meeting-room.spec.ts", "scripts/g13-*.mjs", "scripts/deploy/g15-*.py", "scripts/deploy/g15-*.sh", "samples/meeting-room/**", "scripts/g16-ui-check.mjs", "scripts/store-contract.mjs"],
       "commands": [
         {"id": "store-contract", "command": "npm run test:store-contract"},
         {"id": "d1", "command": "npm run test:d1"},
@@ -276,12 +278,13 @@
       "name": "cosmos",
       "tier": "local",
       "services": ["cosmos"],
-      "affectedPaths": ["test/g20-*.ts", "test/g22-*.ts", "scripts/cosmos-*.mjs", "scripts/g20-*.mjs", "scripts/g22-*.mjs", "tools/sekiban-parity/**"],
+      "affectedPaths": ["test/g20-*.ts", "test/g22-*.ts", "scripts/cosmos-*.mjs", "scripts/g20-*.mjs", "scripts/g22-*.mjs", "tools/sekiban-parity/**", "scripts/g29-candidate-check.mjs", "scripts/g31-candidate-check.mjs", "scripts/g32-candidate-check.mjs", "scripts/store-contract.mjs"],
       "commands": [
         {"id": "cosmos-retained-history", "command": "git fetch --no-tags origin 8dbb4be825e084adef92065496cc0ffdc22b28ed 5439b8bda255144b608fcdeb6c89dc44dcb667d7 38219c8a6526a0209295e9f06450cce9e2217004 2f024d019d6861ad8ff43a2d194eabdcd975cbc0 95197cf1140d1179b52e1f01280002bc090bb891 36de26747ba71a583908f1f6f22102150e98f72b f1d3d7163f08a55c70fb8f66a38070be74f7caaf da2a8356fdbd898fa044884469b57a51ed8da996 1b5a8ff1d4aaac95c79cb9ddbd6cc311080479f6 1a9a5f22238a4755b8f15cdc17aec4f68bcde79d f401342df68461d3239f58b14ff6891db4214ac6 50200ef2c6a29531d1e9d25a2f7ea7e6d07a838f f7d306c0018b1b7046095891186b8409c9b16863 16afe111b8e3aa3a48dc949b0caa33160b08f29f f4dfd8192aaee9ed43116d7e5109d496ac2a6ce7 6308fb446335000d8729d490b170b189734461a4 5951844348bfd0ffadddb5c7c3c2bb0f57b100c6 cc4d0a86b749dc3ba09fe366a470c70b329bd10f 4a67b0a62120c85ec6aec855f09e38aca430557f 2db888bc9e57e04b66b4525270d312e8ddf78530 d6bfb5c5b4f5da1d44985199a4820786be6e89a1 13e8006be334454dc8a4a3c40972ba8ec15707b0 12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d 41e3665c055a366eb3f0d1ebff49be5d9414fa99 b8024fccca140d4cc3c76e715d4e5dd6c368b847 c5fff88620af3883b95639004dda08197618cc7e 87da1e97bc6ada9c89f9cf490d7aa6b201d94f1c 0cef60307a37964b5a4a4423f5abdc3d50b01e21 9543fccfb0e1f7858042e815867f1d6f2a33216d 9bf654eb555e56a2b0d5ed9f04d0aad670866e9e fc89572e2e0a8b84447591f87be5d05d57396435 a8f98355bb6de0454725d34f0238cd12efd4519c 0b38755443cce9d4a1a4383e18ba42499c390f63 c5441dc23e144466d26e13d7ffab4db7eca2e6ae aff97424b136be9f88e6804ced1562d9b81709cd 825b7c7795c3695ee7054131bf1f4e79f59f5602"},
         {"id": "cosmos", "command": "npm run test:cosmos"},
         {"id": "g22-cosmos", "command": "npm run test:g22:cosmos"},
         {"id": "cosmos-wiring", "command": "npm run test:cosmos-wiring"},
+        {"id": "cosmos-wiring-self-test", "command": "node scripts/cosmos-ci-wiring-check.mjs --self-test"},
         {"id": "g20", "command": "npm run test:g20"},
         {"id": "g20-gate", "command": "npm run test:g20:gate"},
         {"id": "g20-candidate", "command": "npm run test:g20:candidate"},

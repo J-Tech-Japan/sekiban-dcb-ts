@@ -990,9 +990,9 @@ function main() {
   const options = parseArgs(process.argv.slice(2));
   const { manifest } = loadManifest(options.manifest);
   if (options.selfTest) {
-    const g84Evidence = ["docs", "SDT-G84-evidence.md"].join("/");
+    const neutralSyntheticPath = ["docs", "ci-local-self-test.md"].join("/");
     const globProof = [
-      matchesGlob(g84Evidence, g84Evidence),
+      matchesGlob(neutralSyntheticPath, neutralSyntheticPath),
       matchesGlob("test/g43-tag-sql.spec.ts", "test/g43-*.ts"),
       !matchesGlob("test/g43-tag-sql.spec.ts", "test/g46-*.ts"),
     ];

@@ -53,19 +53,19 @@ function globRegex(pattern) {
   return new RegExp(`^${result}$`);
 }
 
-function normalizePathToken(token) {
+export function normalizePathToken(token) {
   return token
     .replace(/^['"]|['"]$/g, "")
     .replace(/[),;]+$/g, "")
     .replace(/^\.\//, "");
 }
 
-function repoRelativePattern(baseDir, token) {
+export function repoRelativePattern(baseDir, token) {
   const normalized = normalize(join(baseDir || ".", token)).replaceAll("\\", "/");
   return normalized === "." ? "" : normalized;
 }
 
-function hasMatchingPath(files, pattern, baseDir = "", { allowIgnoredArtifacts = false, allowDynamic = false } = {}) {
+export function hasMatchingPath(files, pattern, baseDir = "", { allowIgnoredArtifacts = false, allowDynamic = false } = {}) {
   const normalizedToken = normalizePathToken(pattern);
   if (normalizedToken.length === 0) return false;
   if (normalizedToken.includes("${") || normalizedToken.startsWith("$")) return allowDynamic;
@@ -79,64 +79,227 @@ function hasMatchingPath(files, pattern, baseDir = "", { allowIgnoredArtifacts =
   return files.some((file) => matcher.test(file));
 }
 
-function shellTokens(command) {
+export function shellTokens(command) {
   const tokens = [];
-  const tokenPattern = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)'|([^\s]+)/g;
-  for (const match of command.matchAll(tokenPattern)) tokens.push(match[1] ?? match[2] ?? match[3]);
+  let buffer = "";
+  let quote = null;
+  let escaped = false;
+  let tokenStarted = false;
+  const flush = () => {
+    if (!tokenStarted) return;
+    tokens.push(buffer);
+    buffer = "";
+    tokenStarted = false;
+  };
+  const text = String(command);
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (escaped) {
+      buffer += character;
+      escaped = false;
+      tokenStarted = true;
+      continue;
+    }
+    if (quote !== null) {
+      if (quote === '"' && character === "\\") {
+        buffer += character;
+        escaped = true;
+        tokenStarted = true;
+      } else if (character === quote) {
+        quote = null;
+        tokenStarted = true;
+      } else {
+        buffer += character;
+        tokenStarted = true;
+      }
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      tokenStarted = true;
+      continue;
+    }
+    if (/\s/.test(character)) {
+      flush();
+      continue;
+    }
+    buffer += character;
+    tokenStarted = true;
+  }
+  flush();
   return tokens;
 }
 
 function isShellOperator(token) {
-  return token === "&&" || token === "||" || token === ";" || token === "|";
+  return token === "&&" || token === "||" || token === ";" || token === "|" || token === "&";
 }
 
-function npmInvocations(command) {
-  const tokens = shellTokens(command);
-  const invocations = [];
-  for (let index = 0; index < tokens.length; index += 1) {
-    if (tokens[index] !== "npm") continue;
-    const subcommand = tokens[index + 1];
-    if (subcommand === "test" || subcommand === "start" || subcommand === "stop" || subcommand === "restart") {
-      invocations.push({ script: subcommand, selectors: [], allWorkspaces: false, ifPresent: false });
+function shellCommandFragments(command) {
+  const fragments = [];
+  let buffer = "";
+  let quote = null;
+  let escaped = false;
+  let comment = false;
+  let wordHasCharacters = false;
+  const flush = () => {
+    const fragment = buffer.trim();
+    buffer = "";
+    wordHasCharacters = false;
+    if (fragment.length > 0) fragments.push(fragment);
+  };
+  for (let index = 0; index < String(command).length; index += 1) {
+    const character = String(command)[index];
+    if (comment) {
+      if (character === "\n") comment = false;
+      else continue;
+      flush();
       continue;
     }
-    if (subcommand !== "run" && subcommand !== "run-script") continue;
+    if (escaped) {
+      if (character === "\n" && quote === null) {
+        buffer = buffer.slice(0, -1);
+        buffer += " ";
+      } else {
+        buffer += character;
+      }
+      escaped = false;
+      wordHasCharacters = true;
+      continue;
+    }
+    if (quote !== null) {
+      buffer += character;
+      if (character === "\\" && quote === '"') escaped = true;
+      else if (character === quote) quote = null;
+      if (character === "\n") flush();
+      else wordHasCharacters = true;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      buffer += character;
+      wordHasCharacters = true;
+      continue;
+    }
+    if (character === "\\") {
+      buffer += character;
+      escaped = true;
+      wordHasCharacters = true;
+      continue;
+    }
+    if (character === "#" && !wordHasCharacters) {
+      comment = true;
+      continue;
+    }
+    if (character === "\n") {
+      flush();
+      continue;
+    }
+    if (/\s/.test(character)) {
+      buffer += character;
+      wordHasCharacters = false;
+      continue;
+    }
+    let operator;
+    if ((character === "&" || character === "|") && String(command)[index + 1] === character) {
+      operator = `${character}${character}`;
+      index += 1;
+    } else if (character === ";" || character === "|" || character === "&") {
+      operator = character;
+    }
+    if (operator !== undefined) {
+      flush();
+      continue;
+    }
+    buffer += character;
+    wordHasCharacters = true;
+  }
+  flush();
+  return fragments;
+}
 
+function isLeadingAssignment(token) {
+  return /^[A-Za-z_][A-Za-z0-9_]*=/.test(token);
+}
+
+export function npmInvocations(command) {
+  const invocations = [];
+  for (const fragment of shellCommandFragments(command)) {
+    const tokens = shellTokens(fragment);
+    let commandIndex = 0;
+    while (commandIndex < tokens.length && isLeadingAssignment(tokens[commandIndex])) commandIndex += 1;
+    if (tokens[commandIndex] !== "npm") continue;
     const selectors = [];
     let allWorkspaces = false;
     let ifPresent = false;
+    let parseError;
+    let subcommand;
     let script;
-    for (let cursor = index + 2; cursor < tokens.length; cursor += 1) {
-      const token = tokens[cursor];
-      if (isShellOperator(token)) break;
-      if (token === "--") break;
+    let forwardedArgs = [];
+    const addOption = (tokensAt, cursor) => {
+      const token = tokensAt[cursor];
       if (token === "--workspaces" || token === "-ws") {
         allWorkspaces = true;
-        continue;
+        return cursor + 1;
       }
       if (token === "--if-present") {
         ifPresent = true;
-        continue;
+        return cursor + 1;
       }
       if (token === "--workspace" || token === "-w") {
-        const selector = tokens[cursor + 1];
-        if (selector === undefined || isShellOperator(selector)) fail("manifest-shape", `npm workspace selector is missing in ${command}`);
+        const selector = tokensAt[cursor + 1];
+        if (selector === undefined || isShellOperator(selector) || selector.startsWith("-")) {
+          parseError = "missing-workspace-selector";
+          return tokensAt.length;
+        }
         selectors.push(selector);
+        return cursor + 2;
+      }
+      if (token.startsWith("--workspace=")) {
+        const selector = token.slice("--workspace=".length);
+        if (selector.length === 0) parseError = "missing-workspace-selector";
+        else selectors.push(selector);
+        return cursor + 1;
+      }
+      if (token.startsWith("-w=")) {
+        const selector = token.slice(3);
+        if (selector.length === 0) parseError = "missing-workspace-selector";
+        else selectors.push(selector);
+        return cursor + 1;
+      }
+      return undefined;
+    };
+    for (let cursor = commandIndex + 1; cursor < tokens.length;) {
+      const token = tokens[cursor];
+      if (token === "--" && subcommand !== undefined) {
+        forwardedArgs = tokens.slice(cursor + 1);
+        break;
+      }
+      const nextCursor = token.startsWith("-") ? addOption(tokens, cursor) : undefined;
+      if (nextCursor !== undefined) {
+        cursor = nextCursor;
+        continue;
+      }
+      if (subcommand === undefined) {
+        if (token.startsWith("-")) {
+          cursor += 1;
+          continue;
+        }
+        subcommand = token;
+        if (["test", "start", "stop", "restart"].includes(subcommand)) script = subcommand;
+        else if (subcommand !== "run" && subcommand !== "run-script") break;
         cursor += 1;
         continue;
       }
-      if (token.startsWith("--workspace=")) {
-        selectors.push(token.slice("--workspace=".length));
-        continue;
+      if (script === undefined && (subcommand === "run" || subcommand === "run-script")) {
+        if (token.startsWith("-")) {
+          cursor += 1;
+          continue;
+        }
+        script = token;
       }
-      if (token.startsWith("-w=")) {
-        selectors.push(token.slice(3));
-        continue;
-      }
-      if (token.startsWith("-") || script !== undefined) continue;
-      script = token;
+      cursor += 1;
     }
-    if (script !== undefined) invocations.push({ script, selectors, allWorkspaces, ifPresent });
+    if (script !== undefined || parseError !== undefined) invocations.push({ script, selectors, allWorkspaces, ifPresent, forwardedArgs, parseError });
   }
   return invocations;
 }
@@ -148,7 +311,7 @@ function localPathTokens(command) {
     .filter((token) => isLocalPathToken(token)))];
 }
 
-function isLocalPathToken(token) {
+export function isLocalPathToken(token) {
   if (token.length === 0 || token.startsWith("-") || token.startsWith("$") || token.includes("${")) return false;
   if (/^(?:https?:|git@|ssh:)/i.test(token) || token.startsWith("@")) return false;
   if (token.startsWith("node_modules/")) return false;
@@ -196,7 +359,7 @@ function workspacePatterns(rootManifest) {
   fail("manifest-shape", "root package manifest workspaces is not an array or packages object");
 }
 
-function configuredWorkspaces(rootManifest, manifests) {
+export function configuredWorkspaces(rootManifest, manifests) {
   const configured = [];
   for (const pattern of workspacePatterns(rootManifest)) {
     if (typeof pattern !== "string") fail("manifest-shape", "root package manifest workspace selector is not a string");
@@ -214,7 +377,7 @@ function configuredWorkspaces(rootManifest, manifests) {
   return [...new Map(configured.map((manifest) => [manifest.relativePath, manifest])).values()];
 }
 
-function workspaceForSelector(selector, manifests, configured, source) {
+export function workspaceForSelector(selector, manifests, configured, source) {
   const normalized = repoRelativePattern("", selector);
   const pathMatches = manifests.filter((manifest) => manifest.relativePath !== "package.json" && (
     manifest.directory === normalized || manifest.relativePath === `${normalized}/package.json`
@@ -230,6 +393,9 @@ function workspaceForSelector(selector, manifests, configured, source) {
 
 function assertNpmScriptReferences(command, source, currentManifest, manifests, configured) {
   for (const invocation of npmInvocations(command)) {
+    if (invocation.parseError !== undefined) {
+      fail(invocation.parseError === "missing-workspace-selector" ? "manifest-shape" : "missing-script", `${source} has ${invocation.parseError} in npm invocation`);
+    }
     const targets = invocation.allWorkspaces
       ? configured
       : invocation.selectors.length > 0
@@ -421,6 +587,43 @@ function runSelfTest() {
     execFileSync("git", ["add", "package.json", "ci/lanes.json", ".github/workflows/ci.yml", "scripts/existing.mjs", "packages/fixture/package.json", "packages/fixture/test/existing.mjs"], { cwd: repoRoot, stdio: "ignore" });
     checkRepository(repoRoot);
 
+    const beforeSelector = npmInvocations("FOO=bar npm --workspace @fixture/workspace run workspace-only");
+    const afterSelector = npmInvocations("npm run workspace-only --workspace @fixture/workspace --if-present");
+    const quotedWorkspaceForms = [
+      'npm --workspace="@fixture/workspace" run workspace-only',
+      "npm --workspace='@fixture/workspace' run workspace-only",
+      'npm -w "@fixture/workspace" run workspace-only',
+      'npm run workspace-only --workspace="@fixture/workspace"',
+      "npm run workspace-only --workspace='@fixture/workspace'",
+      'npm run workspace-only -w "@fixture/workspace"',
+    ];
+    const quotedWorkspaceInvocations = quotedWorkspaceForms.map((fixture) => npmInvocations(fixture));
+    if (beforeSelector.length !== 1 || beforeSelector[0].selectors[0] !== "@fixture/workspace" || afterSelector.length !== 1 || afterSelector[0].ifPresent !== true ||
+      quotedWorkspaceInvocations.some((invocations) => invocations.length !== 1 || invocations[0].selectors[0] !== "@fixture/workspace" || invocations[0].script !== "workspace-only")) {
+      throw new Error("reference-check-self-test: workspace options were not accepted before and after the npm subcommand");
+    }
+    if (npmInvocations("echo npm run g108-missing").length !== 0) {
+      throw new Error("reference-check-self-test: npm in an echo argument was treated as executable");
+    }
+
+    writeSelfTestFixture(repoRoot);
+    const redManifest = JSON.parse(readFileSync(join(repoRoot, "ci/lanes.json"), "utf8"));
+    redManifest.lanes[0].commands[0].command = "npm --workspace @fixture/workspace run g108-missing";
+    writeFileSync(join(repoRoot, "ci/lanes.json"), JSON.stringify(redManifest));
+    expectSelfTestFailure(() => checkRepository(repoRoot), "missing-script", "workspace option before subcommand mutant");
+
+    writeSelfTestFixture(repoRoot);
+    const malformedSelectorManifest = JSON.parse(readFileSync(join(repoRoot, "ci/lanes.json"), "utf8"));
+    malformedSelectorManifest.lanes[0].commands[0].command = "npm run workspace-only -w";
+    writeFileSync(join(repoRoot, "ci/lanes.json"), JSON.stringify(malformedSelectorManifest));
+    expectSelfTestFailure(() => checkRepository(repoRoot), "manifest-shape", "workspace option without selector mutant");
+
+    writeSelfTestFixture(repoRoot);
+    const greenManifest = JSON.parse(readFileSync(join(repoRoot, "ci/lanes.json"), "utf8"));
+    greenManifest.lanes[0].commands[0].command = "echo npm run g108-missing";
+    writeFileSync(join(repoRoot, "ci/lanes.json"), JSON.stringify(greenManifest));
+    checkRepository(repoRoot);
+
     writeSelfTestFixture(repoRoot, { workspaceScript: "node test/missing.mjs" });
     expectSelfTestFailure(() => checkRepository(repoRoot), "missing-file", "non-root manifest missing path mutant");
 
@@ -451,9 +654,11 @@ function runSelfTest() {
   }
 }
 
-try {
-  process.stdout.write(`${JSON.stringify(process.argv.includes("--self-test") ? runSelfTest() : checkRepository(root), null, 2)}\n`);
-} catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
-  process.exitCode = 1;
+if (process.argv[1] !== undefined && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+  try {
+    process.stdout.write(`${JSON.stringify(process.argv.includes("--self-test") ? runSelfTest() : checkRepository(root), null, 2)}\n`);
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  }
 }
