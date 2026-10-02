@@ -25,10 +25,21 @@ const artifactAllowlist = new Set([
   ".artifacts/wrangler.g65-w155-c.jsonc",
 ]);
 
-const authorityExceptions = new Set([
-  "contracts/commit-trace-bundle.json",
-  "contracts/g38-packet-contract.json",
-  "scripts/g30-ac5-structural-check.mjs",
+const authorityExceptions = new Set();
+const legacyPinFile = ["host", "pin"].join("-") + ".json";
+const legacyPinPath = ["contracts", "/", legacyPinFile].join("");
+const legacyBundleFields = [
+  ["host", "Repo"].join(""),
+  ["host", "Path"].join(""),
+  ["host", "Commit"].join(""),
+  ["mirrored", "Files"].join(""),
+  ["hostOnly", "Inputs"].join(""),
+];
+const legacyCommitDigests = new Set([
+  "06d00c21a516c812fc736886cba4d82d67d2345f86e32cb6acf555a470d01013",
+  "492b25a9cb2ca6666d32690436365846c834ae2e4bf3f18b0672f06a64d19946",
+  "48d7c5dbc302ed285bd1cc5afc2bf0c57cd22a000deb7874d18c4aef52460c16",
+  "2bf04f141162ef934dda9668a48be948701d21458d903b8ad3eb36fc22d9529f",
 ]);
 
 // These are hashes of the account/resource values scrubbed by SDT-G105. The
@@ -65,7 +76,8 @@ const markers = [
   ["SekibanAsA", "Service"].join(""),
 ];
 const internalHostPath = ["intents", "/", "sekiban-dcb-ts", "/"].join("");
-const hostMarker = ["SekibanDcb", "Ts", "Host"].join("");
+const privateMarker = ["SekibanDcb", "Ts", "Host"].join("");
+const commitPattern = /(?<![0-9a-f])([0-9a-f]{40})(?![0-9a-f])/gi;
 const rootNotePattern = /^sdt-.*\.md$/i;
 const candidateTokenPatterns = [
   /(?=([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}))/gi,
@@ -104,12 +116,15 @@ function isAllowedWorkerHost(host) {
   return normalized === placeholder || normalized === example || normalized.endsWith(`.example.${workersDev}`.toLowerCase());
 }
 
-function checkText(relativePath, text, forbiddenDigests = forbiddenTokenDigests) {
+function checkText(relativePath, text, forbiddenDigests = forbiddenTokenDigests, forbiddenCommits = legacyCommitDigests) {
   for (const marker of markers) {
-    if (authorityExceptions.has(relativePath) && marker === hostMarker) continue;
     if (text.toLowerCase().includes(marker.toLowerCase())) {
       fail("forbidden-marker", `${relativePath} contains a forbidden private marker`);
     }
+  }
+  if (text.includes(legacyPinFile)) fail("legacy-pin", `${relativePath} names a retired authority pin`);
+  for (const field of legacyBundleFields) {
+    if (new RegExp(`\\b${field}\\b`).test(text)) fail("legacy-bundle-field", `${relativePath} names a retired bundle field`);
   }
   const personalPath = text.match(personalPathPattern);
   if (personalPath) fail("private-path", `${relativePath} contains ${personalPath[0]}`);
@@ -123,6 +138,11 @@ function checkText(relativePath, text, forbiddenDigests = forbiddenTokenDigests)
       const digest = createHash("sha256").update(match[1].toLowerCase()).digest("hex");
       if (forbiddenDigests.has(digest)) fail("forbidden-resource", `${relativePath} contains a forbidden identifier`);
     }
+  }
+
+  for (const match of text.matchAll(commitPattern)) {
+    const digest = createHash("sha256").update(match[1].slice(0, 32).toLowerCase()).digest("hex");
+    if (forbiddenCommits.has(digest)) fail("legacy-commit", `${relativePath} contains a retired authority commit`);
   }
 
   if (!authorityExceptions.has(relativePath) && text.toLowerCase().includes(internalHostPath.toLowerCase())) {
@@ -180,6 +200,7 @@ function checkWrangler(relativePath, text) {
 
 function scanTree(repoRoot, options = {}) {
   const digests = options.forbiddenTokenDigests ?? forbiddenTokenDigests;
+  const commits = options.forbiddenCommitDigests ?? legacyCommitDigests;
   const files = trackedFiles(repoRoot);
   for (const relativePath of files) {
     const absolutePath = join(repoRoot, relativePath);
@@ -189,11 +210,14 @@ function scanTree(repoRoot, options = {}) {
     if (!relativePath.includes("/") && rootNotePattern.test(relativePath)) {
       fail("root-note", `${relativePath} is a tracked root note`);
     }
+    if (relativePath.split("/").at(-1) === legacyPinFile) {
+      fail("legacy-pin", `${relativePath} is a retired authority pin path`);
+    }
     if (relativePath.startsWith(".artifacts/") && !artifactAllowlist.has(relativePath)) {
       fail("artifact", `${relativePath} is outside the shrink-only allowlist`);
     }
     const text = readFileSync(absolutePath, "utf8");
-    checkText(relativePath, text, digests);
+    checkText(relativePath, text, digests, commits);
     if (/^(.+\/)?wrangler[^/]*\.jsonc$/i.test(relativePath)) checkWrangler(relativePath, text);
   }
   return {
@@ -205,12 +229,20 @@ function scanTree(repoRoot, options = {}) {
 }
 
 function gitAdd(repoRoot, paths) {
-  execFileSync("git", ["add", ...paths], { cwd: repoRoot, stdio: "ignore" });
+  execFileSync("git", ["add", ...paths], {
+    cwd: repoRoot,
+    env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" },
+    stdio: "ignore",
+  });
 }
 
 function makeSelfTestRepo(extraFiles = []) {
   const repoRoot = mkdtempSync(join(tmpdir(), "sdt-g105-public-tree-"));
-  execFileSync("git", ["init", "-q"], { cwd: repoRoot, stdio: "ignore" });
+  execFileSync("git", ["init", "-q"], {
+    cwd: repoRoot,
+    env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" },
+    stdio: "ignore",
+  });
   mkdirSync(join(repoRoot, "scripts"), { recursive: true });
   mkdirSync(join(repoRoot, ".artifacts"), { recursive: true });
   writeFileSync(join(repoRoot, ".gitignore"), ".artifacts/\n");
@@ -283,9 +315,9 @@ function runSelfTest() {
     const pathRepo = makeSelfTestRepo([["path.txt", ["", "home", "alice", "private"].join("/")]]);
     repos.push(pathRepo);
     expectFailure(pathRepo, "private-path", selfTestOptions);
-    const hostRepo = makeSelfTestRepo([["host.txt", ["foo", workersDev].join(".")]]);
-    repos.push(hostRepo);
-    expectFailure(hostRepo, "worker-host", selfTestOptions);
+    const workerRepo = makeSelfTestRepo([["host.txt", ["foo", workersDev].join(".")]]);
+    repos.push(workerRepo);
+    expectFailure(workerRepo, "worker-host", selfTestOptions);
     const uuid = ["12345678", "-", "1234", "-", "4234", "-", "8234", "-", "123456789abc"].join("");
     const uuidRepo = makeSelfTestRepo([["wrangler.jsonc", JSON.stringify({ d1_databases: [{ database_id: uuid }] })]]);
     repos.push(uuidRepo);
@@ -345,9 +377,52 @@ function runSelfTest() {
     const mixedCasePrivateHostPathRepo = makeSelfTestRepo([["path.txt", ["InTeNtS", "/", "SeKiBaN-DCB-TS", "/"].join("")]]);
     repos.push(mixedCasePrivateHostPathRepo);
     expectFailure(mixedCasePrivateHostPathRepo, "private-host-path", selfTestOptions);
-    const authorityRepo = makeSelfTestRepo([["contracts/commit-trace-bundle.json", internalHostPath]]);
-    repos.push(authorityRepo);
-    scanTree(authorityRepo, selfTestOptions);
+    const legacyPinRepo = makeSelfTestRepo([[legacyPinPath, "safe"]]);
+    repos.push(legacyPinRepo);
+    expectFailure(legacyPinRepo, "legacy-pin", selfTestOptions);
+    for (const relativePath of ["doc.md", "script.mjs", "ci/lanes.json", ".github/workflows/test.yml"]) {
+      const legacyPinTextRepo = makeSelfTestRepo([[relativePath, `retired authority file: ${legacyPinFile}`]]);
+      repos.push(legacyPinTextRepo);
+      expectFailure(legacyPinTextRepo, "legacy-pin", selfTestOptions);
+    }
+    const syntheticCommit = "a".repeat(40);
+    const commitSelfTestOptions = {
+      forbiddenTokenDigests: syntheticForbiddenDigests,
+      forbiddenCommitDigests: new Set([
+        ...legacyCommitDigests,
+        createHash("sha256").update(syntheticCommit.slice(0, 32)).digest("hex"),
+      ]),
+    };
+    const fieldFixturePaths = ["field.md", "field.mjs", "ci/lanes.json", ".github/workflows/test.yml"];
+    for (const field of legacyBundleFields) {
+      for (const relativePath of fieldFixturePaths) {
+        const fieldRepo = makeSelfTestRepo([[relativePath, field]]);
+        repos.push(fieldRepo);
+        expectFailure(fieldRepo, "legacy-bundle-field", commitSelfTestOptions);
+      }
+    }
+    for (const [relativePath, contents] of [
+      ["commit.md", syntheticCommit],
+      ["commit.mjs", syntheticCommit],
+      ["ci/lanes.json", syntheticCommit],
+      [".github/workflows/test.yml", syntheticCommit],
+    ]) {
+      const commitRepo = makeSelfTestRepo([[relativePath, contents]]);
+      repos.push(commitRepo);
+      expectFailure(commitRepo, "legacy-commit", commitSelfTestOptions);
+    }
+    for (const relativePath of [
+      "contracts/commit-trace-bundle.json",
+      "contracts/g38-packet-contract.json",
+      "scripts/g30-ac5-structural-check.mjs",
+    ]) {
+      const markerRepo = makeSelfTestRepo([[relativePath, privateMarker]]);
+      repos.push(markerRepo);
+      expectFailure(markerRepo, "forbidden-marker", selfTestOptions);
+      const pathAuthorityRepo = makeSelfTestRepo([[relativePath, internalHostPath]]);
+      repos.push(pathAuthorityRepo);
+      expectFailure(pathAuthorityRepo, "private-host-path", selfTestOptions);
+    }
     return {
       schema: "sdt-g105-public-tree-self-test/v1",
       passed: [
@@ -374,7 +449,12 @@ function runSelfTest() {
         "strict-preview-placeholder-resource-value",
         "private-host-path",
         "mixed-case-private-host-path",
-        "authority-exception",
+        "legacy-pin-path",
+        "legacy-pin-text",
+        "legacy-bundle-fields",
+        "legacy-commit-digests",
+        "former-authority-marker-exceptions-removed",
+        "former-authority-path-exceptions-removed",
       ],
     };
   } finally {

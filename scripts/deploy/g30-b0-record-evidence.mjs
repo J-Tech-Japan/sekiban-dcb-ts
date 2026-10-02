@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { assertB0Evidence } from "../g30-b0-contract.mjs";
+import { sealedAuthority } from "../commit-trace-contract.mjs";
 import { digestAtCommit as deploymentConfigDigest } from "./g30-config-digest.mjs";
 
 const root = process.cwd();
@@ -165,12 +166,7 @@ function main() {
   }
   const sourceCommit = fullSha("--source-commit", argument("--source-commit", process.env.G30_SOURCE_COMMIT));
   const manifest = readJson(argument("--manifest", "docs/SDT-G30-required-roots.json"));
-  const authority = {
-    A: readJson("contracts/host-pin.json").hostCommit,
-    S: "160b4be0b3752c36425597ed9bc46002a1671cff",
-    P: "7ede7b07a1cd88b315319204059099d319984ec4",
-    bundleDigest: readJson("contracts/commit-trace-bundle.json").bundleDigest,
-  };
+  const authority = sealedAuthority(root);
   const evidence = buildEvidence({
     sourceCommit,
     manifest,

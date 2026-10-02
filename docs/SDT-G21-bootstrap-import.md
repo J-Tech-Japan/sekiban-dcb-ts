@@ -8,6 +8,8 @@ Bootstrap-related command results use the [result and repair
 matrix](architecture.md#result-and-repair-matrix); this document defines the
 authority transition, not a second result taxonomy.
 
+The public bootstrap contract is [the repository-owned normative document](../contracts/bootstrap-import-normative.md).
+
 `parseBootstrapDump` is the all-or-nothing dump-validation boundary. The plan
 operation comes first: the target coordinator's `/plan` parses the dump, checks
 explicit fresh-target evidence, and persists the plan and dump. During the

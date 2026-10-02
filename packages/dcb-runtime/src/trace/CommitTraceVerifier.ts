@@ -150,7 +150,7 @@ function verifyAttributes(span: CommitTraceSpan, row: ManifestRow): void {
   if (expectedPhase !== undefined && span.attributes["phase.ordinal"] !== expectedPhase) {
     failure("transition-phase", `${span.rowId} must carry phase.ordinal=${expectedPhase}`);
   }
-  // The host-owned rowScope is the authority for member attributes.  Do not
+  // The repository-owned rowScope is the authority for member attributes.  Do not
   // duplicate a hand-maintained list here: S14 was omitted from such a list
   // once even though it is a real v1 fan-out member.  The bundle validator
   // proves rowScope is exactly the complete set of member rows; the runtime

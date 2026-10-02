@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Runtime-shaped verifier shared by telemetry normalization and the final B0
- * evidence gate.  It is deliberately separate from the static host-bundle
+ * evidence gate.  It is deliberately separate from the static repository-bundle
  * checker: it accepts only exported spans and rejects a stale `runtimeVerified`
  * flag after evidence has been edited.
  */

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { assertB0Evidence } from "./g30-b0-contract.mjs";
 import { digestAtCommit as deploymentConfigDigest } from "./deploy/g30-config-digest.mjs";
+import { sealedAuthority } from "./commit-trace-contract.mjs";
 
 const root = process.cwd();
 const manifestPath = resolve(root, "docs/SDT-G30-required-roots.json");
@@ -103,16 +104,16 @@ export function assertCandidateMaterialCoverage(candidate, manifest, run = (args
   return { candidate, parent, materialPaths: changed.length };
 }
 
-function assertAuthority(evidence) {
-  const pin = readJson(resolve(root, "contracts/host-pin.json"));
-  const bundle = readJson(resolve(root, "contracts/commit-trace-bundle.json"));
-  if (
-    evidence?.authority?.A !== pin.hostCommit || evidence?.authority?.S !== "160b4be0b3752c36425597ed9bc46002a1671cff" ||
-    evidence?.authority?.P !== "7ede7b07a1cd88b315319204059099d319984ec4" || evidence?.authority?.bundleDigest !== bundle.bundleDigest
-  ) throw new Error("G30 evidence does not bind the sealed host A/S/P/bundle authority");
+export function assertAuthority(evidence, authority) {
+  if (!authority || !same(Object.keys(authority).sort(), ["A", "S", "bundleDigest"]) ||
+    !same(Object.keys(evidence?.authority ?? {}).sort(), ["A", "S", "bundleDigest"]) ||
+    evidence.authority.A !== authority.A || evidence.authority.S !== authority.S || evidence.authority.bundleDigest !== authority.bundleDigest) {
+    throw new Error("G30 evidence does not bind the sealed A/S/bundle authority");
+  }
+  return authority;
 }
 
-export function assertEvidence(evidence, manifest) {
+export function assertEvidence(evidence, manifest, authority) {
   if (evidence?.task !== "SDT-G30" || evidence?.baseline !== "B0" || evidence?.purpose !== "attribution-only-not-g37-denominator") {
     throw new Error("G30 evidence identity is invalid");
   }
@@ -124,7 +125,7 @@ export function assertEvidence(evidence, manifest) {
     return { candidate, completed: false };
   }
   if (!SHA.test(candidate) || evidence.sourceCommit !== candidate || evidence.deployedRuntimeCommit !== candidate) throw new Error("G30 evidence source/deployed identity is invalid");
-  assertAuthority(evidence);
+  assertAuthority(evidence, authority ?? sealedAuthority(root));
   if (evidence?.treeDigests?.algorithm !== DIGEST_ALGORITHM || !same(evidence.treeDigests.runtimeRoots, manifest.runtimeRoots) || !same(evidence.treeDigests.configurationRoots, manifest.configurationRoots)) {
     throw new Error("G30 evidence tree roots are invalid");
   }
@@ -166,7 +167,12 @@ export function selfTest() {
   let postRed = false;
   try { assertPostCandidate(candidate, [".github/workflows/ci.yml", "docs/SDT-G30-b0-evidence.json", "scripts/deploy/g30-b0-deploy.sh"], () => `+${candidate}\n`); } catch (error) { postRed = String(error).includes("not allowlisted"); }
   if (!postRed) throw new Error("G30 post-C operational edit mutation unexpectedly passed");
-  return { requiredRoots: manifest.requiredRoots.length, mutations: ["missing-root", "placeholder-source", "post-c-operational-edit", "retained-candidate"] };
+  const authority = { A: "a".repeat(40), S: "b".repeat(40), bundleDigest: `sha256:${"c".repeat(64)}` };
+  assertAuthority({ authority }, authority);
+  let wrongSealRed = false;
+  try { assertAuthority({ authority: { ...authority, S: "d".repeat(40) } }, authority); } catch { wrongSealRed = true; }
+  if (!wrongSealRed) throw new Error("G30 candidate authority S mutation unexpectedly passed");
+  return { requiredRoots: manifest.requiredRoots.length, mutations: ["missing-root", "placeholder-source", "post-c-operational-edit", "retained-candidate", "matching-authority", "wrong-seal-commit"] };
 }
 
 function main() {
@@ -178,7 +184,8 @@ function main() {
   const manifest = loadManifest();
   const evidence = readJson(evidencePath);
   const roots = assertRoots(manifest);
-  const proof = assertEvidence(evidence, manifest);
+  const authority = sealedAuthority(root);
+  const proof = assertEvidence(evidence, manifest, authority);
   const requestedCandidate = argument("--candidate");
   if (requestedCandidate !== undefined) assertCandidateMaterialCoverage(requestedCandidate, manifest);
   if (proof.candidate !== "CANDIDATE") {

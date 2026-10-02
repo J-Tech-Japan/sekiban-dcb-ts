@@ -1,63 +1,62 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "name": "commit-trace-bundle",
-  "description": "Files mirrored into the target repo and the host-only inputs the host checker needs, each with host path, target path and digest. Deterministic. The host commit pin lives in host-pin.json under a two-stage A/S seal.",
-  "hostRepo": "J-Tech-Japan/SekibanDcbTsHost",
-  "sealProtocol": {
-    "stageA": "authority commit A fixes the FINAL bytes of the generator, the mirrored artifacts and the host-only inputs; its host-pin.json still carries the all-zero placeholder, so --check is EXPECTED to fail at A",
-    "stageS": "seal commit S changes ONLY host-pin.json (hostCommit=A, bundleDigest) and touches no other blob",
-    "stageP": "packet commit P is a child of S that changes only the SDT-G30 packet/body pair and echoes A, S and bundleDigest into AC9; --check is a FULL CLOSURE gate and passes only at P and at PR head",
-    "authority": "blob authority = A, pin authority = S, packet/closure authority = P; any later artifact change requires a NEW A/S/P triple",
-    "candidate": "the C/R candidate records A, S, P and bundleDigest"
-  },
-  "mirroredFiles": [
+  "description": "Repository-owned commit-trace authority: public sources, deterministic generator outputs, and checkers sealed by a local A/S pair.",
+  "authorityFiles": [
     {
-      "hostPath": "intents/sekiban-dcb-ts/contracts/RENDERED-VIEWS.md",
-      "targetPath": "contracts/RENDERED-VIEWS.md",
-      "bytes": 16358,
-      "digest": "sha256:7c39f7dfdca706f943bbc076ae00821e8f6f4c50498c1b2fd99152147b5f9f02"
+      "path": "contracts/commit-trace-normative.md",
+      "role": "source",
+      "bytes": 3300,
+      "digest": "sha256:f3543af269254cdcb0b89f3d9d55949499d0f4c9835a7a230ce02d0a3ffcadb9"
     },
     {
-      "hostPath": "intents/sekiban-dcb-ts/contracts/commit-trace-manifest.json",
-      "targetPath": "contracts/commit-trace-manifest.json",
-      "bytes": 65651,
-      "digest": "sha256:8620c83a84da2eeeca6022c3ed1f0ef3c8f02376aa4b81604478a872b9a3ed5e"
+      "path": "contracts/bootstrap-import-normative.md",
+      "role": "source",
+      "bytes": 7093,
+      "digest": "sha256:965e2a2b3d882e3af81fc9bf0722d68d98a5246212b61de2496e8c4e1de25ef7"
     },
     {
-      "hostPath": "intents/sekiban-dcb-ts/contracts/epoch-namespace-allowlist.json",
-      "targetPath": "contracts/epoch-namespace-allowlist.json",
-      "bytes": 11431,
-      "digest": "sha256:c50190eee6b5cb4d1e3a27ea7c1851ad32758517c8286f24d62177bba98ead23"
+      "path": "contracts/epoch-reasons.curated.json",
+      "role": "source",
+      "bytes": 848,
+      "digest": "sha256:450f23e3d09670f57cffd248b337a7d375654b8a61255fbd8107d85a61f21a9a"
+    },
+    {
+      "path": "scripts/commit-trace-generate.mjs",
+      "role": "generator",
+      "bytes": 106415,
+      "digest": "sha256:c98f2834d3bd6f80f7d92de78f688e43c27a4ad51b5741c8b13858c1f87b044b"
+    },
+    {
+      "path": "contracts/RENDERED-VIEWS.md",
+      "role": "generated",
+      "bytes": 16362,
+      "digest": "sha256:7563921e1779fd207e24447b41b576c45d4d11f62c9172fecca49c82fe9245f4"
+    },
+    {
+      "path": "contracts/commit-trace-manifest.json",
+      "role": "generated",
+      "bytes": 65692,
+      "digest": "sha256:dc338535dcfcda59de3cdf0dae188cae64929e6e94b8317faa356dfd05838985"
+    },
+    {
+      "path": "contracts/epoch-namespace-allowlist.json",
+      "role": "generated",
+      "bytes": 1874,
+      "digest": "sha256:048b55271e3495b5fd556069b5a83a1c6950f294403d79d7992f9d0c34f09035"
+    },
+    {
+      "path": "scripts/commit-trace-contract.mjs",
+      "role": "checker",
+      "bytes": 34365,
+      "digest": "sha256:5dee8e1747820a71239c0f28d4d10aa2f6185a94249fdbdd1535909d9d8ae410"
+    },
+    {
+      "path": "scripts/g30-ac5-structural-check.mjs",
+      "role": "checker",
+      "bytes": 9078,
+      "digest": "sha256:7984c8af285cf3b2e8dd743719f0dbcd4635e8967175809f72e7a3ff1fc96d03"
     }
   ],
-  "hostOnlyInputs": [
-    {
-      "hostPath": "intents/sekiban-dcb-ts/intent-tree/means/19-commit-latency.md",
-      "targetPath": null,
-      "digest": "sha256:173ef152786cbeacb468eac5776ef35db3303d594dfbf12c69d5200653b3f571"
-    },
-    {
-      "hostPath": "intents/sekiban-dcb-ts/intent-tree/means/12-bootstrap-import.md",
-      "targetPath": null,
-      "digest": "sha256:20e038f713219f5b28cb1648711746043dfea3e102d6931159cc01231f350a8d"
-    },
-    {
-      "hostPath": "intents/sekiban-dcb-ts/contracts/epoch-reasons.curated.json",
-      "targetPath": null,
-      "digest": "sha256:9425eccee5461f0c0225c0c18dfdbc62d0f1f9abfa74c4fc1d910378ea45b371"
-    },
-    {
-      "hostPath": "intents/sekiban-dcb-ts/contracts/build_contracts.py",
-      "targetPath": null,
-      "digest": "sha256:f3483f58e4b7d8d85bc2d95d82e9d12602574b8a67cf6a62ca76b935d7ad168c"
-    }
-  ],
-  "bundleDigest": "sha256:31f28838c2255b8d45268fea81d3433bb64296098b01bb9857ba973bc3b54391",
-  "targetCheckerContract": [
-    "verify every mirroredFiles digest against the checked-out target copy at targetPath",
-    "recompute bundleDigest from the hostPath+digest sequence and compare",
-    "verify host-pin.json bundleDigest equals this bundleDigest and hostCommit equals the A recorded in the candidate evidence",
-    "validate manifest structure (universes, disjointness, conditional schema, attributeMatrix, exact sets)",
-    "NEVER regenerate expected bytes from the target copy: a target-side --write is forbidden"
-  ]
+  "bundleDigest": "sha256:0c7ab6fdba34e0d54f0803e016b712344ddb882874565e94d0c9168bc37dbbac"
 }

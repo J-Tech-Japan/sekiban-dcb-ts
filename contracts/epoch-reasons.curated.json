@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "description": "Curated reason for each naked `epoch` occurrence in the normative documents. Every occurrence is classified; no default reason exists.",
+  "reasons": [
+    {
+      "documentId": "contracts/commit-trace-normative.md",
+      "contextDigest": "sha256:c46f5ece0ffc1d3d68a7386b4641ce43",
+      "occurrenceIndex": 0,
+      "documentOccurrenceOrdinal": 0,
+      "reason": "legacy-stored-field",
+      "note": "This occurrence names the landed repair lease input field."
+    },
+    {
+      "documentId": "contracts/commit-trace-normative.md",
+      "contextDigest": "sha256:eb6e7692073eb83fc960d544d5b51a73",
+      "occurrenceIndex": 0,
+      "documentOccurrenceOrdinal": 1,
+      "reason": "legacy-stored-field",
+      "note": "This occurrence names the landed tag reservation and fence input field."
+    }
+  ]
+}

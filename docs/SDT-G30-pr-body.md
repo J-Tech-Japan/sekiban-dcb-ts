@@ -4,7 +4,7 @@ Closes #70
 
 ## What changes
 
-- Adds the host-owned, portable `commit-trace` authority bundle and a target
+- Adds the repository-owned, portable `commit-trace` authority bundle and a target
   read-only `--check` validator for `sdt.commit/v1`, reconcile, repair,
   attribute matrix, generation, and repair-link contracts.
 - Instruments the existing commit, Bootstrap, Journal, Allocator, Tag, and

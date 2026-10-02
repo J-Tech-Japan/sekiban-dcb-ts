@@ -55,9 +55,9 @@
     "vitest.config.ts"
   ],
   "requiredRoots": [
-    { "rootId": "host-bundle", "path": "contracts/commit-trace-bundle.json", "kind": "file" },
-    { "rootId": "host-manifest", "path": "contracts/commit-trace-manifest.json", "kind": "file" },
-    { "rootId": "host-pin", "path": "contracts/host-pin.json", "kind": "file" },
+    { "rootId": "commit-trace-bundle", "path": "contracts/commit-trace-bundle.json", "kind": "file" },
+    { "rootId": "commit-trace-manifest", "path": "contracts/commit-trace-manifest.json", "kind": "file" },
+    { "rootId": "commit-trace-pin", "path": "contracts/commit-trace-pin.json", "kind": "file" },
     { "rootId": "static-check", "path": "scripts/commit-trace-contract.mjs", "kind": "file" },
     { "rootId": "runtime-trace", "path": "packages/dcb-runtime/src/trace", "kind": "directory" },
     { "rootId": "observation-stream", "path": "packages/dcb-runtime/src/trace/ObservationStream.ts", "kind": "file" },
