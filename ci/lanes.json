@@ -230,7 +230,7 @@
       "name": "g44",
       "tier": "local",
       "services": ["postgres"],
-      "affectedPaths": ["test/g44-*.ts", "test/g58-*.ts", "test/g62-*.ts", "test/g67-*.ts", "scripts/g44-*.mjs", "scripts/g58-*.mjs", "scripts/g62-*.mjs", "scripts/g67-*.mjs", "scripts/deploy/g58-ac1-ac5-readproof.mjs", "scripts/deploy/g58-safe-lane-e2e.mjs", "scripts/g61-retained-frontier-guard.mjs", "scripts/g75-certificate-scope-guard.mjs", "scripts/g75-certificate-scope-mutation-runner.mjs", "test/g75-certificate-scope.spec.ts"],
+      "affectedPaths": ["test/g44-*.ts", "test/g58-*.ts", "test/g62-*.ts", "test/g67-*.ts", "scripts/g44-*.mjs", "scripts/g58-*.mjs", "scripts/g62-*.mjs", "scripts/g67-*.mjs", "scripts/g61-retained-frontier-guard.mjs", "scripts/g75-certificate-scope-guard.mjs", "scripts/g75-certificate-scope-mutation-runner.mjs", "test/g75-certificate-scope.spec.ts"],
       "commands": [
         {"id": "g44", "command": "npm run test:g44"},
         {"id": "g75", "command": "npm run test:g75:certificate-scope"},

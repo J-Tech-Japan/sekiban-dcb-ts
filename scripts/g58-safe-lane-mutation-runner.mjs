@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 /**
- * Executes the SDT-G58 coverage-frontier omission against the actual sample
- * Worker.  The focused fixture has a real safe checkpoint below a retained
- * FULL frontier, so removing the bounded calls must turn it red.  Source is
- * restored even if a child process is interrupted.
+ * Executes the bounded BLOCK safe-lane mutation against the current sample
+ * Worker. The focused fixture has a real safe checkpoint below a retained
+ * FULL frontier, so removing the bounded calls must turn it red.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -13,6 +12,7 @@ import { spawnSync } from "node:child_process";
 const root = process.cwd();
 const sourceFile = "samples/meeting-room/src/worker.cloudflare-only.ts";
 const mutation = Object.freeze({
+  label: "omit-bounded-BLOCK-safe-lane",
   from: "      await input.catchUp(coverage.frontierSuid);\n      await input.drainUnsafeKicks(coverage.frontierSuid);",
   to: "      // SDT-G58 mutant: BLOCK incorrectly skips the bounded safe lane.",
   oracle: "continues a BLOCK tick through only the retained FULL frontier and never passes an unproven event",
@@ -44,7 +44,7 @@ function requirePass(result) {
 
 function requireRed(result) {
   if (result.status !== 0) return;
-  fail(`coverage-gate omission was vacuous: ${mutation.oracle} remained green`);
+  fail(`${mutation.label} was vacuous: ${mutation.oracle} remained green`);
 }
 
 function oracle() {
@@ -68,11 +68,12 @@ function main() {
   try {
     requirePass(oracle());
     writeFileSync(resolve(root, sourceFile), mutate(original), "utf8");
-    requireRed(oracle());
+    const mutant = oracle();
+    requireRed(mutant);
+    process.stdout.write(`${JSON.stringify({ check: "g58-safe-lane-mutation-runner", mutants: [{ label: mutation.label, baselineExitCode: 0, mutantExitCode: mutant.status, result: "red" }] })}\n`);
   } finally {
     writeFileSync(resolve(root, sourceFile), original, "utf8");
   }
-  process.stdout.write(`${JSON.stringify({ result: "g58-coverage-gate-production-mutant-red" })}\n`);
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();

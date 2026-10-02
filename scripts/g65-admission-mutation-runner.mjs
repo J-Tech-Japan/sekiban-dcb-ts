@@ -1,50 +1,21 @@
 #!/usr/bin/env node
-/**
- * SDT-G65 runtime mutation proof. The mutant removes the production
- * D1EventStore identity/idempotence rejection and changes the event conflict
- * action to an overwrite. The real SQLite direct-first/Queue-first/replay
- * oracle must then fail on the conflicting replay; an accepted mutant is a
- * guard failure, never a red receipt.
- */
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+
+import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
 const sourceFile = "packages/dcb-runtime/src/store/D1EventStore.ts";
-const vitest = resolve(root, "node_modules/vitest/vitest.mjs");
 const oracleTitle = "uses the real shared D1 path for direct-first and Queue-first admission, duplicate replay, and conflict";
 
-function argument(name) {
-  const index = process.argv.indexOf(name);
-  return index === -1 ? undefined : process.argv[index + 1];
-}
-
-function runOracle(label) {
-  const result = spawnSync(process.execPath, [
-    vitest,
-    "run",
-    "--config", "vitest.config.ts",
-    "test/g65-admission.spec.ts",
-    "--testNamePattern", oracleTitle,
-  ], { cwd: root, encoding: "utf8", env: { ...process.env, CI: "1" } });
-  return { label, status: result.status ?? 1, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
-}
-
-function requirePass(result) {
-  if (result.status === 0) return;
-  throw new Error(`${result.label} unexpectedly failed:\n${result.output}`);
-}
-
-function requireRed(result) {
-  if (result.status !== 0) return;
-  throw new Error("production idempotence-removal mutant unexpectedly passed the real replay/conflict oracle");
+function fail(message) {
+  throw new Error(`SDT-G65 idempotence check failed: ${message}`);
 }
 
 function replaceOnce(source, from, to, label) {
-  const occurrences = source.split(from).length - 1;
-  if (occurrences !== 1) throw new Error(`${label} mutation anchor expected once, found ${occurrences}`);
+  const count = source.split(from).length - 1;
+  if (count !== 1) fail(`${label} anchor expected once, found ${count}`);
   return source.replace(from, to);
 }
 
@@ -53,7 +24,7 @@ function mutate(source) {
     source,
     "if (storedBefore !== undefined && (",
     "if (false && storedBefore !== undefined && (",
-    "storedBefore identity-conflict guard",
+    "idempotence preflight",
   );
   mutant = replaceOnce(
     mutant,
@@ -79,54 +50,58 @@ function mutate(source) {
       stored.correlationId !== metadata.correlationId ||
       stored.executedUser !== metadata.executedUser
     )) {`,
-    "stored identity-conflict guard",
+    "idempotence conflict preflight",
   );
-  mutant = replaceOnce(
+  return replaceOnce(
     mutant,
     'ON CONFLICT ("ServiceId", "Id") DO NOTHING',
     'ON CONFLICT ("ServiceId", "Id") DO UPDATE SET "Payload" = excluded."Payload"',
-    "event idempotence conflict action",
+    "idempotence conflict action",
   );
-  return mutant;
 }
 
-function writeReceipt(target, receipt) {
-  if (target === undefined) return;
-  const path = resolve(root, target);
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(receipt, null, 2)}\n`);
+function run(label) {
+  const result = spawnSync(process.execPath, [
+    resolve(root, "node_modules/vitest/vitest.mjs"),
+    "run",
+    "--config", "vitest.config.ts",
+    "--no-cache",
+    "--maxWorkers=1",
+    "test/g65-admission.spec.ts",
+    "--testNamePattern", oracleTitle,
+  ], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, CI: "1", FORCE_COLOR: "0" },
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  return {
+    label,
+    exitCode: result.status ?? 1,
+    signal: result.signal,
+    stdoutBytes: Buffer.byteLength(result.stdout ?? ""),
+    stderrBytes: Buffer.byteLength(result.stderr ?? ""),
+  };
 }
 
 function main() {
-  const receiptPath = argument("--receipt");
-  const sourcePath = resolve(root, sourceFile);
-  const original = readFileSync(sourcePath, "utf8");
-  const before = runOracle("real G65 replay/conflict oracle before mutation");
-  requirePass(before);
-  let mutantResult;
+  const absolutePath = resolve(root, sourceFile);
+  const original = readFileSync(absolutePath, "utf8");
+  const baseline = run("idempotence-removal baseline");
+  if (baseline.exitCode !== 0) fail(`baseline was red (exit ${baseline.exitCode})`);
+  let mutant;
   try {
-    writeFileSync(sourcePath, mutate(original), "utf8");
-    mutantResult = runOracle("real G65 replay/conflict oracle under production idempotence-removal mutant");
-    requireRed(mutantResult);
+    writeFileSync(absolutePath, mutate(original), "utf8");
+    mutant = run("idempotence-removal mutant");
   } finally {
-    writeFileSync(sourcePath, original, "utf8");
+    writeFileSync(absolutePath, original, "utf8");
   }
-  const receipt = {
-    guard: "SDT-G65 production idempotence-removal mutant",
-    status: "green",
-    oracleTitle,
-    sourceFile,
-    redBeforeGreen: {
-      status: "red",
-      expectedFailure: true,
-      exitCode: mutantResult.status,
-      output: mutantResult.output,
-    },
-    green: { status: "green", exitCode: before.status },
-    mutant: "removed both preflight and post-batch identity rejection and changed event conflict DO NOTHING to overwrite",
-  };
-  writeReceipt(receiptPath, receipt);
-  process.stdout.write(`${JSON.stringify(receipt)}\n`);
+  if (readFileSync(absolutePath, "utf8") !== original) fail("source mutation was not restored");
+  if (mutant.exitCode === 0) fail("idempotence-removal unexpectedly stayed green");
+  process.stdout.write(`${JSON.stringify({
+    check: "g65-admission-mutation-runner",
+    mutants: [{ label: "idempotence-removal", oracle: `test/g65-admission.spec.ts :: ${oracleTitle}`, baselineExitCode: baseline.exitCode, mutantExitCode: mutant.exitCode, result: "red" }],
+  })}\n`);
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();
