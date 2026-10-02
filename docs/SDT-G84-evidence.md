@@ -10,21 +10,15 @@ bounded source repair is committed at
 source repair and this evidence update together; the exact pushed head and
 same-head local receipts are recorded in the W244 handoff after collection.
 
-The restored `docs/evidence/SDT-G40-ci-step-inventory-baseline.json` is
-byte-for-byte equal to `origin/main` (SHA-256
-`48aa022c2be3412ecf5481863ea365a056d54c303ee06886636db6d9202a3598`). The
-manifest retains exactly one `cosmos-retained-history` occurrence of pinned
+The frozen inventory was replaced by the current-graph CI check. The manifest
+retains exactly one `cosmos-retained-history` occurrence of pinned
 W244's `38219c8a6526a0209295e9f06450cce9e2217005` pin was the transcription
 defect that caused its Cosmos fetch failure. W245 restores the exact
 baseline-derived pin `38219c8a6526a0209295e9f06450cce9e2217004`; the G40
 coverage checker derives it from the baseline leaf text, and the third G40
-mutant changes one character from that derived value and is rejected. The new
-`docs/evidence/SDT-G40-ci-step-inventory-allowlist.json` records the reviewed
-G84 workflow-to-manifest transition with exact normalized command-text and
-entry-identity digests: 86 historical workflow leaves, 132 manifest commands,
-55 recursive package leaves, and three retained workflow steps. The checker
-reports the full unmatched command rows, so the allowlist is not a wildcard
-or a command-count-only bypass.
+mutant changes one character from that derived value and is rejected. The
+checker reports the full unmatched command rows, so the allowlist is not a
+wildcard or a command-count-only bypass.
 
 `ci:local` now creates and removes a fresh detached-HEAD worktree for each
 selected local lane, sets `INIT_CWD` to that worktree, and records the checkout

@@ -14,6 +14,7 @@
     "samples/meeting-room/wrangler.g30-primary-on.jsonc",
     "samples/meeting-room/wrangler.g30-receiver-off.jsonc",
     "scripts/commit-trace-contract.mjs",
+    "scripts/commit-trace-generate.mjs",
     "scripts/g30-b0-contract.mjs",
     "scripts/g30-b0-contract.d.mts",
     "scripts/g30-ac5-structural-check.mjs",

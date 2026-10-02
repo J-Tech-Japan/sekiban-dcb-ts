@@ -3,11 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - docs/SDT-G84-evidence.md
   pull_request:
-    paths-ignore:
-      - docs/SDT-G84-evidence.md
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}

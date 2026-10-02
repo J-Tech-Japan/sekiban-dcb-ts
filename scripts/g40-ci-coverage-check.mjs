@@ -1,351 +1,634 @@
 #!/usr/bin/env node
 /**
- * SDT-G40's tiered command-coverage gate.
+ * Check coverage of the current workflow, lane and npm-script graph.
  *
- * The historical inventory comparison remains useful for catching accidental
- * command loss. G84 adds the manifest checks: every manifest command has one
- * tier, every command is runnable, the PR workflow invokes only the PR lanes,
- * and verify aggregates exactly those jobs.
+ * The checker reports all findings in one pass. Each finding has a stable
+ * reason code so mutation proofs and reviewers can distinguish independent
+ * coverage failures.
  */
-import { readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
-import { generateInventory, readWorkspacePackageTexts } from "./g40-ci-step-inventory.mjs";
+import { buildCurrentGraph, loadSnapshot, matchesCiGlob, normalizeCommand } from "./g40-ci-step-inventory.mjs";
 
-const DEFAULT_BASELINE = "docs/evidence/SDT-G40-ci-step-inventory-baseline.json";
-const DEFAULT_WORKFLOW = ".github/workflows/ci.yml";
-const DEFAULT_PACKAGE = "package.json";
-const DEFAULT_MANIFEST = "ci/lanes.json";
-const DEFAULT_ALLOWLIST = "docs/evidence/SDT-G40-ci-step-inventory-allowlist.json";
+const SCHEMA = "sdt-g40-ci-coverage-check/v3";
+const CI_WORKFLOW = ".github/workflows/ci.yml";
+const FULL_WORKFLOW = ".github/workflows/ci-full.yml";
 
 function fail(message) {
   throw new Error(`g40-ci-coverage-check:${message}`);
 }
 
-function object(value, label) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) fail(`${label} must be an object`);
-  return value;
+function asObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function addWorkingDirectoryShapeCheck(issues, label, value) {
+  if (value !== undefined && typeof value !== "string") {
+    issues.add("workflow-shape", `${label} working-directory must be a string`);
+  }
+}
+
+function triggerDocument(workflow) {
+  return workflow?.document?.on ?? workflow?.document?.[true] ?? {};
+}
+
+function triggerNames(workflow) {
+  const value = triggerDocument(workflow);
+  if (Array.isArray(value)) return new Set(value);
+  if (typeof value === "string") return new Set([value]);
+  return new Set(Object.keys(asObject(value)));
+}
+
+function workflowByPath(graph, path) {
+  return asArray(graph?.snapshot?.workflows).find((workflow) => workflow?.path === path);
+}
+
+function jobByName(workflow, name) {
+  return asObject(workflow?.document?.jobs)?.[name];
+}
+
+function jobNeeds(job) {
+  if (Array.isArray(job?.needs)) return job.needs.map(String);
+  if (typeof job?.needs === "string") return [job.needs];
+  return [];
+}
+
+function runForDispatch(graph, dispatch) {
+  const workflow = workflowByPath(graph, dispatch.workflowPath);
+  const jobs = asObject(workflow?.document?.jobs);
+  const steps = asArray(asObject(jobs[dispatch.jobName]).steps);
+  return steps[dispatch.stepIndex];
+}
+
+function workflowRunDispatches(graph, path) {
+  return asArray(graph?.resolution?.dispatches).filter((dispatch) => dispatch?.origin === "workflow" && dispatch.workflowPath === path);
+}
+
+function commandRecords(manifest) {
+  const records = [];
+  for (const lane of asArray(manifest?.lanes)) {
+    for (const command of asArray(lane?.commands)) {
+      records.push({ lane, command, laneName: lane?.name, tier: lane?.tier, id: command?.id });
+    }
+  }
+  return records;
+}
+
+function issueCollector() {
+  const failures = [];
+  const keys = new Set();
+  return {
+    add(code, message, details = undefined) {
+      const key = `${code}:${message}`;
+      if (keys.has(key)) return;
+      keys.add(key);
+      failures.push({ code, message, ...(details === undefined ? {} : { details }) });
+    },
+    get failures() {
+      return failures;
+    },
+  };
+}
+
+function pathsForWorkflow(workflow, event) {
+  const trigger = asObject(triggerDocument(workflow))[event];
+  if (trigger === null || trigger === undefined) return [];
+  if (typeof trigger === "string") return [];
+  return Array.isArray(trigger?.["paths-ignore"]) ? trigger["paths-ignore"] : [];
+}
+
+function setEquals(left, right) {
+  return left.size === right.size && [...left].every((value) => right.has(value));
+}
+
+function addWorkflowCollectionShapeChecks(graph, issues) {
+  const workflows = graph?.snapshot?.workflows;
+  if (!Array.isArray(workflows)) {
+    issues.add("workflow-shape", "tracked workflow collection must be an array");
+    return;
+  }
+  for (const workflow of workflows) {
+    if (!isObject(workflow)) {
+      issues.add("workflow-shape", "workflow entry must be an object");
+      continue;
+    }
+    const document = workflow.document;
+    if (!isObject(document)) {
+      issues.add("workflow-shape", `${workflow.path ?? "workflow"} document must be an object`);
+      continue;
+    }
+    const trigger = document.on ?? document[true];
+    if (trigger !== undefined && !Array.isArray(trigger) && typeof trigger !== "string" && !isObject(trigger)) {
+      issues.add("workflow-shape", `${workflow.path ?? "workflow"} trigger must be a mapping, list or string`);
+    }
+    if (!isObject(document.jobs)) {
+      issues.add("workflow-shape", `${workflow.path ?? "workflow"} jobs must be an object`);
+      continue;
+    }
+    const workflowDefaultsRun = asObject(asObject(document.defaults).run);
+    addWorkingDirectoryShapeCheck(issues, `${workflow.path ?? "workflow"} defaults`, workflowDefaultsRun["working-directory"]);
+    for (const [jobName, job] of Object.entries(document.jobs)) {
+      if (!isObject(job)) {
+        issues.add("workflow-shape", `${workflow.path ?? "workflow"}/${jobName} job must be an object`);
+        continue;
+      }
+      const jobDefaultsRun = asObject(asObject(job.defaults).run);
+      addWorkingDirectoryShapeCheck(issues, `${workflow.path ?? "workflow"}/${jobName} defaults`, jobDefaultsRun["working-directory"]);
+      if (job.steps !== undefined && !Array.isArray(job.steps)) {
+        issues.add("workflow-shape", `${workflow.path ?? "workflow"}/${jobName} steps must be an array`);
+        continue;
+      }
+      for (const [stepIndex, step] of asArray(job.steps).entries()) {
+        if (!isObject(step)) issues.add("workflow-shape", `${workflow.path ?? "workflow"}/${jobName} step ${stepIndex + 1} must be an object`);
+        else addWorkingDirectoryShapeCheck(issues, `${workflow.path ?? "workflow"}/${jobName} step ${stepIndex + 1}`, step["working-directory"]);
+      }
+    }
+    for (const event of ["push", "pull_request"]) {
+      const eventValue = asObject(trigger)[event];
+      if (eventValue !== undefined && eventValue !== null && !isObject(eventValue) && typeof eventValue !== "string") {
+        issues.add("workflow-shape", `${workflow.path ?? "workflow"} ${event} trigger must be an object or string`);
+      }
+      if (isObject(eventValue) && eventValue["paths-ignore"] !== undefined && !Array.isArray(eventValue["paths-ignore"])) {
+        issues.add("workflow-shape", `${workflow.path ?? "workflow"} ${event} paths-ignore must be an array`);
+      }
+    }
+  }
+}
+
+function addWorkflowShapeChecks(graph, issues) {
+  const ci = workflowByPath(graph, CI_WORKFLOW);
+  const full = workflowByPath(graph, FULL_WORKFLOW);
+  if (ci === undefined) issues.add("workflow-shape", `${CI_WORKFLOW} is missing`);
+  const ciDocument = asObject(ci?.document);
+  const ciTriggers = triggerNames(ci);
+  if (!ciTriggers.has("pull_request")) issues.add("workflow-shape", "ci.yml must retain a pull_request trigger");
+  if (!ciTriggers.has("push")) issues.add("workflow-shape", "ci.yml must retain a push trigger");
+  const push = asObject(asObject(triggerDocument(ci)).push);
+  if (!Array.isArray(push.branches) || !push.branches.includes("main")) issues.add("workflow-shape", "ci.yml push trigger must target main");
+  if (ciTriggers.has("schedule")) issues.add("workflow-shape", "ci.yml must not be scheduled");
+  const concurrency = asObject(ciDocument.concurrency);
+  if (typeof concurrency.group !== "string" || concurrency.group.length === 0) issues.add("workflow-shape", "ci.yml must define a concurrency group");
+  if (concurrency["cancel-in-progress"] !== true) issues.add("workflow-shape", "ci.yml concurrency must cancel superseded runs");
+
+  const jobs = asObject(ciDocument.jobs);
+  const expectedPrJobs = ["ci-foundation", "ci-pr-cheap"];
+  const ciDispatches = workflowRunDispatches(graph, CI_WORKFLOW);
+  const manifestLanes = Array.isArray(graph.snapshot.manifest?.lanes) ? graph.snapshot.manifest.lanes : [];
+  const prLaneNames = new Set(manifestLanes.filter((lane) => lane?.tier === "pr").map((lane) => lane.name));
+  for (const laneName of prLaneNames) {
+    if (!ciDispatches.some((dispatch) => asArray(dispatch.selectedLanes).includes(laneName))) {
+      issues.add("workflow-shape", `ci.yml does not dispatch PR lane ${laneName}`);
+    }
+  }
+  if (ciDispatches.some((dispatch) => asArray(dispatch.selectedLanes).some((name) => manifestLanes.find((lane) => lane?.name === name)?.tier === "local"))) {
+    issues.add("workflow-shape", "ci.yml must not dispatch local lanes");
+  }
+  for (const jobName of expectedPrJobs) {
+    if (jobs[jobName] === undefined) issues.add("workflow-shape", `ci.yml is missing PR job ${jobName}`);
+    const checkout = (Array.isArray(asObject(jobs[jobName]).steps) ? asObject(jobs[jobName]).steps : [])
+      .find((step) => String(step?.uses ?? "").startsWith("actions/checkout@"));
+    if (checkout?.with?.["fetch-depth"] !== 0) issues.add("workflow-shape", `${jobName} must keep fetch-depth 0`);
+  }
+
+  const verify = asObject(jobs.verify);
+  if (jobs.verify === undefined) {
+    issues.add("workflow-shape", "ci.yml aggregate job verify is missing");
+  } else {
+    if (String(verify.if ?? "").replaceAll(" ", "") !== "${{always()}}") issues.add("workflow-shape", "verify must use always()");
+    const actualNeeds = new Set(jobNeeds(verify));
+    if (!setEquals(actualNeeds, new Set(expectedPrJobs))) issues.add("workflow-shape", "verify needs must equal the PR jobs");
+    const verifyRuns = (Array.isArray(verify.steps) ? verify.steps : [])
+      .some((step) => typeof step?.run === "string" && step.run.includes("node scripts/g40-verify-needs.mjs"));
+    if (!verifyRuns) issues.add("workflow-shape", "verify must run g40-verify-needs.mjs");
+    const needsJson = String(verify.env?.G40_VERIFY_NEEDS_JSON ?? "").replace(/\s+/g, "");
+    if (needsJson !== "${{toJson(needs)}}") issues.add("workflow-shape", "verify must pass G40_VERIFY_NEEDS_JSON as toJson(needs)");
+  }
+
+  if (full === undefined) {
+    issues.add("workflow-shape", `${FULL_WORKFLOW} is missing`);
+  } else {
+    const fullTriggers = triggerNames(full);
+    if (!fullTriggers.has("workflow_dispatch") || !fullTriggers.has("schedule")) issues.add("workflow-shape", "ci-full.yml must retain workflow_dispatch and schedule");
+    const fullJobs = asObject(full.document?.jobs);
+    if (fullJobs.full === undefined) issues.add("workflow-shape", "ci-full.yml full job is missing");
+    const fullConcurrency = asObject(full.document.concurrency);
+    if (fullConcurrency.group !== "ci-full-main" || fullConcurrency["cancel-in-progress"] !== false) issues.add("workflow-shape", "ci-full.yml concurrency shape changed");
+    const fullDispatches = workflowRunDispatches(graph, FULL_WORKFLOW);
+    if (fullDispatches.length === 0) issues.add("workflow-shape", "ci-full.yml must dispatch a manifest tier");
+  }
+
+  for (const dispatch of asArray(graph?.resolution?.dispatches).filter((entry) => entry?.origin === "workflow")) {
+    const workflow = workflowByPath(graph, dispatch.workflowPath);
+    const job = jobByName(workflow, dispatch.jobName);
+    const step = runForDispatch(graph, dispatch);
+    if (job?.if !== undefined || job?.["continue-on-error"] !== undefined || step?.if !== undefined || step?.["continue-on-error"] !== undefined) {
+      issues.add("dispatch-conditional", `ci-local dispatch is conditional in ${dispatch.workflowPath}/${dispatch.jobName}`);
+    }
+  }
+}
+
+function addManifestShapeChecks(graph, issues) {
+  const manifest = graph.snapshot.manifest;
+  if (!isObject(manifest)) issues.add("manifest-shape", "lane manifest must be an object");
+  if (manifest?.schema !== "sdt-ci-lanes/v1") issues.add("manifest-shape", "manifest schema must be sdt-ci-lanes/v1");
+  const tiers = manifest?.tiers;
+  if (!isObject(tiers)) issues.add("manifest-shape", "manifest tiers must be an object");
+  for (const tier of ["pr", "local", "full"]) {
+    if (tiers?.[tier] === undefined || tiers[tier] === null || typeof tiers[tier] !== "object" || Array.isArray(tiers[tier])) {
+      issues.add("manifest-shape", `manifest tier ${tier} is missing`);
+    }
+  }
+  if (!Array.isArray(tiers?.full?.includes) || !tiers.full.includes.includes("pr") || !tiers.full.includes.includes("local")) {
+    issues.add("manifest-shape", "full tier must include pr and local");
+  }
+  if (!Array.isArray(manifest?.pathsIgnore)) issues.add("manifest-shape", "pathsIgnore must be an array");
+  else if (manifest.pathsIgnore.some((path) => typeof path !== "string")) issues.add("manifest-shape", "pathsIgnore entries must be strings");
+  if (!Array.isArray(manifest?.requiredLanes)) issues.add("manifest-shape", "requiredLanes must be an array");
+  else if (manifest.requiredLanes.some((name) => typeof name !== "string")) issues.add("manifest-shape", "requiredLanes entries must be strings");
+  const lanes = asArray(manifest?.lanes);
+  if (!Array.isArray(manifest?.lanes)) issues.add("manifest-shape", "manifest lanes must be an array");
+  if (lanes.length === 0) {
+    issues.add("manifest-shape", "manifest lanes must be non-empty");
+  }
+  const laneNames = new Set();
+  const commandTexts = new Map();
+  for (const lane of lanes) {
+    if (!isObject(lane)) {
+      issues.add("manifest-shape", "every lane must be an object");
+      continue;
+    }
+    if (typeof lane?.name !== "string" || lane.name.length === 0) issues.add("manifest-shape", "every lane needs a name");
+    if (laneNames.has(lane?.name)) issues.add("manifest-shape", `duplicate lane ${lane?.name}`);
+    laneNames.add(lane?.name);
+    if (!Array.isArray(lane?.affectedPaths)) issues.add("manifest-shape", `lane ${lane?.name} affectedPaths must be an array`);
+    else if (lane.affectedPaths.some((pattern) => typeof pattern !== "string")) issues.add("manifest-shape", `lane ${lane?.name} affectedPaths entries must be strings`);
+    if (!Array.isArray(lane?.commands)) {
+      issues.add("manifest-shape", `lane ${lane?.name} commands must be an array`);
+      issues.add("empty-lane", `lane ${lane?.name} has no commands`);
+      continue;
+    }
+    if (lane.commands.length === 0) issues.add("empty-lane", `lane ${lane?.name} has no commands`);
+    if (!["pr", "local"].includes(lane?.tier)) issues.add("manifest-shape", `lane ${lane?.name} has an invalid tier`);
+    for (const command of lane.commands) {
+      if (!isObject(command)) {
+        issues.add("manifest-shape", `lane ${lane?.name} command entry must be an object`);
+        continue;
+      }
+      if (typeof command?.command !== "string" || command.command.trim().length === 0) issues.add("manifest-shape", `lane ${lane?.name} has an empty command`);
+      const text = normalizeCommand(command?.command ?? "");
+      if (text.length > 0) {
+        const prior = commandTexts.get(text);
+        if (prior !== undefined && prior !== lane?.tier) issues.add("manifest-shape", `command text is assigned to both ${prior} and ${lane?.tier}`);
+        commandTexts.set(text, lane?.tier);
+      }
+    }
+  }
+  const required = Array.isArray(manifest?.requiredLanes) ? new Set(manifest.requiredLanes) : new Set();
+  if (!setEquals(required, laneNames)) issues.add("required-lanes-mismatch", "requiredLanes must equal the lane names");
+}
+
+function addCommandShapeChecks(graph, issues) {
+  const records = commandRecords(graph.snapshot.manifest);
+  const commandIds = new Set();
+  for (const record of records) {
+    if (typeof record.id !== "string" || record.id.length === 0) issues.add("manifest-shape", `lane ${record.laneName} has a command without an id`);
+    if (commandIds.has(record.id)) issues.add("duplicate-command-id", `command id ${record.id} occurs more than once`);
+    commandIds.add(record.id);
+    if (record.command?.expect !== undefined && record.command.expect !== "red") issues.add("invalid-expect", `${record.laneName}/${record.id} has invalid expect`);
+  }
+}
+
+function addResolutionChecks(graph, issues) {
+  for (const error of asArray(graph?.resolution?.errors)) {
+    if (isObject(error)) issues.add(error.code, error.message, error.source);
+  }
+  for (const missing of asArray(graph?.resolution?.missingPaths)) {
+    if (isObject(missing)) issues.add("missing-path", `resolved command names missing path ${missing.token}`, missing.source);
+  }
+}
+
+function addWorkflowArgumentChecks(graph, issues) {
+  for (const dispatch of asArray(graph?.resolution?.dispatches)) {
+    if (!isObject(dispatch)) continue;
+    if (dispatch.origin === "workflow" && dispatch.invalidArgument) {
+      issues.add("ci-local-argument", `workflow ci-local invocation uses unsupported arguments: ${asArray(dispatch.args).join(" ")}`, dispatch.source);
+    }
+    for (const name of asArray(dispatch.unknownNames)) issues.add("unknown-lane-or-tier", `ci-local names unknown lane or tier ${name}`, dispatch.source);
+  }
+}
+
+function addReachabilityChecks(graph, issues) {
+  const manifest = graph.snapshot.manifest;
+  const records = commandRecords(manifest);
+  const reachedIds = new Set();
+  for (const dispatch of asArray(graph?.resolution?.dispatches)) {
+    if (!isObject(dispatch)) continue;
+    if (dispatch.origin !== "workflow") continue;
+    for (const record of records) if (asArray(dispatch.selectedLanes).includes(record.laneName)) reachedIds.add(record.id);
+  }
+  for (const record of records) {
+    if (!reachedIds.has(record.id)) issues.add("command-unreached", `manifest command ${record.laneName}/${record.id} is not reached by a workflow dispatch`);
+  }
+
+  const fullDispatches = workflowRunDispatches(graph, FULL_WORKFLOW);
+  const fullLanes = new Set(fullDispatches.flatMap((dispatch) => asArray(dispatch.selectedLanes)));
+  for (const lane of asArray(manifest?.lanes)) {
+    if (!fullLanes.has(lane?.name)) issues.add("lane-not-in-full", `lane ${lane?.name} is not reached by ci-full.yml`);
+  }
+
+  const ci = workflowByPath(graph, CI_WORKFLOW);
+  const verify = jobByName(ci, "verify");
+  const verifyNeeds = new Set(jobNeeds(verify));
+  const prDispatches = workflowRunDispatches(graph, CI_WORKFLOW).filter((dispatch) => dispatch.source?.triggers?.includes("pull_request") && verifyNeeds.has(dispatch.jobName));
+  for (const record of records.filter((entry) => entry.tier === "pr")) {
+    if (!prDispatches.some((dispatch) => asArray(dispatch.selectedLanes).includes(record.laneName))) {
+      issues.add("pr-command-unverified", `PR command ${record.laneName}/${record.id} is not reached from a verify dependency`);
+    }
+  }
+}
+
+function addAffectedPathChecks(graph, issues) {
+  const manifest = graph.snapshot.manifest;
+  const files = asArray(graph?.snapshot?.files);
+  const lanes = asArray(manifest?.lanes);
+  for (const lane of lanes) {
+    for (const pattern of Array.isArray(lane?.affectedPaths) ? lane.affectedPaths : []) {
+      if (typeof pattern !== "string" || !files.some((file) => matchesCiGlob(file, pattern))) {
+        issues.add("affected-path-unmatched", `lane ${lane?.name} affectedPaths pattern matches no tracked file: ${pattern}`);
+      }
+    }
+  }
+  for (const lane of lanes.filter((entry) => entry?.tier === "local")) {
+    const closure = graph?.resolution?.closureByLane instanceof Map ? graph.resolution.closureByLane.get(lane.name) : undefined;
+    const patterns = asArray(lane.affectedPaths).filter((pattern) => typeof pattern === "string");
+    for (const file of [...(closure?.files ?? [])].filter((entry) => /^(?:scripts|test)\//.test(entry) && files.includes(entry)).sort()) {
+      if (!patterns.some((pattern) => matchesCiGlob(file, pattern))) {
+        issues.add("local-path-uncovered", `local lane ${lane.name} does not select ${file}`, { lane: lane.name, path: file });
+      }
+    }
+  }
+}
+
+function addSealRootChecks(graph, issues) {
+  const manifest = graph.snapshot.manifest;
+  const bundle = graph.snapshot.commitTraceBundle;
+  const authorityFiles = Array.isArray(bundle?.authorityFiles) ? bundle.authorityFiles : [];
+  const roots = ["contracts/commit-trace-bundle.json", "contracts/commit-trace-pin.json", ...authorityFiles.map((entry) => entry?.path)]
+    .filter((path) => typeof path === "string" && path.length > 0);
+  const lanes = asArray(manifest?.lanes);
+  const g30 = lanes.find((lane) => lane?.name === "g30");
+  const local = lanes.filter((lane) => lane?.tier === "local" && lane?.name !== "g30");
+  for (const path of roots) {
+    const g30Matches = asArray(g30?.affectedPaths).some((pattern) => typeof pattern === "string" && matchesCiGlob(path, pattern));
+    const otherMatches = local.some((lane) => asArray(lane?.affectedPaths).some((pattern) => typeof pattern === "string" && matchesCiGlob(path, pattern)));
+    if (!g30Matches && otherMatches) issues.add("seal-roots-uncovered", `commit-trace seal root ${path} selects another local lane but not g30`, { path });
+  }
+}
+
+function addPathsIgnoreChecks(graph, issues) {
+  const manifest = graph.snapshot.manifest;
+  const expected = new Set(Array.isArray(manifest?.pathsIgnore) ? manifest.pathsIgnore : []);
+  const ci = workflowByPath(graph, CI_WORKFLOW);
+  for (const event of ["push", "pull_request"]) {
+    const actual = new Set(pathsForWorkflow(ci, event));
+    if (!setEquals(actual, expected)) issues.add("paths-ignore-mismatch", `ci.yml ${event} paths-ignore differs from manifest.pathsIgnore`);
+  }
+}
+
+function addSealCommandCheck(graph, issues) {
+  const cheap = asArray(graph.snapshot.manifest?.lanes)
+    .find((lane) => lane?.name === "cheap");
+  const first = asArray(cheap?.commands)[0];
+  if (cheap?.tier !== "pr" || first?.id !== "commit-trace-seal" || first?.command !== "node scripts/commit-trace-contract.mjs --check" || first?.expect !== undefined) {
+    issues.add("seal-command", "cheap lane must start with the exact commit-trace-seal command without expect");
+  }
+}
+
+export function evaluateCoverage(graph) {
+  const issues = issueCollector();
+  addWorkflowCollectionShapeChecks(graph, issues);
+  addWorkflowShapeChecks(graph, issues);
+  addManifestShapeChecks(graph, issues);
+  addCommandShapeChecks(graph, issues);
+  addResolutionChecks(graph, issues);
+  addWorkflowArgumentChecks(graph, issues);
+  addReachabilityChecks(graph, issues);
+  addAffectedPathChecks(graph, issues);
+  addSealRootChecks(graph, issues);
+  addPathsIgnoreChecks(graph, issues);
+  addSealCommandCheck(graph, issues);
+  const failures = issues.failures;
+  return {
+    schema: SCHEMA,
+    result: failures.length === 0 ? "passed" : "failed",
+    reasonCodes: [...new Set(failures.map((failure) => failure.code))],
+    failures,
+    summary: {
+      workflowCount: asArray(graph?.workflows).length,
+      workflowRunCount: asArray(graph?.workflowRuns).length,
+      packageCount: asArray(graph?.packages).length,
+      scriptCount: asArray(graph?.resolution?.scripts).length,
+      manifestLaneCount: asArray(graph?.snapshot?.manifest?.lanes).length,
+      manifestCommandCount: commandRecords(graph.snapshot.manifest).length,
+      terminalCommandCount: asArray(graph?.terminalCommands).length,
+    },
+  };
+}
+
+export function checkCurrentTree({ root = process.cwd() } = {}) {
+  const snapshot = loadSnapshot(root);
+  const graph = buildCurrentGraph(snapshot);
+  return { graph, result: evaluateCoverage(graph) };
+}
+
+function coverageSelfTestFixture() {
+  const manifest = {
+    schema: "sdt-ci-lanes/v1",
+    tiers: { pr: {}, local: {}, full: { includes: ["pr", "local"] } },
+    pathsIgnore: [],
+    requiredLanes: ["foundation", "cheap"],
+    lanes: [
+      { name: "foundation", tier: "pr", affectedPaths: ["package.json"], commands: [{ id: "foundation-check", command: "node scripts/foundation-check.mjs" }] },
+      { name: "cheap", tier: "pr", affectedPaths: ["package.json"], commands: [{ id: "commit-trace-seal", command: "node scripts/commit-trace-contract.mjs --check" }] },
+    ],
+  };
+  const ciPath = CI_WORKFLOW;
+  const fullPath = FULL_WORKFLOW;
+  const ci = {
+    path: ciPath,
+    document: {
+      on: { push: { branches: ["main"] }, pull_request: {} },
+      concurrency: { group: "ci-${{ github.ref }}", "cancel-in-progress": true },
+      jobs: {
+        "ci-foundation": {
+          steps: [{ uses: "actions/checkout@v5", with: { "fetch-depth": 0 } }, { run: "node scripts/ci-local.mjs --lane foundation --ci" }],
+        },
+        "ci-pr-cheap": {
+          steps: [{ uses: "actions/checkout@v5", with: { "fetch-depth": 0 } }, { run: "node scripts/ci-local.mjs --lane cheap --ci" }],
+        },
+        verify: {
+          if: "${{ always() }}",
+          needs: ["ci-foundation", "ci-pr-cheap"],
+          env: { G40_VERIFY_NEEDS_JSON: "${{ toJson(needs) }}" },
+          steps: [{ run: "node scripts/g40-verify-needs.mjs" }],
+        },
+      },
+    },
+    text: "",
+  };
+  const full = {
+    path: fullPath,
+    document: {
+      on: { schedule: [], workflow_dispatch: {} },
+      concurrency: { group: "ci-full-main", "cancel-in-progress": false },
+      jobs: { full: { steps: [{ run: "node scripts/ci-local.mjs --full" }] } },
+    },
+    text: "",
+  };
+  const workflows = [ci, full];
+  const dispatches = [
+    { origin: "workflow", workflowPath: ciPath, jobName: "ci-foundation", stepIndex: 1, selectedLanes: ["foundation"], unknownNames: [], invalidArgument: false, source: { triggers: ["pull_request", "push"] } },
+    { origin: "workflow", workflowPath: ciPath, jobName: "ci-pr-cheap", stepIndex: 1, selectedLanes: ["cheap"], unknownNames: [], invalidArgument: false, source: { triggers: ["pull_request", "push"] } },
+    { origin: "workflow", workflowPath: fullPath, jobName: "full", stepIndex: 0, selectedLanes: ["foundation", "cheap"], unknownNames: [], invalidArgument: false, source: { triggers: ["schedule", "workflow_dispatch"] } },
+  ];
+  const snapshot = {
+    root: process.cwd(),
+    files: ["package.json", "ci/lanes.json"],
+    loadErrors: [],
+    rootPackage: { relativePath: "package.json", directory: "", name: "fixture", document: {}, scripts: {} },
+    packages: [{ relativePath: "package.json", directory: "", name: "fixture", document: {}, scripts: {} }],
+    packageByPath: new Map(),
+    configuredWorkspaces: [],
+    manifest,
+    commitTraceBundle: null,
+    workflows,
+  };
+  return {
+    schema: "fixture",
+    snapshot,
+    workflows: workflows.map((workflow) => ({ path: workflow.path, triggers: [...triggerNames(workflow)].sort(), jobs: Object.keys(workflow.document.jobs) })),
+    workflowRuns: [],
+    packages: [{ path: "package.json", name: "fixture", scripts: [] }],
+    manifest: { schema: manifest.schema, tiers: manifest.tiers, lanes: manifest.lanes.map((lane) => ({ name: lane.name, tier: lane.tier, commandCount: lane.commands.length, affectedPaths: lane.affectedPaths })) },
+    resolution: {
+      errors: [],
+      scripts: [],
+      terminals: [],
+      dispatches,
+      missingPaths: [],
+      closureByLane: new Map([["foundation", { files: new Set() }], ["cheap", { files: new Set() }]]),
+    },
+    terminalCommands: [],
+    dispatches,
+  };
+}
+
+function selfTestFailure(graph, label, expectedCode) {
+  const result = evaluateCoverage(graph);
+  if (result.result !== "failed" || !result.reasonCodes.includes(expectedCode)) {
+    fail(`self-test ${label} expected ${expectedCode}, got ${result.reasonCodes.join(",")}`);
+  }
+  return { label, reportedReasonCodes: result.reasonCodes };
+}
+
+export function runSelfTest() {
+  const passing = coverageSelfTestFixture();
+  const passResult = evaluateCoverage(passing);
+  if (passResult.result !== "passed") fail(`self-test pass fixture failed: ${passResult.reasonCodes.join(",")}`);
+
+  const missingVerifyEnv = structuredClone(passing);
+  delete missingVerifyEnv.snapshot.workflows[0].document.jobs.verify.env;
+  const duplicateLane = structuredClone(passing);
+  const duplicate = structuredClone(duplicateLane.snapshot.manifest.lanes[0]);
+  duplicate.commands = duplicate.commands.map((command) => ({ ...command, id: `${command.id}-duplicate` }));
+  duplicateLane.snapshot.manifest.lanes.push(duplicate);
+  const missingFull = structuredClone(passing);
+  missingFull.snapshot.workflows = missingFull.snapshot.workflows.filter((entry) => entry.path !== FULL_WORKFLOW);
+  const malformedCollectionsSnapshot = structuredClone(passing.snapshot);
+  malformedCollectionsSnapshot.manifest.lanes.find((lane) => lane.name === "cheap").commands = {};
+  malformedCollectionsSnapshot.workflows = malformedCollectionsSnapshot.workflows.filter((entry) => entry.path !== FULL_WORKFLOW);
+  const malformedCollections = buildCurrentGraph(malformedCollectionsSnapshot);
+  const numericWorkingDirectorySnapshot = structuredClone(passing.snapshot);
+  numericWorkingDirectorySnapshot.workflows[0].document.jobs["ci-pr-cheap"].steps[1]["working-directory"] = 5;
+  const numericWorkingDirectory = buildCurrentGraph(numericWorkingDirectorySnapshot);
+  const numericWorkingDirectoryResult = evaluateCoverage(numericWorkingDirectory);
+  if (numericWorkingDirectoryResult.result !== "failed" || !numericWorkingDirectoryResult.reasonCodes.includes("workflow-shape")) {
+    fail(`self-test numeric working-directory expected workflow-shape, got ${numericWorkingDirectoryResult.reasonCodes.join(",")}`);
+  }
+  const oneTokenNodeSnapshot = structuredClone(passing.snapshot);
+  oneTokenNodeSnapshot.files.push("scripts/ci-local.mjs", "scripts/foundation-check.mjs", "scripts/g40-verify-needs.mjs");
+  oneTokenNodeSnapshot.manifest.lanes.find((lane) => lane.name === "cheap").commands[0].command = "node";
+  oneTokenNodeSnapshot.workflows = oneTokenNodeSnapshot.workflows.filter((entry) => entry.path !== FULL_WORKFLOW);
+  const oneTokenNodeGraph = buildCurrentGraph(oneTokenNodeSnapshot);
+  const oneTokenNodeResult = evaluateCoverage(oneTokenNodeGraph);
+  if (!oneTokenNodeGraph.terminalCommands.some((entry) => entry.command === "node")
+    || oneTokenNodeResult.result !== "failed"
+    || !oneTokenNodeResult.reasonCodes.includes("workflow-shape")
+    || !oneTokenNodeResult.reasonCodes.includes("lane-not-in-full")
+    || !oneTokenNodeResult.reasonCodes.includes("seal-command")) {
+    fail(`self-test one-token node terminal expected terminal retention and continued rules, got ${oneTokenNodeResult.reasonCodes.join(",")}`);
+  }
+  const undefinedScript = structuredClone(passing);
+  undefinedScript.resolution.errors.push({ code: "undefined-npm-script", message: "fixture undefined script" });
+  const combinedResult = evaluateCoverage(malformedCollections);
+  if (combinedResult.result !== "failed" || !combinedResult.reasonCodes.includes("manifest-shape") || !combinedResult.reasonCodes.includes("workflow-shape")) {
+    fail(`self-test malformed collections expected manifest-shape and workflow-shape, got ${combinedResult.reasonCodes.join(",")}`);
+  }
+
+  return {
+    schema: "sdt-g40-ci-coverage-self-test/v1",
+    pass: { result: "passed", reasonCodes: passResult.reasonCodes },
+    failures: [
+      selfTestFailure(missingVerifyEnv, "verify-needs-env", "workflow-shape"),
+      selfTestFailure(duplicateLane, "duplicate-lane", "manifest-shape"),
+      selfTestFailure(missingFull, "missing-full-workflow", "workflow-shape"),
+      { label: "malformed-collections", reportedReasonCodes: combinedResult.reasonCodes },
+      { label: "one-token-node-terminal", reportedReasonCodes: oneTokenNodeResult.reasonCodes },
+      selfTestFailure(undefinedScript, "undefined-npm-script", "undefined-npm-script"),
+    ],
+  };
 }
 
 function parseArguments(argv) {
-  const options = { baseline: DEFAULT_BASELINE, workflow: DEFAULT_WORKFLOW, packagePath: DEFAULT_PACKAGE, manifest: DEFAULT_MANIFEST, allowlist: DEFAULT_ALLOWLIST, selfTest: false };
+  const options = { root: process.cwd(), selfTest: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (argument === "--baseline") options.baseline = argv[++index];
-    else if (argument === "--workflow") options.workflow = argv[++index];
-    else if (argument === "--package") options.packagePath = argv[++index];
-    else if (argument === "--manifest") options.manifest = argv[++index];
-    else if (argument === "--allowlist") options.allowlist = argv[++index];
+    if (argument === "--root") options.root = argv[++index];
     else if (argument === "--self-test") options.selfTest = true;
     else fail(`unknown argument ${argument}`);
   }
+  if (options.root === "") fail("empty option value");
   return options;
-}
-
-function extractJobBlocks(workflow) {
-  const jobsOffset = workflow.indexOf("\njobs:\n");
-  if (jobsOffset < 0) fail("workflow has no jobs section");
-  const jobsText = workflow.slice(jobsOffset + "\njobs:\n".length);
-  const matches = [...jobsText.matchAll(/^ {2}([A-Za-z0-9_-]+):\s*(?:#.*)?$/gm)];
-  if (matches.length === 0) fail("workflow has no jobs");
-  return new Map(matches.map((match, index) => {
-    const end = matches[index + 1]?.index ?? jobsText.length;
-    return [match[1], jobsText.slice(match.index, end)];
-  }));
-}
-
-function assertPullRequestReachability(workflow, jobs, manifest) {
-  if (!/^ {2}pull_request:\s*$/m.test(workflow)) fail("ci.yml no longer has a pull_request trigger");
-  if (/^\s+schedule:\s*$/m.test(workflow)) fail("scheduled execution is not allowed in the pull-request workflow");
-  if (!/^concurrency:\s*$/m.test(workflow)) fail("ci.yml must define a concurrency group");
-  if (!/cancel-in-progress:\s*true/m.test(workflow)) fail("ci.yml concurrency must cancel superseded runs");
-  const ignored = manifest.pathsIgnore ?? [];
-  if (!Array.isArray(ignored) || ignored.length === 0) fail("manifest.pathsIgnore must be non-empty");
-  for (const path of ignored) {
-    const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (!new RegExp(`^\\s+-\\s+${escaped}\\s*$`, "m").test(workflow)) fail(`ci.yml is missing guarded paths-ignore entry ${path}`);
-  }
-  for (const [name, block] of jobs) {
-    if (/github\.event_name\s*(?:==|!=)\s*['"]schedule['"]/.test(block)) fail(`${name} makes PR reachability conditional on schedule`);
-  }
-}
-
-function assertVerifyAggregation(jobs, expectedPrJobs) {
-  const verify = jobs.get("verify");
-  if (verify === undefined) fail("aggregate job named verify is missing");
-  if (!/^ {4}if:\s*\$\{\{\s*always\(\)\s*\}\}\s*$/m.test(verify)) fail("verify must use always() so failed or skipped dependencies are observed");
-  const needsMatch = verify.match(/^ {4}needs:\s*\[([^\]]+)\]\s*$/m);
-  if (needsMatch === null) fail("verify needs must be an explicit list");
-  const actualNeeds = new Set(needsMatch[1].split(",").map((entry) => entry.trim()).filter(Boolean));
-  const expectedNeeds = new Set(expectedPrJobs);
-  const missing = [...expectedNeeds].filter((name) => !actualNeeds.has(name));
-  const unexpected = [...actualNeeds].filter((name) => !expectedNeeds.has(name));
-  if (missing.length > 0 || unexpected.length > 0) fail(`verify needs mismatch; missing=[${missing.join(", ")}], unexpected=[${unexpected.join(", ")}]`);
-  if (!/G40_VERIFY_NEEDS_JSON:\s*\$\{\{\s*toJson\(needs\)\s*\}\}/.test(verify)) fail("verify does not pass the complete needs result set to its aggregator checker");
-  if (!/node scripts\/g40-verify-needs\.mjs/.test(verify)) fail("verify does not execute the dependency-result checker");
-}
-
-function inventoryEntries(document, label) {
-  object(document, label);
-  if (document.schema !== "sdt-g40-ci-step-inventory/v1") fail(`${label} has an unexpected schema`);
-  if (!Array.isArray(document.leafCommands) || document.leafCommands.length === 0) fail(`${label}.leafCommands must be a non-empty array`);
-  const entries = new Map();
-  for (const entry of document.leafCommands) {
-    object(entry, `${label}.leafCommands[]`);
-    if (typeof entry.id !== "string" || entry.id.length === 0 || typeof entry.command !== "string") fail(`${label} has an invalid command entry`);
-    if (entries.has(entry.id)) fail(`${label} repeats command id ${entry.id}`);
-    entries.set(entry.id, entry);
-  }
-  return entries;
-}
-
-function normalizeCommand(command) {
-  return command.trim().split(/\s+/).join(" ");
-}
-
-function deriveCosmosHistoryFromBaseline(baseline) {
-  if (baseline === null || typeof baseline !== "object" || !Array.isArray(baseline.leafCommands)) {
-    fail("baseline must contain a leafCommands array");
-  }
-  const candidates = baseline.leafCommands.filter((entry) =>
-    entry !== null && typeof entry === "object" &&
-    entry.type === "workflow-run" &&
-    typeof entry.command === "string" &&
-    Array.isArray(entry.sources) &&
-    entry.sources.some((source) => source?.job === "cosmos-emulator") &&
-    normalizeCommand(entry.command).startsWith("git fetch --no-tags origin ")
-  );
-  if (candidates.length !== 1) fail(`baseline must identify exactly one Cosmos retained-history fetch, found ${candidates.length}`);
-  const normalizedCommand = normalizeCommand(candidates[0].command);
-  const shas = normalizedCommand.match(/\b[0-9a-f]{40}\b/g) ?? [];
-  if (shas.length < 3) fail("baseline Cosmos retained-history fetch must contain at least three object IDs");
-  return {
-    normalizedCommand,
-    pinnedSha: shas[2],
-  };
-}
-
-function assertCosmosHistoryMatchesBaseline(manifestCommand, baselineHistory) {
-  const normalizedCommand = normalizeCommand(manifestCommand);
-  if (normalizedCommand !== baselineHistory.normalizedCommand) {
-    fail("cosmos-retained-history command must exactly match the historical baseline leaf text");
-  }
-  return baselineHistory.pinnedSha;
-}
-
-function canonicalEntry(entry) {
-  return JSON.stringify({
-    id: entry.id,
-    type: entry.type,
-    command: entry.command,
-    env: entry.env ?? null,
-    commandId: entry.commandId ?? null,
-    lane: entry.lane ?? null,
-    tier: entry.tier ?? null,
-  });
-}
-
-function digestEntries(entries) {
-  return createHash("sha256")
-    .update(entries
-      .slice()
-      .sort((left, right) => left.id.localeCompare(right.id))
-      .map(canonicalEntry)
-      .join("\n"))
-    .digest("hex");
-}
-
-function digestIds(entries) {
-  return createHash("sha256")
-    .update(entries.slice().map((entry) => entry.id).sort().join("\n"))
-    .digest("hex");
-}
-
-function loadAllowlist(path) {
-  let allowlist;
-  let allowlistText;
-  try {
-    allowlistText = readFileSync(path, "utf8");
-    allowlist = JSON.parse(allowlistText);
-  } catch (error) {
-    fail(`cannot read allowlist ${path}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  object(allowlist, "allowlist");
-  if (/\b[0-9a-f]{40}\b|https?:\/\//i.test(allowlistText)) fail("allowlist cannot authorize SHA or URL rewrites");
-  if (allowlist.schema !== "sdt-g40-ci-step-inventory-allowlist/v1") fail("allowlist has an unexpected schema");
-  if (allowlist.baselineRef !== "origin/main") fail("allowlist must be reviewed against origin/main");
-  if (typeof allowlist.reviewedRule !== "string" || allowlist.reviewedRule.length === 0) fail("allowlist.reviewedRule is required");
-  for (const key of ["missingHistoricalWorkflow", "addedManifestCommands", "addedManifestClosure", "addedWorkflowSteps"]) {
-    object(allowlist[key], `allowlist.${key}`);
-    if (!Number.isInteger(allowlist[key].count) || allowlist[key].count < 0) fail(`allowlist.${key}.count must be a non-negative integer`);
-    for (const digestKey of ["entrySetSha256", "idSetSha256"]) {
-      if (typeof allowlist[key][digestKey] !== "string" || !/^[0-9a-f]{64}$/.test(allowlist[key][digestKey])) {
-        fail(`allowlist.${key}.${digestKey} must be a SHA-256 digest`);
-      }
-    }
-    if (typeof allowlist[key].reason !== "string" || allowlist[key].reason.length === 0) fail(`allowlist.${key}.reason is required`);
-  }
-  return allowlist;
-}
-
-function assertAllowlistedExactRewrite(allowlist, missing, additions) {
-  const sections = [
-    ["missingHistoricalWorkflow", missing, "workflow-run"],
-    ["addedManifestCommands", additions.filter((entry) => entry.type === "manifest-command"), "manifest-command"],
-    ["addedManifestClosure", additions.filter((entry) => ["npm-script", "npm-workspace-invocation", "npm-workspace-script"].includes(entry.type)), null],
-    ["addedWorkflowSteps", additions.filter((entry) => entry.type === "workflow-run"), "workflow-run"],
-  ];
-  for (const [key, actual, expectedType] of sections) {
-    const section = allowlist[key];
-    if (expectedType !== null && actual.some((entry) => entry.type !== expectedType)) fail(`${key} contains an unexpected entry type`);
-    if (actual.length !== section.count) fail(`${key} count mismatch: expected ${section.count}, got ${actual.length}`);
-    const actualEntryDigest = digestEntries(actual);
-    if (actualEntryDigest !== section.entrySetSha256) fail(`${key} exact command-text digest mismatch: expected ${section.entrySetSha256}, got ${actualEntryDigest}`);
-    const actualIdDigest = digestIds(actual);
-    if (actualIdDigest !== section.idSetSha256) fail(`${key} entry identity digest mismatch: expected ${section.idSetSha256}, got ${actualIdDigest}`);
-  }
-  const expectedMissingTypes = new Set(["workflow-run"]);
-  if (new Set(missing.map((entry) => entry.type)).size !== expectedMissingTypes.size || !missing.every((entry) => expectedMissingTypes.has(entry.type))) {
-    fail("historical inventory changes outside the reviewed workflow-to-manifest rewrite are not allowlisted");
-  }
-  const expectedAdditionCount = allowlist.addedManifestCommands.count + allowlist.addedManifestClosure.count + allowlist.addedWorkflowSteps.count;
-  if (additions.length !== expectedAdditionCount) fail(`addition count mismatch: expected ${expectedAdditionCount}, got ${additions.length}`);
-  return {
-    schema: allowlist.schema,
-    missingHistoricalWorkflow: allowlist.missingHistoricalWorkflow.count,
-    addedManifestCommands: allowlist.addedManifestCommands.count,
-    addedManifestClosure: allowlist.addedManifestClosure.count,
-    addedWorkflowSteps: allowlist.addedWorkflowSteps.count,
-    exactCommandText: true,
-  };
-}
-
-function loadManifest(path, baselineHistory) {
-  let manifest;
-  try {
-    manifest = JSON.parse(readFileSync(path, "utf8"));
-  } catch (error) {
-    fail(`cannot read manifest ${path}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  object(manifest, "manifest");
-  if (manifest.schema !== "sdt-ci-lanes/v1") fail("manifest schema must be sdt-ci-lanes/v1");
-  object(manifest.tiers, "manifest.tiers");
-  for (const tier of ["pr", "local", "full"]) object(manifest.tiers[tier], `manifest.tiers.${tier}`);
-  if (!Array.isArray(manifest.tiers.full.includes) || !manifest.tiers.full.includes.includes("pr") || !manifest.tiers.full.includes.includes("local")) fail("full tier must include pr and local");
-  if (!Array.isArray(manifest.lanes) || manifest.lanes.length === 0) fail("manifest.lanes must be non-empty");
-  const laneNames = new Set();
-  const commandIds = new Set();
-  const commandTiers = new Map();
-  for (const lane of manifest.lanes) {
-    object(lane, "manifest.lanes[]");
-    if (typeof lane.name !== "string" || lane.name.length === 0) fail("every lane needs a name");
-    if (laneNames.has(lane.name)) fail(`duplicate lane ${lane.name}`);
-    laneNames.add(lane.name);
-    if (!["pr", "local"].includes(lane.tier)) fail(`${lane.name} must have exactly one runnable tier: pr or local`);
-    if (!Array.isArray(lane.commands) || lane.commands.length === 0) fail(`${lane.name} must have runnable commands`);
-    for (const command of lane.commands) {
-      object(command, `${lane.name}.commands[]`);
-      if (typeof command.id !== "string" || command.id.length === 0) fail(`${lane.name} has a command without an id`);
-      if (typeof command.command !== "string" || command.command.trim().length === 0) fail(`${lane.name}/${command.id} has an empty command`);
-      if (commandIds.has(command.id)) fail(`command id ${command.id} occurs more than once`);
-      commandIds.add(command.id);
-      const key = command.command.trim();
-      const priorTier = commandTiers.get(key);
-      if (priorTier !== undefined && priorTier !== lane.tier) fail(`command '${key}' is assigned to both ${priorTier} and ${lane.tier}`);
-      commandTiers.set(key, lane.tier);
-    }
-  }
-  if (!Array.isArray(manifest.requiredLanes) || manifest.requiredLanes.length === 0) fail("manifest.requiredLanes must be non-empty");
-  const missingRequired = manifest.requiredLanes.filter((name) => !laneNames.has(name));
-  if (missingRequired.length > 0) fail(`manifest dropped required lane(s): ${missingRequired.join(", ")}`);
-  const cosmosLane = manifest.lanes.find((lane) => lane.name === "cosmos");
-  const retainedHistory = cosmosLane?.commands?.find((command) => command.id === "cosmos-retained-history");
-  if (retainedHistory === undefined || typeof retainedHistory.command !== "string") fail("cosmos-retained-history command is missing");
-  const pinnedCosmosHistorySha = assertCosmosHistoryMatchesBaseline(retainedHistory.command, baselineHistory);
-  return { manifest, commandTiers, pinnedCosmosHistorySha };
-}
-
-function assertManifestScripts(manifest, packageDocument) {
-  const scripts = packageDocument.scripts;
-  if (scripts === null || typeof scripts !== "object" || Array.isArray(scripts)) fail("package.json scripts must be an object");
-  const missing = [];
-  for (const lane of manifest.lanes) {
-    for (const command of lane.commands) {
-      for (const match of command.command.matchAll(/\bnpm\s+run\s+([A-Za-z0-9:_-]+)/g)) {
-        if (typeof scripts[match[1]] !== "string") missing.push(`${lane.name}/${command.id}: npm run ${match[1]}`);
-      }
-      if (/\bnpm\s+test\b/.test(command.command) && typeof scripts.test !== "string") missing.push(`${lane.name}/${command.id}: npm test`);
-    }
-  }
-  if (missing.length > 0) fail(`manifest invokes undefined package scripts: ${missing.join(", ")}`);
-}
-
-function assertWorkflowUsesManifest(workflow, manifest) {
-  const jobs = extractJobBlocks(workflow);
-  const prLanes = manifest.lanes.filter((lane) => lane.tier === "pr");
-  const expectedJobs = new Set(["ci-foundation", "ci-pr-cheap"]);
-  for (const lane of prLanes) {
-    if (!workflow.includes(`node scripts/ci-local.mjs --lane ${lane.name} --ci`)) fail(`ci.yml does not execute PR lane ${lane.name} from the manifest`);
-  }
-  if (workflow.includes("--full") || workflow.includes("--tier local")) fail("ci.yml must not execute local/full lanes");
-  assertPullRequestReachability(workflow, jobs, manifest);
-  assertVerifyAggregation(jobs, [...expectedJobs]);
-  return { jobs, expectedJobs: [...expectedJobs] };
-}
-
-function runSelfTest(options) {
-  const baseline = JSON.parse(readFileSync(options.baseline, "utf8"));
-  const baselineHistory = deriveCosmosHistoryFromBaseline(baseline);
-  const { manifest, pinnedCosmosHistorySha } = loadManifest(options.manifest, baselineHistory);
-  const allowlist = loadAllowlist(options.allowlist);
-  if (!manifest.lanes.some((lane) => lane.tier === "pr") || !manifest.lanes.some((lane) => lane.tier === "local")) fail("self-test requires PR and local lanes");
-  process.stdout.write(`${JSON.stringify({ schema: "sdt-g40-ci-coverage-self-test/v1", lanes: manifest.lanes.length, allowlist: allowlist.schema, pinnedCosmosHistorySha, verified: ["one-tier-per-command", "runnable-local-lane", "full-includes-pr-and-local", "baseline-derived-cosmos-history"] }, null, 2)}\n`);
 }
 
 function main() {
   const options = parseArguments(process.argv.slice(2));
   if (options.selfTest) {
-    runSelfTest(options);
+    process.stdout.write(`${JSON.stringify(runSelfTest(), null, 2)}\n`);
     return;
   }
-  const workflow = readFileSync(options.workflow, "utf8");
-  const packageText = readFileSync(options.packagePath, "utf8");
-  const packageDocument = JSON.parse(packageText);
-  const baseline = JSON.parse(readFileSync(options.baseline, "utf8"));
-  const baselineHistory = deriveCosmosHistoryFromBaseline(baseline);
-  const allowlist = loadAllowlist(options.allowlist);
-  const { manifest, commandTiers, pinnedCosmosHistorySha } = loadManifest(options.manifest, baselineHistory);
-  assertManifestScripts(manifest, packageDocument);
-  const current = generateInventory({
-    workflowText: workflow,
-    packageText,
-    workspacePackageTexts: readWorkspacePackageTexts(packageText, (path) => readFileSync(path, "utf8")),
-    manifestText: readFileSync(options.manifest, "utf8"),
-    source: { workflow: options.workflow, packageJson: options.packagePath, ref: "working-tree" },
-  });
-  const baselineEntries = inventoryEntries(baseline, "baseline");
-  const currentEntries = inventoryEntries(current, "current");
-  const missing = [...baselineEntries.values()].filter((entry) => !currentEntries.has(entry.id));
-  const additions = [...currentEntries.values()].filter((entry) => !baselineEntries.has(entry.id));
-  const allowlistResult = assertAllowlistedExactRewrite(allowlist, missing, additions);
-  const { jobs, expectedJobs } = assertWorkflowUsesManifest(workflow, manifest);
-  const result = {
-    schema: "sdt-g40-ci-coverage-check/v2",
-    tierCounts: Object.fromEntries(["pr", "local"].map((tier) => [tier, manifest.lanes.filter((lane) => lane.tier === tier).length])),
-    manifestCommandCount: commandTiers.size,
-    baselineLeafCommandCount: baselineEntries.size,
-    currentLeafCommandCount: currentEntries.size,
-    missing,
-    additions,
-    allowlist: allowlistResult,
-    pinnedCosmosHistorySha,
-    prJobs: expectedJobs,
-    workflowJobs: [...jobs.keys()],
+  const checked = checkCurrentTree(options);
+  const output = {
+    ...checked.result,
+    selfTest: false,
+    graph: {
+      workflows: checked.graph.workflows,
+      packages: checked.graph.packages,
+      lanes: checked.graph.manifest.lanes,
+    },
   };
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+  if (checked.result.failures.length > 0) process.exitCode = 1;
 }
 
 try {
-  main();
+  if (process.argv[1] !== undefined && import.meta.url === new URL(`file://${process.argv[1]}`).href) main();
 } catch (error) {
   process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
   process.exitCode = 1;
