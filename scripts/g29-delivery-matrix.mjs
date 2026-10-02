@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const path = resolve(process.cwd(), "docs/SDT-G29-delivery-matrix.json");
+const path = resolve(process.cwd(), "contracts/g29-delivery-matrix.json");
 const required = [
   "immediate-enabled-allowed",
   "immediate-enabled-not-allowed",
