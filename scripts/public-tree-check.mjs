@@ -9,21 +9,7 @@ import { dirname, join, resolve } from "node:path";
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const schema = "sdt-g105-public-tree/v1";
 
-const artifactAllowlist = new Set([
-  ".artifacts/sdt-g58-w102-safe-proof-cohort.json",
-  ".artifacts/sdt-g58-w102-safe-proof-cohort.log",
-  ".artifacts/sdt-g58-w103-red-guard.json",
-  ".artifacts/sdt-g58-w106-red-baseline.json",
-  ".artifacts/sdt-g58-w109-ac5-single.json",
-  ".artifacts/sdt-g58-w110-red-guard.json",
-  ".artifacts/sdt-g58-w112-paced-cohort.json",
-  ".artifacts/sdt-g58-w118-ac2-paced-cohort.json",
-  ".artifacts/sdt-g58-w118-ac6-e2e.json",
-  ".artifacts/sdt-g58-w119-safe-convergence-diagnosis-guard.json",
-  ".artifacts/sdt-g58-w96-red-guard.json",
-  ".artifacts/sdt-g58-w99-paced-cohort.json",
-  ".artifacts/wrangler.g65-w155-c.jsonc",
-]);
+const artifactAllowlist = new Set();
 
 const authorityExceptions = new Set();
 const legacyPinFile = ["host", "pin"].join("-") + ".json";

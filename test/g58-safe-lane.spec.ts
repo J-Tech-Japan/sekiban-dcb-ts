@@ -222,8 +222,18 @@ describe("SDT-G58 safe-lane and live-projection reliability", () => {
       expect.objectContaining({ viewId: "ReservationProjector", safeHead: sourceEvent.suid }),
     ]));
     expect(direct.liveProjections).toEqual(expect.arrayContaining([
-      expect.objectContaining({ projectorId: "RoomProjector", head: sourceEvent.suid }),
-      expect.objectContaining({ projectorId: "ReservationProjector", head: sourceEvent.suid }),
+      expect.objectContaining({
+        projectorId: "RoomProjector",
+        head: sourceEvent.suid,
+        pollStatus: "never-invoked",
+        pollReason: "scheduled_live_poll_has_not_run",
+      }),
+      expect.objectContaining({
+        projectorId: "ReservationProjector",
+        head: sourceEvent.suid,
+        pollStatus: "never-invoked",
+        pollReason: "scheduled_live_poll_has_not_run",
+      }),
     ]));
 
     const workerFetch = primaryWorker.fetch;
@@ -328,6 +338,33 @@ describe("SDT-G58 safe-lane and live-projection reliability", () => {
       settled_frontier_suid: "",
       observed_at: secondObservedAt,
     });
+  });
+
+  it("aggregates each projector's live head from its minimum checkpoint across two tags", async () => {
+    const serviceId = `g58-minimum-head-${crypto.randomUUID()}`;
+    const earlierHead = g32Suid(3);
+    const laterHead = g32Suid(4);
+    const rows = [
+      ["tag-a:RoomProjector", laterHead, 200],
+      ["tag-b:RoomProjector", earlierHead, 100],
+      ["tag-a:ReservationProjector", laterHead, 200],
+      ["tag-b:ReservationProjector", earlierHead, 100],
+    ] as const;
+    await pipeline().batch(rows.map(([projectionId, lastSuid, updatedAt]) => pipeline().prepare(
+      `INSERT INTO serialized_dcb_projection_checkpoints
+         (service_id, projection_id, last_suid, state_json, version, updated_at)
+       VALUES (?, ?, ?, '{}', 1, ?)`,
+    ).bind(serviceId, projectionId, lastSuid, updatedAt)));
+
+    const health = await readMeetingRoomHealth({
+      D1: pipeline(),
+      D1_MV: materializedViews(),
+      SDT_SERVICE_ID: serviceId,
+    }, serviceId, 300);
+    expect(health.liveProjections).toEqual(expect.arrayContaining([
+      expect.objectContaining({ projectorId: "RoomProjector", head: earlierHead, lastPollAt: null }),
+      expect.objectContaining({ projectorId: "ReservationProjector", head: earlierHead, lastPollAt: null }),
+    ]));
   });
 
   it("decays a retired lag estimate back to the published 20-second safe-window floor after one decay interval when arrivals stop", async () => {

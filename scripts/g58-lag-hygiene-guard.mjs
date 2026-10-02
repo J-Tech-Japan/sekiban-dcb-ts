@@ -5,18 +5,17 @@
  * The oracle is the D1-backed safe-lane fixture: once the last arrival is
  * older than its estimate, the current estimate must decay to zero and the
  * wire-visible SafeWindow must return to the published 20-second floor. The
- * source mutation removes that decay; the oracle must then go red. The full
- * child-process output is retained as a reviewable red receipt.
+ * source mutation removes that decay; the oracle must then go red.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const sourceFile = "packages/dcb-runtime/src/safeWindow.ts";
-const reportFile = ".artifacts/ci-local/g58-lag-hygiene.json";
 const mutation = Object.freeze({
+  label: "remove-linear-lag-decay",
   from: "  return Math.max(0, estimateMs - elapsed);",
   to: "  return Math.max(0, estimateMs);",
   oracle: "decays a retired lag estimate back to the published 20-second safe-window floor after one decay interval when arrivals stop",
@@ -75,19 +74,7 @@ function main() {
   if (readFileSync(absoluteSource, "utf8") !== original) fail("source mutation was not restored");
   if (mutant.exitCode === 0) fail("stale-estimate mutation unexpectedly remained green");
 
-  mkdirSync(resolve(root, ".artifacts/ci-local"), { recursive: true });
-  const evidence = {
-    schema: "sdt-g58-ac4-lag-hygiene/v1",
-    status: "red-mutant",
-    sourceFile,
-    mutation: { from: mutation.from, to: mutation.to },
-    oracle: { testFile: "test/g58-safe-lane.spec.ts", testName: mutation.oracle },
-    baseline,
-    mutant,
-    restored: true,
-  };
-  writeFileSync(resolve(root, reportFile), `${JSON.stringify(evidence, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ guard: "g58-lag-hygiene", status: "pass", report: reportFile, mutantExitCode: mutant.exitCode })}\n`);
+  process.stdout.write(`${JSON.stringify({ check: "g58-lag-hygiene", mutants: [{ label: mutation.label, baselineExitCode: baseline.exitCode, mutantExitCode: mutant.exitCode, result: "red" }] })}\n`);
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();

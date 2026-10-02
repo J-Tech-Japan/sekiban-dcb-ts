@@ -1,48 +1,32 @@
 #!/usr/bin/env node
-/**
- * Local SDT-G62 AC1–AC3 guard.
- *
- * The pre-fix mode is run once on the preserved current-main implementation
- * and records the real reconciler's red AC1 receipt. The normal mode runs the
- * green runtime oracles and then applies temporary production mutations:
- * restoring discard-the-whole-pass, removing the local contiguity check, and
- * omitting the downstream cursor-membership gate.
- * Each mutant must make its focused oracle red, and every source mutation is
- * restored in a finally block.
- */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+
+import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
 const vitest = resolve(root, "node_modules/vitest/vitest.mjs");
-const sourceFile = "packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler.ts";
 const testFile = "test/g62-global-completeness.spec.ts";
-const historicalRedReceipt = "test/fixtures/g62-ac1-red-before-green.json";
-const redReceipt = "test/fixtures/g62-ac1-real-red-before-green.json";
-const greenReceipt = "test/fixtures/g62-w141-ac1-ac3-green.json";
-const mutantReceipt = "test/fixtures/g62-w141-mutants-red.json";
-
 const mutations = Object.freeze([
   {
-    name: "restore-discard-the-whole-pass",
-    sourceFile,
+    label: "restore-discard-the-whole-pass",
+    sourceFile: "packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler.ts",
     from: "      this.assertStartPartitionsRetained(snapshots, endSnapshots);",
     to: "      this.assertSnapshotUniverseUnchanged(snapshots, endSnapshots);",
-    oracle: "AC1: sustained new source-partition stream settles the start-of-pass frontier",
-    expectedReason: "source_partition_set_changed_during_scan",
+    pattern: "AC1: sustained new source-partition stream settles the start-of-pass frontier",
+    reason: "the start-of-pass frontier must survive a sustained new partition stream",
   },
   {
-    name: "remove-start-partition-contiguity-check",
-    sourceFile,
+    label: "remove-start-partition-contiguity-check",
+    sourceFile: "packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler.ts",
     from: "if (obligation.obligationSequence !== afterSequence + 1 || obligation.obligationSequence > snapshot.upperBoundSequence)",
     to: "if (obligation.obligationSequence > snapshot.upperBoundSequence)",
-    oracle: "AC3: a gap in a start-of-pass partition prevents frontier advancement",
-    expectedReason: "source_page_sequence_outside_snapshot",
+    pattern: "AC3: a gap in a start-of-pass partition prevents frontier advancement",
+    reason: "a start-of-pass partition gap must block frontier advancement",
   },
   {
-    name: "omit-delivery-cursor-membership-check",
+    label: "omit-delivery-cursor-membership-check",
     sourceFile: "packages/dcb-runtime/src/downstream/DownstreamAdapter.ts",
     from: `new GlobalCompletenessReconciler(env.D1!, env.TAG!).coverageForObligation(
           message.serviceId,
@@ -51,187 +35,101 @@ const mutations = Object.freeze([
           arrivedAt,
         )`,
     to: "new GlobalCompletenessReconciler(env.D1!, env.TAG!).coverage(message.serviceId, arrivedAt)",
-    oracle: "AC2: cursor-aware admission blocks a committed post-snapshot obligation until a later scan includes it",
-    expectedReason: "obligation_not_in_settled_cursor",
+    pattern: "AC2: cursor-aware admission blocks a committed post-snapshot obligation until a later scan includes it",
+    reason: "delivery admission must verify the obligation against the settled cursor",
   },
 ]);
 
 function fail(message) {
-  throw new Error(`SDT-G62 local guard: ${message}`);
+  throw new Error(`SDT-G62 local check failed: ${message}`);
 }
 
-function runVitest(testNamePattern, label) {
-  const args = [
+function read(path) {
+  return readFileSync(resolve(root, path), "utf8");
+}
+
+function replaceOnce(source, mutation) {
+  const count = source.split(mutation.from).length - 1;
+  if (count !== 1) fail(`${mutation.label} anchor expected once, found ${count}`);
+  return source.replace(mutation.from, mutation.to);
+}
+
+function runVitest(pattern, label) {
+  const result = spawnSync(process.execPath, [
     vitest,
     "run",
     "--config", "vitest.config.ts",
     "--no-cache",
     "--maxWorkers=1",
     testFile,
-    "--testNamePattern", testNamePattern,
-  ];
-  const result = spawnSync(process.execPath, args, {
+    "--testNamePattern", pattern,
+  ], {
     cwd: root,
     encoding: "utf8",
-    env: { ...process.env, CI: "1" },
+    env: { ...process.env, CI: "1", FORCE_COLOR: "0" },
+    maxBuffer: 20 * 1024 * 1024,
   });
   return {
     label,
-    command: [process.execPath, ...args].join(" "),
-    status: result.status ?? 1,
+    exitCode: result.status ?? 1,
     signal: result.signal,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-    output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
+    stdoutBytes: Buffer.byteLength(result.stdout ?? ""),
+    stderrBytes: Buffer.byteLength(result.stderr ?? ""),
   };
-}
-
-function writeReceipt(relativePath, receipt) {
-  const path = resolve(root, relativePath);
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
-}
-
-function extractAc1Observations(result) {
-  const line = `${result.stdout}\n${result.stderr}`.split("\n")
-    .find((candidate) => candidate.startsWith("G62_AC1_OBSERVATIONS "));
-  if (line === undefined) return null;
-  try {
-    return JSON.parse(line.slice("G62_AC1_OBSERVATIONS ".length));
-  } catch {
-    return { parseError: true, raw: line };
-  }
-}
-
-function occurrences(source, fragment) {
-  return source.split(fragment).length - 1;
-}
-
-function mutate(source, mutation) {
-  const count = occurrences(source, mutation.from);
-  if (count !== 1) fail(`${mutation.name} anchor expected once, found ${count}`);
-  return source.replace(mutation.from, mutation.to);
 }
 
 function requirePass(result) {
-  if (result.status === 0) return;
-  fail(`${result.label} unexpectedly failed:\n${result.output}`);
+  if (result.exitCode === 0) return;
+  fail(`${result.label} unexpectedly failed (exit ${result.exitCode})`);
 }
 
 function requireRed(result, mutation) {
-  if (result.status !== 0) return;
-  fail(`${mutation.name} was vacuous: ${mutation.expectedReason} oracle stayed green`);
+  if (result.exitCode !== 0) return;
+  fail(`${mutation.label} unexpectedly stayed green: ${mutation.reason}`);
 }
 
-function selfTest() {
+function assertAnchors() {
+  const test = read(testFile);
   for (const mutation of mutations) {
-    const source = readFileSync(resolve(root, mutation.sourceFile), "utf8");
-    mutate(source, mutation);
+    replaceOnce(read(mutation.sourceFile), mutation);
+    if (!test.includes(mutation.pattern)) fail(`${mutation.label} oracle is missing`);
   }
-  const test = readFileSync(resolve(root, testFile), "utf8");
-  if (!test.includes("AC1: sustained new source-partition stream settles the start-of-pass frontier")) {
-    fail("AC1 runtime oracle is missing");
+  if (!test.includes("G77 P14: fresh certificate must not pair with an older incompatible snapshot")) {
+    fail("fresh-certificate compatibility case is missing");
   }
-  if (!test.includes("AC3: a gap in a start-of-pass partition prevents frontier advancement")) {
-    fail("AC3 runtime oracle is missing");
-  }
-  if (!test.includes("AC2: cursor-aware admission blocks a committed post-snapshot obligation until a later scan includes it")) {
-    fail("AC2 cursor-aware runtime oracle is missing");
-  }
-  process.stdout.write(`${JSON.stringify({ selfTest: "g62-anchors-unique", mutations: mutations.map(({ name }) => name)})}\n`);
-}
-
-function preFix() {
-  const path = resolve(root, sourceFile);
-  const current = readFileSync(path, "utf8");
-  const currentMain = spawnSync("git", ["show", `origin/main:${sourceFile}`], {
-    cwd: root,
-    encoding: "utf8",
-  });
-  if (currentMain.status !== 0 || currentMain.stdout.length === 0) {
-    fail(`could not read exact origin/main source for AC1 red reproduction: ${currentMain.stderr}`);
-  }
-  writeFileSync(path, currentMain.stdout, "utf8");
-  let result;
-  try {
-    result = runVitest(mutations[0].oracle, "AC1 exact origin/main red reproduction");
-  } finally {
-    writeFileSync(path, current, "utf8");
-  }
-  const observations = extractAc1Observations(result);
-  const receipt = {
-    schema: "sdt-g62-w141-ac1-real-red-receipt/v1",
-    status: result.status === 0 ? "unexpected-green" : "red-before-green",
-    expectedFailure: result.status !== 0,
-    sourceRef: "origin/main",
-    sourceFile,
-    command: result.command,
-    exitCode: result.status,
-    signal: result.signal,
-    observations,
-    stdout: result.stdout,
-    stderr: result.stderr,
-  };
-  writeReceipt(redReceipt, receipt);
-  if (result.status === 0) fail("exact origin/main AC1 reproduction was unexpectedly green; red receipt is not valid");
-  process.stdout.write(`${JSON.stringify({ result: "g62-ac1-real-red-before-green", receipt: redReceipt, observations, historicalRedReceipt })}\n`);
 }
 
 function runMutation(mutation) {
-  const path = resolve(root, mutation.sourceFile);
-  const original = readFileSync(path, "utf8");
+  const absolutePath = resolve(root, mutation.sourceFile);
+  const original = read(mutation.sourceFile);
+  const baseline = runVitest(mutation.pattern, `${mutation.label} baseline`);
+  requirePass(baseline);
+  let mutant;
   try {
-    requirePass(runVitest(mutation.oracle, `${mutation.name} baseline`));
-    writeFileSync(path, mutate(original, mutation), "utf8");
-    const mutant = runVitest(mutation.oracle, `${mutation.name} mutant`);
-    requireRed(mutant, mutation);
-    return {
-      name: mutation.name,
-      status: "red",
-      expectedReason: mutation.expectedReason,
-      command: mutant.command,
-      exitCode: mutant.status,
-      stdout: mutant.stdout,
-      stderr: mutant.stderr,
-    };
+    writeFileSync(absolutePath, replaceOnce(original, mutation), "utf8");
+    mutant = runVitest(mutation.pattern, `${mutation.label} mutant`);
   } finally {
-    writeFileSync(path, original, "utf8");
+    writeFileSync(absolutePath, original, "utf8");
   }
-}
-
-function green() {
-  const priorRed = resolve(root, redReceipt);
-  if (!existsSync(priorRed)) fail(`missing preserved red receipt ${redReceipt}`);
-  const prior = JSON.parse(readFileSync(priorRed, "utf8"));
-  if (prior.status !== "red-before-green" || prior.expectedFailure !== true || prior.exitCode === 0) {
-    fail(`invalid preserved red receipt ${redReceipt}`);
-  }
-
-  const greenResult = runVitest("AC1: sustained new source-partition stream settles the start-of-pass frontier|AC2: cursor-aware admission blocks a committed post-snapshot obligation until a later scan includes it|AC3: a gap in a start-of-pass partition prevents frontier advancement", "G62 AC1/AC2/AC3 green oracles");
-  requirePass(greenResult);
-  const rows = mutations.map(runMutation);
-  writeReceipt(greenReceipt, {
-    schema: "sdt-g62-w141-ac1-ac3-green-receipt/v1",
-    status: "green",
-    command: greenResult.command,
-    exitCode: greenResult.status,
-    stdout: greenResult.stdout,
-    stderr: greenResult.stderr,
-    preservedRedReceipt: redReceipt,
-    mutantReceipts: mutantReceipt,
-  });
-  writeReceipt(mutantReceipt, {
-    schema: "sdt-g62-w141-mutant-receipts/v1",
-    status: "all-required-mutants-red",
-    rows,
-  });
-  process.stdout.write(`${JSON.stringify({ result: "g62-ac1-ac3-green-and-mutants-red", greenReceipt, mutantReceipt, rows })}\n`);
+  if (read(mutation.sourceFile) !== original) fail(`${mutation.label} source was not restored`);
+  requireRed(mutant, mutation);
+  return {
+    label: mutation.label,
+    oracle: `${testFile} :: ${mutation.pattern}`,
+    baselineExitCode: baseline.exitCode,
+    mutantExitCode: mutant.exitCode,
+    result: "red",
+  };
 }
 
 function main() {
-  if (process.argv.includes("--self-test")) return selfTest();
-  if (process.argv.includes("--pre-fix")) return preFix();
-  return green();
+  assertAnchors();
+  if (process.argv.includes("--self-test")) {
+    process.stdout.write(`${JSON.stringify({ check: "g62-local", mutants: mutations.map(({ label }) => ({ label, result: "anchor-pass" })) })}\n`);
+    return;
+  }
+  const rows = mutations.map(runMutation);
+  process.stdout.write(`${JSON.stringify({ check: "g62-local", mutants: rows })}\n`);
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();
