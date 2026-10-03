@@ -135,3 +135,5 @@ export function measureB0Phase(input: {
   conformanceRetryAttempts?: number;
   conformanceRetryDelayMs?: number;
 }): Promise<Record<string, unknown>>;
+
+export function runCli(): Promise<void>;

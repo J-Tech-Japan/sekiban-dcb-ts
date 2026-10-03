@@ -178,3 +178,5 @@ export function exportCohortTelemetry(input: Readonly<{
   template: Record<string, unknown>;
   ledger: readonly Record<string, unknown>[];
 }>): Promise<{ events: unknown[] }>;
+
+export function runCli(): Promise<void>;
