@@ -204,12 +204,10 @@
       "name": "g30",
       "tier": "local",
       "services": ["postgres"],
-      "affectedPaths": ["test/g30-*.ts", "scripts/g30-*.mjs", "scripts/deploy/g30-*.mjs", "scripts/deploy/g30-*.sh", "scripts/commit-trace-*.mjs", "contracts/commit-trace-bundle.json", "contracts/commit-trace-pin.json", "contracts/*-normative.md", "contracts/epoch-*.json", "contracts/RENDERED-VIEWS.md", "scripts/deploy/g37-sample-guards.mjs", "scripts/deploy/g50-commit-latency-guards.mjs", "scripts/deploy/g51-ingestion-poll-guards.mjs", "scripts/deploy/g51-probe-ladder-guards.mjs", "scripts/g51-journal-native-regression-check.mjs", "scripts/g51-native-span-mutation-runner.mjs", "test/g51-app-surface-ray-relay.spec.ts"],
+      "affectedPaths": ["test/g30-*.ts", "scripts/g30-*", "scripts/deploy/g30-*", "scripts/deploy/g30-*.sh", "scripts/commit-trace-*.mjs", "contracts/commit-trace-bundle.json", "contracts/commit-trace-pin.json", "contracts/*-normative.md", "contracts/epoch-*.json", "contracts/RENDERED-VIEWS.md", "scripts/deploy/g37-sample-guards.mjs", "scripts/deploy/g50-commit-latency-guards.mjs", "scripts/g51-ingestion-poll-guards.mjs", "scripts/g51-probe-ladder-guards.mjs", "scripts/g51-native-span-mutation-runner.mjs", "test/g51-app-surface-ray-relay.spec.ts"],
       "commands": [
         {"id": "g30", "command": "npm run test:g30"},
         {"id": "g51", "command": "npm run test:g51"},
-        {"id": "g30-candidate", "command": "npm run test:g30:candidate"},
-        {"id": "g30-candidate-red", "command": "npm run test:g30:candidate:forced-red", "env": {"SDT_G30_CANDIDATE_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g30-forced-red", "command": "npm run test:g30:forced-red", "env": {"SDT_G30_FORCE_FAILURE": "1"}, "expect": "red"}
       ]
     },

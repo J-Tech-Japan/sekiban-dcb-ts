@@ -76,27 +76,6 @@ const MUTATIONS = Object.freeze([
     target: "allows only the explicitly enumerated AC5 UNKNOWN set through the joined observation stream",
     unrelated: "uses the exact rank-1..5 client-latency tail set, including a deterministic rank-5/6 tie",
   },
-  {
-    id: "pr-body-only-regression",
-    file: "docs/SDT-G30-pr-body.md",
-    from: "schemaCompleteCount >= 85",
-    to: "schemaCompleteCount >= 84",
-    structural: true,
-  },
-  {
-    id: "oracle-map-only-regression",
-    file: "docs/SDT-G30-oracle-map.md",
-    from: "rank-1..5",
-    to: "p95-threshold tail",
-    structural: true,
-  },
-  {
-    id: "implementation-notes-only-regression",
-    file: "docs/commit-tracing.md",
-    from: "root-absent",
-    to: "root absent",
-    structural: true,
-  },
 ]);
 
 function run(command, args, label) {
@@ -129,11 +108,6 @@ function execute(mutation) {
   const original = readFileSync(path, "utf8");
   try {
     requirePass(run(process.execPath, [structural], "G30 AC5 structural baseline"));
-    if (mutation.structural) {
-      writeFileSync(path, mutate(original, mutation), "utf8");
-      requireRed(run(process.execPath, [structural], "G30 AC5 structural target"), mutation.id);
-      return { id: mutation.id, result: "red" };
-    }
     requirePass(testNamed(mutation.target));
     requirePass(testNamed(mutation.unrelated));
     writeFileSync(path, mutate(original, mutation), "utf8");

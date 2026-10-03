@@ -20,8 +20,8 @@ const source = Object.freeze({
   commit: "packages/dcb-runtime/src/commit/CommitWorker.ts",
   journal: "packages/dcb-runtime/src/journal/JournalDurableObject.ts",
   repair: "packages/dcb-runtime/src/repair/RepairWorker.ts",
-  traceExport: "scripts/deploy/g30-trace-export.mjs",
-  measure: "scripts/deploy/g30-b0-measure.mjs",
+  traceExport: "scripts/g30-trace-export.mjs",
+  measure: "scripts/g30-b0-measure.mjs",
   b0: "scripts/g30-b0-contract.mjs",
   observation: "packages/dcb-runtime/src/trace/ObservationStream.ts",
 });

@@ -8,7 +8,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import manifest from "../contracts/commit-trace-manifest.json" with { type: "json" };
-import { B_TRACE_SAMPLING_SETTLE_MS } from "./deploy/g30-b0-measure.mjs";
+import { B_TRACE_SAMPLING_SETTLE_MS } from "./g30-b0-measure.mjs";
 import { verifyExportedSuccessTrace } from "./g30-trace-runtime-verifier.mjs";
 
 export const G30_PHASES = Object.freeze(["A", "B", "A-prime"]);

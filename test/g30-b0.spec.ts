@@ -27,7 +27,7 @@ import {
   TELEMETRY_QUERY_VALUE_BATCH,
   TELEMETRY_RETRY_DELAY_MS,
   telemetryFilterNodeCount,
-} from "../scripts/deploy/g30-trace-export.mjs";
+} from "../scripts/g30-trace-export.mjs";
 import {
   assertDeploymentWitness,
   awaitBTraceSamplingSettlement,
@@ -38,12 +38,15 @@ import {
   G30HeadReadFailure,
   MAX_WINDOW_RESETS,
   measureB0Phase,
-} from "../scripts/deploy/g30-b0-measure.mjs";
-import { deploymentMessage } from "../scripts/deploy/g30-deployment-witness.mjs";
+} from "../scripts/g30-b0-measure.mjs";
 import manifest from "../contracts/commit-trace-manifest.json";
 import meetingRoomWorker, { type MeetingRoomCloudflareEnv } from "../samples/meeting-room/src/worker.cloudflare-only";
 
 type Phase = "A" | "B" | "A-prime";
+
+function deploymentMessage(phase: Phase, commit: string, digest: string, serviceId: string): string {
+  return `SDT-G30 B0 ${phase} ${serviceId} ${commit} ${digest}`;
+}
 
 const SERVICE = "g32-9043d626fe1149cb";
 const ROOT_ROWS = manifest.schemas["sdt.commit/v1"].boundaries
