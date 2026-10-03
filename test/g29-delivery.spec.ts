@@ -9,7 +9,7 @@ import {
 import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { PipelineStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import { assertDeliveryMatrix } from "../scripts/g29-delivery-matrix.mjs";
-import matrix from "../docs/SDT-G29-delivery-matrix.json";
+import matrix from "../contracts/g29-delivery-matrix.json";
 import { deliveryPolicyFromDomain, type DomainViewDefinition } from "@sekiban/dcb-domain";
 import { meetingRoomDomain } from "../samples/meeting-room/src/domain";
 import { MeetingRoomDownstreamDoorbell, type MeetingRoomCloudflareEnv } from "../samples/meeting-room/src/worker.cloudflare-only";
