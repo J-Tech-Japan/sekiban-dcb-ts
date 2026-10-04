@@ -34,7 +34,6 @@
     "scripts/g32-bridge-check.mjs",
     "scripts/g32-cutover-check.mjs",
     "scripts/g32-candidate-check.mjs",
-    "scripts/g32-forward-recorder-mutation-runner.mjs",
     "scripts/g22-bootstrap-cosmos-contract.mjs",
     "scripts/g32-legacy-ingress-audit.mjs",
     "scripts/g32-legacy-ingress-audit.d.mts",
@@ -58,7 +57,7 @@
     "test",
     "tsconfig.json",
     "vitest.config.ts",
-    "docs/SDT-G29-mapping.json",
+    "contracts/g29-mapping.json",
     "docs/domain-authoring.md",
     "docs/migration-sekiban-dcb.md",
     "docs/SDT-G32-required-roots.json",
@@ -108,7 +107,6 @@
     { "rootId": "cutover-queue-topology", "path": "scripts/deploy/g32-queue-topology.mjs", "kind": "file" },
     { "rootId": "cutover-evidence-record", "path": "scripts/deploy/g32-record-evidence.mjs", "kind": "file" },
     { "rootId": "candidate-check", "path": "scripts/g32-candidate-check.mjs", "kind": "file" },
-    { "rootId": "forward-recorder-mutation", "path": "scripts/g32-forward-recorder-mutation-runner.mjs", "kind": "file" },
     { "rootId": "g22-real-cosmos-fixture", "path": "scripts/g22-bootstrap-cosmos-contract.mjs", "kind": "file" },
     { "rootId": "legacy-ingress-audit", "path": "scripts/g32-legacy-ingress-audit.mjs", "kind": "file" },
     { "rootId": "legacy-ingress-audit-types", "path": "scripts/g32-legacy-ingress-audit.d.mts", "kind": "file" },
@@ -124,8 +122,6 @@
     { "rootId": "g32-parity-tests", "path": "test/g32-parity.spec.ts", "kind": "file" },
     { "rootId": "g32-ddl-tests", "path": "test/g32-ddl.spec.ts", "kind": "file" },
     { "rootId": "g32-tags-tests", "path": "test/g32-tags.spec.ts", "kind": "file" },
-    { "rootId": "g32-cutover-tests", "path": "test/g32-cutover.spec.ts", "kind": "file" },
-    { "rootId": "g32-legacy-ingress-audit-tests", "path": "test/g32-legacy-ingress-audit.spec.ts", "kind": "file" },
-    { "rootId": "g32-forward-redeploy-tests", "path": "test/g32-forward-redeploy.spec.ts", "kind": "file" }
+    { "rootId": "g32-cutover-tests", "path": "test/g32-cutover.spec.ts", "kind": "file" }
   ]
 }

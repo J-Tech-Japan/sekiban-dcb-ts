@@ -78,8 +78,7 @@ export function auditG32LegacyIngress() {
   // All remaining V1 version-property references are rejection/documentation
   // oracles. A new positive fixture, CI helper, or script must update this
   // explicit list rather than silently depending on a caller-selected version.
-  const sourceFiles = [...filesUnder("packages"), ...filesUnder("samples"), ...filesUnder("test")]
-    .filter((path) => path !== "test/g32-legacy-ingress-audit.spec.ts");
+  const sourceFiles = [...filesUnder("packages"), ...filesUnder("samples"), ...filesUnder("test")];
   const versionReferences = occurrences(sourceFiles, /eventPayloadVersion/);
   const expectedVersionReferences = [
     "packages/dcb-runtime/src/commit/CommitWorker.ts",
@@ -111,10 +110,7 @@ export function auditG32LegacyIngress() {
   if (JSON.stringify(legacyScriptReferences) !== JSON.stringify(expectedLegacyScriptReferences)) {
     throw new Error(`G32 legacy script inventory changed: ${legacyScriptReferences.join(",")}`);
   }
-  const legacyFixtureReferences = occurrences(
-    filesUnder("test").filter((path) => path !== "test/g32-legacy-ingress-audit.spec.ts"),
-    LEGACY_INPUT,
-  );
+  const legacyFixtureReferences = occurrences(filesUnder("test"), LEGACY_INPUT);
   const expectedLegacyFixtureReferences = [
     "test/d1-mv.spec.ts",
     "test/dcb-domain.spec.ts",

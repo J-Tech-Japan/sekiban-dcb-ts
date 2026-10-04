@@ -8,7 +8,7 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { normalizeTelemetryBundle } from "./deploy/g30-trace-export.mjs";
+import { normalizeTelemetryBundle } from "./g30-trace-export.mjs";
 
 const root = process.cwd();
 const compositionFiles = Object.freeze([

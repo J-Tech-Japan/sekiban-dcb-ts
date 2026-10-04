@@ -2,7 +2,7 @@
 /** Recomputes the committed SDT-G52 client, snapshot-root, and DO summaries. */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { STRUCTURALLY_REMOVED_G41_ROWS } from "./g50-commit-latency.mjs";
+import { STRUCTURALLY_REMOVED_G41_ROWS } from "./deploy/g50-commit-latency.mjs";
 import { SNAPSHOT_PER_HOP_ROWS } from "./g52-commit-breakdown.mjs";
 
 function fail(message) {
@@ -164,9 +164,11 @@ function main() {
   process.stdout.write(`${JSON.stringify({ result: "g52-commit-breakdown-valid", ...result, ...(selfTest === undefined ? {} : { selfTest }) }, null, 2)}\n`);
 }
 
-try {
-  main();
-} catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exitCode = 1;
+if (import.meta.url === `file://${resolve(process.argv[1] ?? "")}`) {
+  try {
+    main();
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  }
 }

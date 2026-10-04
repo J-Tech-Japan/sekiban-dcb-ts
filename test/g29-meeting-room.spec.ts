@@ -19,7 +19,7 @@ import {
   reservationTag,
 } from "../samples/meeting-room/src/domain";
 import { reservationMaterializer, roomMaterializer } from "../samples/meeting-room/src/d1-mv";
-import mapping from "../docs/SDT-G29-mapping.json";
+import mapping from "../contracts/g29-mapping.json";
 import preRewriteFixture from "./fixtures/g29-pre-rewrite-stored-outbox.json";
 import { g32EventId, g32Suid } from "./helpers/g32-fixtures";
 

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { SAMPLE_COUNT, SNAPSHOT_PER_HOP_ROWS, captureG52CommitBreakdown } from "../scripts/deploy/g52-commit-breakdown.mjs";
-import { validateG52Sample } from "../scripts/deploy/g52-commit-breakdown-check.mjs";
+import { SAMPLE_COUNT, SNAPSHOT_PER_HOP_ROWS, captureG52CommitBreakdown } from "../scripts/g52-commit-breakdown.mjs";
+import { validateG52Sample } from "../scripts/g52-commit-breakdown-check.mjs";
 
 function committedResponse(requestNumber: number) {
   return new Response(JSON.stringify({

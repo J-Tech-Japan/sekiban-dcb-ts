@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 // the repository working directory is the stable artifact root for both the
 // executable runner and the test adapter.
 const root = process.cwd();
-const mappingPath = resolve(root, "docs/SDT-G29-mapping.json");
+const mappingPath = resolve(root, "contracts/g29-mapping.json");
 const requiredRows = Object.freeze([
   "event-payload", "business-time", "canonical-identity", "event-id", "suid",
   "tags", "state", "projector", "command-input", "read-set", "decision-log",
