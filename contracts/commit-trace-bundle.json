@@ -54,9 +54,9 @@
     {
       "path": "scripts/g30-ac5-structural-check.mjs",
       "role": "checker",
-      "bytes": 9078,
-      "digest": "sha256:7984c8af285cf3b2e8dd743719f0dbcd4635e8967175809f72e7a3ff1fc96d03"
+      "bytes": 9916,
+      "digest": "sha256:b39c26c573cc59dfe60e1b31edb0d4ee6a6ff00142e28a0f6d7643b86269dd40"
     }
   ],
-  "bundleDigest": "sha256:0c7ab6fdba34e0d54f0803e016b712344ddb882874565e94d0c9168bc37dbbac"
+  "bundleDigest": "sha256:6db867a122c191f6940b55d010f717da6457a4d7c430e78a4a0c5da81dcc8d5a"
 }

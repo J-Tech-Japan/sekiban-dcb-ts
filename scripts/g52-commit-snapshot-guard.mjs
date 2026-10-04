@@ -126,7 +126,7 @@ function selfTest() {
 
 function main() {
   const composition = assertDeployedCompositionSink(sourcesFromDisk());
-  const exporter = assertExporterSource(read("scripts/deploy/g30-trace-export.mjs"));
+  const exporter = assertExporterSource(read("scripts/g30-trace-export.mjs"));
   const result = {
     composition,
     exporter,

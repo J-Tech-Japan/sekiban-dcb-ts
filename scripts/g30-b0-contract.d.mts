@@ -1,4 +1,4 @@
-import type { G30TraceSamplingSettlement } from "./deploy/g30-b0-measure.mjs";
+import type { G30TraceSamplingSettlement } from "./g30-b0-measure.mjs";
 
 export const G30_PHASES: readonly ["A", "B", "A-prime"];
 export const G30_SAMPLE_COUNT: 100;

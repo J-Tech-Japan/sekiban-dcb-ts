@@ -1,6 +1,6 @@
 {
   "schemaVersion": 3,
   "state": "sealed",
-  "authorityCommit": "ef2ad753bb4f56bb369a12ee34bfb4949412d361",
-  "bundleDigest": "sha256:0c7ab6fdba34e0d54f0803e016b712344ddb882874565e94d0c9168bc37dbbac"
+  "authorityCommit": "53fce4401f04f6584a1d04c5672b14162da6a64a",
+  "bundleDigest": "sha256:6db867a122c191f6940b55d010f717da6457a4d7c430e78a4a0c5da81dcc8d5a"
 }

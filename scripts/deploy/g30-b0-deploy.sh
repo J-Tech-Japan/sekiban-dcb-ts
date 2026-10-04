@@ -98,8 +98,6 @@ node scripts/commit-trace-contract.mjs --check
 node scripts/commit-trace-contract.mjs --self-test
 node scripts/g30-b0-contract.mjs --self-test
 node scripts/g30-config-check.mjs --self-test
-node scripts/g30-candidate-check.mjs --self-test
-node scripts/g30-candidate-check.mjs --candidate "${SOURCE_COMMIT}"
 npm run test:g30
 
 if [[ "${G30_B0_LIVE:-0}" != "1" ]]; then

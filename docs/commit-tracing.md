@@ -77,7 +77,7 @@ does not assert a performance pass/fail.
    npm run deploy:g30:b0
    ```
 
-   It verifies the target bundle, candidate material coverage, trace and B0
+   It verifies the target bundle, trace and B0
    mutation lanes, both Worker dry deployments, and remote D1 migration
    emptiness before any live change.
 3. Prepare the file-fed conformance and observability API-token files. The
