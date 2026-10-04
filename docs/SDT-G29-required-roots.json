@@ -9,7 +9,7 @@
     ".github/workflows/ci.yml",
     "README.md",
     "docs/SDT-G29-required-roots.json",
-    "docs/SDT-G29-mapping.json",
+    "contracts/g29-mapping.json",
     "docs/SDT-G29-delivery-matrix.json",
     "docs/SDT-G29-compatibility.json",
     "docs/SDT-G29-oracle-map.md",
@@ -56,7 +56,7 @@
   ],
   "requiredRoots": [
     { "rootId": "ci", "path": ".github/workflows/ci.yml", "kind": "file" },
-    { "rootId": "mapping", "path": "docs/SDT-G29-mapping.json", "kind": "file" },
+    { "rootId": "mapping", "path": "contracts/g29-mapping.json", "kind": "file" },
     { "rootId": "delivery-matrix", "path": "docs/SDT-G29-delivery-matrix.json", "kind": "file" },
     { "rootId": "compatibility", "path": "docs/SDT-G29-compatibility.json", "kind": "file" },
     { "rootId": "oracle-map", "path": "docs/SDT-G29-oracle-map.md", "kind": "file" },

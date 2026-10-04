@@ -7,7 +7,7 @@ import {
   querySnapshotLogsInFixedWindow,
   SNAPSHOT_LOG_DO_OWNED_ROWS,
   SNAPSHOT_LOG_REQUIRED_ROWS,
-} from "../scripts/deploy/g30-trace-export.mjs";
+} from "../scripts/g30-trace-export.mjs";
 
 const SERVICE = "g52-export-fixture";
 const REQUEST_ID = "0000000000000052-SJC";

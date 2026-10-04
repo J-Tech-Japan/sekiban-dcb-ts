@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
-import mappingArtifact from "../docs/SDT-G29-mapping.json";
+import mappingArtifact from "../contracts/g29-mapping.json";
 import { assertMappingContract, mutateMapping, validateMapping } from "../scripts/g29-mapping-contract.mjs";
 import { observePortableMappingExecution, type MappingAdmissionEvidence } from "../samples/meeting-room/src/mapping-observation";
 import { composeRuntime } from "../packages/dcb-runtime/src/composition";

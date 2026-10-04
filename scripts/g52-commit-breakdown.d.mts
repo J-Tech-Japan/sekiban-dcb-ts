@@ -1,4 +1,4 @@
-import type { G50Sample, G50Telemetry } from "./g50-commit-latency.mjs";
+import type { G50Sample, G50Telemetry } from "./deploy/g50-commit-latency.mjs";
 
 export const TASK: "SDT-G52";
 export const SAMPLE_COUNT: 50;
@@ -37,4 +37,4 @@ export interface G52Sample extends G50Sample {
   };
 }
 
-export function captureG52CommitBreakdown(input: Parameters<typeof import("./g50-commit-latency.mjs").captureG50AppCommitLatency>[0]): Promise<G52Sample>;
+export function captureG52CommitBreakdown(input: Parameters<typeof import("./deploy/g50-commit-latency.mjs").captureG50AppCommitLatency>[0]): Promise<G52Sample>;

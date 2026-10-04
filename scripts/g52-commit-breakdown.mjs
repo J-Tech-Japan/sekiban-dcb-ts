@@ -15,7 +15,7 @@ import {
   MAX_INGESTION_TIMEOUT_MS,
   STRUCTURALLY_REMOVED_G41_ROWS,
   captureG50AppCommitLatency,
-} from "./g50-commit-latency.mjs";
+} from "./deploy/g50-commit-latency.mjs";
 import { SNAPSHOT_LOG_DO_OWNED_ROWS } from "./g30-trace-export.mjs";
 
 export const TASK = "SDT-G52";

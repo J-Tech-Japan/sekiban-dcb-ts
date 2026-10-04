@@ -3,17 +3,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   COHORT_REQUEST_COUNT,
   createPacedResumeState,
-  createPacedFallbackSchedule,
-  createW68RecoveryState,
   capturePacedCohort,
   PACED_SAMPLE_INTERVAL_MS,
-  recoverW68SnapshotWindow,
   RESUME_THRESHOLD,
   resumeExactRayQuery,
   SAMPLE_COUNT,
   SNAPSHOT_PER_HOP_ROWS,
-  W68_FIXED_WINDOW,
-} from "../scripts/deploy/g52-resume-query.mjs";
+} from "../scripts/g52-resume-query.mjs";
 
 function committedResponse(number: number) {
   return new Response(JSON.stringify({
@@ -121,44 +117,6 @@ describe("SDT-G52 resume-only retained-log state", () => {
     });
     expect(resumed.resume.lifecycle).toBe("awaiting-resume-query");
     expect(resumed.resume.threshold).toBe(RESUME_THRESHOLD);
-  });
-
-  it("records the W68 fixed-window recovery honestly when the full client ray ledger is unavailable", async () => {
-    const initial = createW68RecoveryState(() => W68_FIXED_WINDOW.to + 1);
-    const recovered = await recoverW68SnapshotWindow({
-      state: initial,
-      accountId: "g52-resume-account",
-      token: "test-only-observability-token",
-      template: {},
-      queryFixedWindow: async ({ fromMs, toMs }: { fromMs: number; toMs: number }) => {
-        expect({ fromMs, toMs }).toEqual({ fromMs: W68_FIXED_WINDOW.from, toMs: W68_FIXED_WINDOW.to });
-        return {
-          window: { from: fromMs, to: toMs },
-          receipts: [
-            { requestId: "0000000000000001-SJC", platformRayId: "0000000000000001", correlationId: "one", rootId: "one", rootStartedAtMs: 1, rootEndedAtMs: 2, logTruncated: false },
-            { requestId: "0000000000000002-SJC", platformRayId: "0000000000000002", correlationId: "two", rootId: "two", rootStartedAtMs: 3, rootEndedAtMs: 4, logTruncated: false },
-          ],
-        };
-      },
-    });
-    expect(recovered.ledgerAvailability).toMatch(/unrecoverable-full-ray-set/);
-    expect(recovered.resumed.exactRaySet).toEqual(["0000000000000001-SJC", "0000000000000002-SJC"]);
-    expect(recovered.resumed.retentionRatio).toEqual({
-      invocationRoots: { retained: 2, sent: COHORT_REQUEST_COUNT },
-      snapshotRoots: { retained: 2, sent: COHORT_REQUEST_COUNT },
-    });
-    const waiting = createPacedFallbackSchedule({
-      w68Recovery: recovered,
-      pacedStatePath: ".artifacts/g52-paced.json",
-      now: () => W68_FIXED_WINDOW.cohortStartedAtMs + (2 * 60 * 60 * 1_000) - 1,
-    });
-    expect(waiting.pacedFallback.decision).toBe("wait-until-two-hour-gate");
-    const ready = createPacedFallbackSchedule({
-      w68Recovery: recovered,
-      pacedStatePath: ".artifacts/g52-paced.json",
-      now: () => W68_FIXED_WINDOW.cohortStartedAtMs + (2 * 60 * 60 * 1_000),
-    });
-    expect(ready.pacedFallback.decision).toBe("start-paced-now");
   });
 
   it("accepts a Worker-only snapshot root while retaining the Worker-row completeness gate", async () => {

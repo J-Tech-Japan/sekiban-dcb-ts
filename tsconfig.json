@@ -29,12 +29,12 @@
     "scripts/g30-config-check.d.mts",
     "scripts/deploy/g29-witness.d.mts",
     "scripts/deploy/g29-measure.d.mts",
-    "scripts/deploy/g30-b0-measure.d.mts",
+    "scripts/g30-b0-measure.d.mts",
     "scripts/deploy/g30-deployment-witness.d.mts",
-    "scripts/deploy/g30-trace-export.d.mts",
+    "scripts/g30-trace-export.d.mts",
     "scripts/deploy/g50-commit-latency.d.mts",
-    "scripts/deploy/g52-commit-breakdown.d.mts",
-    "scripts/deploy/g52-commit-breakdown-check.d.mts",
+    "scripts/g52-commit-breakdown.d.mts",
+    "scripts/g52-commit-breakdown-check.d.mts",
     "vitest.config.ts",
     "worker.ts"
   ]
