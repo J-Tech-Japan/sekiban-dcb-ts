@@ -292,7 +292,11 @@ export function validateManifest(manifest, mapping) {
 function assertEntrypointSource(source, receiverSource) {
   if (!source.includes('export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";')) fail("ENTRYPOINT_MISSING", "samples/meeting-room/src/worker.cloudflare-only.ts#MeetingRoomDownstreamDoorbell", "entrypoint-missing");
   for (const match of receiverSource.matchAll(/export\s+default\s+([\s\S]*?);/g)) {
-    if (/\bfetch\s*\(/.test(match[1])) fail("CARDINALITY", "samples/meeting-room/src/worker.g38-receiver.ts#default.fetch", "cardinality");
+    const exported = match[1].trim();
+    const declared = /^[A-Za-z_$][\w$]*$/.test(exported)
+      ? receiverSource.match(new RegExp(`\\b(?:const|let|var)\\s+${exported}\\b[^=]*=\\s*([\\s\\S]*?);`))?.[1] ?? ""
+      : "";
+    if (/\bfetch\s*[(:,}]/.test(`${exported}\n${declared}`)) fail("CARDINALITY", "samples/meeting-room/src/worker.g38-receiver.ts#default.fetch", "cardinality");
   }
 }
 
@@ -426,7 +430,9 @@ export function runSelfTest() {
     const tombstone = { ...worker, [field]: value }; expect("forbidden-tombstone", () => validateConfig(manifest, manifest.components[0], tombstone, mapping), "CARDINALITY", path, "cardinality");
   }
   expect("embedded-entrypoint-missing", () => validateConfig(manifest, manifest.components[0], worker, mapping, source.replace('export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";\n', ""), receiverSource), "ENTRYPOINT_MISSING", "samples/meeting-room/src/worker.cloudflare-only.ts#MeetingRoomDownstreamDoorbell", "entrypoint-missing");
-  expect("embedded-default-fetch", () => validateConfig(manifest, manifest.components[0], worker, mapping, source, `${receiverSource}\nexport default { fetch() {} };`), "CARDINALITY", "samples/meeting-room/src/worker.g38-receiver.ts#default.fetch", "cardinality");
+  const fetchReceiverSource = receiverSource.replace("> = {};\nexport default receiver;", "> = { fetch() { return new Response(null); } };\nexport default receiver;");
+  if (fetchReceiverSource === receiverSource) throw new Error("embedded-default-fetch anchor not found in samples/meeting-room/src/worker.g38-receiver.ts");
+  expect("embedded-default-fetch", () => validateConfig(manifest, manifest.components[0], worker, mapping, source, fetchReceiverSource), "CARDINALITY", "samples/meeting-room/src/worker.g38-receiver.ts#default.fetch", "cardinality");
   validateQueueTopology([{ script: "sekiban-dcb-meeting-room-cloudflare-only" }]);
   expect("receiver-consumer", () => validateQueueTopology([{ script: "synthetic-receiver" }]), "QUEUES_FORBIDDEN", "queues.consumers[0].script", "queues-forbidden");
   expect("extra-consumer", () => validateQueueTopology([{ script: "sekiban-dcb-meeting-room-cloudflare-only" }, { script: "unrelated-worker" }]), "CARDINALITY", "queues.consumers", "cardinality");
