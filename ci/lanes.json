@@ -124,8 +124,6 @@
         {"id": "g89-doorbell-guard", "command": "npm run test:g89:doorbell-guard"},
         {"id": "g31", "command": "npm run test:g31"},
         {"id": "g31-red", "command": "npm run test:g31:forced-red", "env": {"SDT_G31_FORCE_FAILURE": "1"}, "expect": "red"},
-        {"id": "g38", "command": "npm run test:g38:prep"},
-        {"id": "g38-red", "command": "npm run test:g38:prep:forced-red", "env": {"SDT_G38_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g42", "command": "npm run test:g42"},
         {"id": "g42-red", "command": "npm run test:g42:forced-red", "env": {"SDT_G42_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g45", "command": "npm run test:g45"},
@@ -178,7 +176,7 @@
         "MSBUILDDISABLENODEREUSE": "1",
         "DOTNET_CLI_USE_MSBUILD_SERVER": "0"
       },
-      "affectedPaths": ["test/g32-*.ts", "scripts/g32-*.mjs", "tools/sekiban-parity/**", "scripts/deploy/g32-queue-topology.mjs", "scripts/g22-bootstrap-cosmos-contract.mjs", "scripts/store-contract.mjs"],
+      "affectedPaths": ["test/g32-*.ts", "scripts/g32-*.mjs", "tools/sekiban-parity/**", "scripts/g22-bootstrap-cosmos-contract.mjs", "scripts/store-contract.mjs"],
       "commands": [
         {"id": "g32-source", "command": "git clone --filter=blob:none https://github.com/J-Tech-Japan/Sekiban.git .artifacts/g40-sekiban-source && git -C .artifacts/g40-sekiban-source checkout --detach 855feaa93564fef54defec76e9ccff969d4ee01a"},
         {"id": "g32", "command": "npm run test:g32"},

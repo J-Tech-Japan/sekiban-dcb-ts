@@ -31,7 +31,6 @@
     "scripts/g32-payload-admission-mutation-runner.mjs",
     "scripts/g32-tags-mutation-runner.mjs",
     "scripts/g32-ddl-introspection.mjs",
-    "scripts/g32-bridge-check.mjs",
     "scripts/g32-cutover-check.mjs",
     "scripts/g32-candidate-check.mjs",
     "scripts/g22-bootstrap-cosmos-contract.mjs",
