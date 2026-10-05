@@ -36,6 +36,21 @@ function exactSet(actual, expected, label) {
 }
 function parseInventory(text) { try { return JSON.parse(text); } catch (error) { fail(`duty inventory is not valid JSON: ${error.message}`); } }
 
+function durableFieldsFromImplementation(journal) {
+  const fields = [];
+  const rows = [
+    ["G42_JOURNAL_PROBE_ALARM_KEY", "__sdt_g42_p1_alarm"],
+    ["G42_JOURNAL_PROBE_INDEX_KEY", "__sdt_g42_p1_index"],
+    ["g42ProbeStorageKey", "__sdt_g42_p1_record__:*"],
+    ['const JOURNAL_KEY = "journal"', "journal"],
+    ["record.candidates.map", "journal.candidates"],
+    ["record.reconciliation?.missingTags", "journal.missingTags"],
+    ["record.repairObservations ?? []", "journal.repairObservations"],
+  ];
+  for (const [token, field] of rows) if (journal.includes(token)) fields.push(field);
+  return fields;
+}
+
 function journalRoutes(journal) {
   const exact = [...journal.matchAll(/request\.method === "(GET|POST)" && path === "(\/[^"\n]+)"/g)].map((match) => `${match[1]} ${match[2]}`);
   const prefix = [...journal.matchAll(/request\.method === "(GET|POST)" && path\.startsWith\(\x60\$\{G42_JOURNAL_PROBE_INTERNAL_PREFIX\}\/\x60\)/g)];
@@ -83,6 +98,7 @@ export function assertG41JournalRemovalContract(value) {
   assertInventory(inventory);
   const runtimeRoutes = journalRoutes(value.journal);
   exactSet([...runtimeRoutes], RETAINED_ROUTES, "implemented Journal retained route set");
+  exactSet(durableFieldsFromImplementation(value.journal), RETAINED_FIELDS, "implemented Journal durable-field set");
   for (const route of REMOVED_ROUTES) { const path = route.slice(route.indexOf(" ") + 1); requireAbsent(value.journal, `path === "${path}"`, "removed Journal route dispatch"); }
   const commitPath = between(value.commit, "private async handleUntraced(", "private tagFor(", "CommitWorker normal path");
   requireAbsent(commitPath, "this.env.JOURNAL", "CommitWorker normal path"); requireAbsent(commitPath, "journalFor(", "CommitWorker normal path");
@@ -119,6 +135,9 @@ function selfTest() {
     expectRed((value) => { value.commit = value.commit.replace("eventsDeleted: false", "eventsDeleted: true"); }, "partial write deletion claim"),
     expectRed((value) => { value.repair = value.repair.replace('this.journalGet(attemptId, "/repair/workset")', 'this.g41NoJournal(attemptId, "/repair/workset")'); }, "repair caller disappearance"),
     expectRed((value) => { value.inventory = mutateInventory(value.inventory, (inventory) => { inventory.duties.find((entry) => entry.id === "J04-repair-workset").durableFields = ["journal.missingTags"]; }); }, "current durable-field omission"),
+    expectRed((value) => { value.journal = value.journal.replace("record.reconciliation?.missingTags", "record.reconciliation?.g41MutantTags"); }, "implemented missingTags read removal"),
+    expectRed((value) => { value.journal = value.journal.replaceAll("record.repairObservations ?? []", "[]"); }, "implemented repair-observation read removal"),
+    expectRed((value) => { value.journal = value.journal.replace("record.candidates.map", "record.g41MutantCandidates.map"); }, "implemented candidates seam change"),
     expectRed((value) => { value.inventory = mutateInventory(value.inventory, (inventory) => { inventory.duties.find((entry) => entry.id === "J04-repair-workset").callers = [RETAINED_CALLERS[0]]; }); }, "current caller omission"),
     expectRed((value) => { value.test = value.test.replace("superseded attempt epoch", "g41 stale mutation"); }, "focused fixture disappearance"),
   ];
