@@ -84,12 +84,25 @@ export function runSelfTest() {
   expectDiagnostic(() => runDeployGate({ spawn: () => { throw new Error("Wrangler should not spawn"); }, recordedDigest: "0".repeat(64), spawnWrangler: true, wranglerCommands: [["wrangler", "deploy"]] }), { code: "DIGEST_MISMATCH", path: "digest", reason: "digest-mismatch" });
   expectDiagnostic(() => runDeployGate({ invocations: invocationList(manifest).map((entry) => ({ ...entry, deepMerge: true })) }), { code: "DEEP_MERGE_FORBIDDEN", path: "deepMerge", reason: "deep-merge-forbidden" });
   const split = structuredClone(manifest); split.components.push(structuredClone(split.components[0]));
-  expectDiagnostic(() => runDeployGate({ manifest: split }), { code: "CARDINALITY", path: "components", reason: "cardinality" });
+  const expectRejectedBeforeSpawn = (name, options, expected) => {
+    let spawnCalls = 0;
+    expectDiagnostic(() => runDeployGate({
+      ...options,
+      spawnWrangler: true,
+      wranglerCommands: [["wrangler", "deploy", "--synthetic", name]],
+      spawn: () => {
+        spawnCalls += 1;
+        throw new Error(`${name} spawned Wrangler before rejection`);
+      },
+    }), expected);
+    if (spawnCalls !== 0) throw new Error(`${name} spawned Wrangler ${spawnCalls} time(s)`);
+  };
+  expectRejectedBeforeSpawn("forbidden-split", { manifest: split }, { code: "CARDINALITY", path: "components", reason: "cardinality" });
   for (const [field, value, path] of [["main", "src/worker.g38-tombstone.ts", "worker.main"], ["workerName", "sekiban-dcb-meeting-room-doorbell", "worker.workerName"], ["exports", { MeetingRoomDownstreamDoorbell: "worker.g38-tombstone.ts" }, "worker.exports"]]) {
     const config = loadJson(manifest.components[0].config);
     if (field === "workerName") config.name = value;
     else config[field] = value;
-    expectDiagnostic(() => runDeployGate({ invocations: [{ componentId: "worker", config }] }), { code: "CARDINALITY", path, reason: "cardinality" });
+    expectRejectedBeforeSpawn("forbidden-tombstone", { invocations: [{ componentId: "worker", config }] }, { code: "CARDINALITY", path, reason: "cardinality" });
   }
   const zero = runDeployGate();
   if (zero.wranglerSpawns !== 0) fail("UNKNOWN_INPUT", "zero-wrangler", "unknown-input");

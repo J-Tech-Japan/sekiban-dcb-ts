@@ -26,6 +26,16 @@ const REQUIRED_RESOURCE_IDS = ["pipeline-d1", "mv-d1", "work-queue", "dlq-queue"
 const REQUIRED_BINDINGS = ["ALLOCATOR", "BOOTSTRAP", "D1", "D1_MV", "DOWNSTREAM_QUEUE", "JOURNAL", "TAG", "TAG_STATE"];
 const REQUIRED_MAPPING_KEYS = ["D1", "D1_MV", "DOWNSTREAM_QUEUE", "ALLOCATOR", "BOOTSTRAP", "JOURNAL", "TAG", "TAG_STATE"];
 const REQUIRED_EDGE_IDS = ["worker-pipeline", "worker-mv", "worker-producer", "worker-consumer", "worker-dlq", "worker-allocator", "worker-bootstrap", "worker-journal", "worker-tag", "worker-tag-state", "worker-doorbell-entrypoint"];
+const EXPECTED_MAPPING_VALUES = {
+  D1: { database_id: "REPLACE_WITH_CLOUDFLARE_ONLY_PIPELINE_D1_ID", resourceRef: "rref-a17c4e90d2b68f53c04d" },
+  D1_MV: { database_id: "REPLACE_WITH_CLOUDFLARE_ONLY_MV_D1_ID", resourceRef: "rref-b28d5f01e3c79a64d15e" },
+  DOWNSTREAM_QUEUE: { queue: "sekiban-dcb-meeting-room-cloudflare-outbox", consumerQueue: "sekiban-dcb-meeting-room-cloudflare-outbox", dead_letter_queue: "sekiban-dcb-meeting-room-cloudflare-outbox-dlq", resourceRef: "rref-c39e6012f4d80b75e26f", deadLetterResourceRef: "rref-d40f7123a5e91c86f370" },
+  ALLOCATOR: { class_name: "AllocatorDurableObject", resourceRef: "rref-7ba7fb7d22ca57236b6a" },
+  BOOTSTRAP: { class_name: "BootstrapCoordinatorDurableObject", resourceRef: "rref-06bb3fabe0ff9fbf1aa5" },
+  JOURNAL: { class_name: "JournalDurableObject", resourceRef: "rref-711e4471e1117bcbc3e9" },
+  TAG: { class_name: "TagDurableObject", resourceRef: "rref-8a294ee6138da14e0e6c" },
+  TAG_STATE: { class_name: "TagStateDurableObject", resourceRef: "rref-919c2ad04fb274ab43c0" },
+};
 const DO_MIGRATION_CLASSES = {
   v1: ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"],
   v2: ["BootstrapCoordinatorDurableObject"],
@@ -220,6 +230,9 @@ function requireMappingEntries(mapping) {
   for (const key of REQUIRED_MAPPING_KEYS) {
     if (JSON.stringify(Object.keys(resources[key])) !== JSON.stringify(expected[key])) fail("CARDINALITY", `resources.${key}`, "cardinality");
     if (typeof resources[key].resourceRef !== "string" || resources[key].resourceRef.length < 16) fail("SCOPE_PROOF_UNAVAILABLE", `resources.${key}`, "scope-proof-unavailable");
+    for (const [field, value] of Object.entries(EXPECTED_MAPPING_VALUES[key])) {
+      if (resources[key][field] !== value) fail("RESOURCE_MISMATCH", `resources.${key}.${field}`, "resource-identity-mismatch");
+    }
   }
 }
 
@@ -242,6 +255,8 @@ export function validateManifest(manifest, mapping) {
     { kind: "named", name: "MeetingRoomDownstreamDoorbell", operation: "deliver", requiredBindings: REQUIRED_BINDINGS, forbiddenBindings: [] },
   ], "CARDINALITY", "worker.entrypoints", "cardinality");
   assertExact([...new Set(component.entrypoints.flatMap((entrypoint) => [...entrypoint.requiredBindings, ...entrypoint.forbiddenBindings]))].sort(), [...REQUIRED_BINDINGS].sort(), "CARDINALITY", "bindings", "cardinality");
+  const pipelineResources = manifest.resources.filter((resource) => resource.role === "pipeline-D1");
+  if (pipelineResources.length !== 1) fail("SECOND_SHARD", "resources.pipeline-D1", "second-shard");
   assertExact(manifest.resources.map((resource) => resource.id), REQUIRED_RESOURCE_IDS, "CARDINALITY", "resources", "cardinality");
   const refs = { "pipeline-d1": "rref-a17c4e90d2b68f53c04d", "mv-d1": "rref-b28d5f01e3c79a64d15e", "work-queue": "rref-c39e6012f4d80b75e26f", "dlq-queue": "rref-d40f7123a5e91c86f370", "allocator-do": "rref-7ba7fb7d22ca57236b6a", "bootstrap-do": "rref-06bb3fabe0ff9fbf1aa5", "journal-do": "rref-711e4471e1117bcbc3e9", "tag-do": "rref-8a294ee6138da14e0e6c", "tag-state-do": "rref-919c2ad04fb274ab43c0" };
   for (const resource of manifest.resources) {
@@ -270,13 +285,15 @@ export function validateManifest(manifest, mapping) {
   for (const [binding, resourceId] of Object.entries({ D1: "pipeline-d1", D1_MV: "mv-d1", DOWNSTREAM_QUEUE: "work-queue", ALLOCATOR: "allocator-do", BOOTSTRAP: "bootstrap-do", JOURNAL: "journal-do", TAG: "tag-do", TAG_STATE: "tag-state-do" })) {
     if (mapping.resources[binding].resourceRef !== resourceById(manifest, resourceId).resourceRef) fail("RESOURCE_MISMATCH", binding, "resource-identity-mismatch");
   }
+  if (mapping.resources.DOWNSTREAM_QUEUE.deadLetterResourceRef !== resourceById(manifest, "dlq-queue").resourceRef) fail("RESOURCE_MISMATCH", "DOWNSTREAM_QUEUE.deadLetterResourceRef", "resource-identity-mismatch");
   return manifestDigest(manifest);
 }
 
-function assertEntrypointSource(source) {
+function assertEntrypointSource(source, receiverSource) {
   if (!source.includes('export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";')) fail("ENTRYPOINT_MISSING", "samples/meeting-room/src/worker.cloudflare-only.ts#MeetingRoomDownstreamDoorbell", "entrypoint-missing");
-  const receiver = readFileSync(join(root, "samples/meeting-room/src/worker.g38-receiver.ts"), "utf8");
-  if (receiver.includes("export default") || receiver.includes("fetch(")) fail("CARDINALITY", "samples/meeting-room/src/worker.g38-receiver.ts#default.fetch", "cardinality");
+  for (const match of receiverSource.matchAll(/export\s+default\s+([\s\S]*?);/g)) {
+    if (/\bfetch\s*\(/.test(match[1])) fail("CARDINALITY", "samples/meeting-room/src/worker.g38-receiver.ts#default.fetch", "cardinality");
+  }
 }
 
 export function validateConfig(manifest, component, config, mapping, source = readFileSync(join(root, "samples/meeting-room/src/worker.cloudflare-only.ts"), "utf8"), receiverSource = readFileSync(join(root, "samples/meeting-room/src/worker.g38-receiver.ts"), "utf8")) {
@@ -287,11 +304,15 @@ export function validateConfig(manifest, component, config, mapping, source = re
   const names = bindingNames(config);
   assertExact([...new Set(names)].sort(), [...REQUIRED_BINDINGS].sort(), "CARDINALITY", `${component.id}.bindings`, "cardinality");
   const d1 = config.d1_databases ?? [];
-  if (d1.find((entry) => entry.binding === "D1")?.database_id !== "REPLACE_WITH_CLOUDFLARE_ONLY_PIPELINE_D1_ID" || d1.find((entry) => entry.binding === "D1_MV")?.database_id !== "REPLACE_WITH_CLOUDFLARE_ONLY_MV_D1_ID") fail("RESOURCE_MISMATCH", `${component.id}.d1`, "resource-identity-mismatch");
+  if (d1.find((entry) => entry.binding === "D1")?.database_id !== mapping.resources.D1.database_id || d1.find((entry) => entry.binding === "D1_MV")?.database_id !== mapping.resources.D1_MV.database_id) fail("RESOURCE_MISMATCH", `${component.id}.d1`, "resource-identity-mismatch");
   if (d1.find((entry) => entry.binding === "D1")?.migrations_dir !== manifest.migrationDomains["pipeline-D1"][0] || d1.find((entry) => entry.binding === "D1_MV")?.migrations_dir !== manifest.migrationDomains["MV-D1"][0]) fail("MIGRATION_SWAP", `${component.id}.pipeline-D1`, "migration-swap");
   assertExact((config.migrations ?? []).map((entry) => entry.tag), ["v1", "v2", "v3"], "MIGRATION_ORDER", `${component.id}.durable-object`, "migration-order");
   for (const entry of config.migrations ?? []) assertExact([...entry.new_sqlite_classes].sort(), [...DO_MIGRATION_CLASSES[entry.tag]].sort(), "DO_MIGRATION_OWNER", `${component.id}.${entry.tag}`, "do-migration-owner");
   assertExact((config.durable_objects?.bindings ?? []).map((entry) => entry.class_name).sort(), [...manifest.durableObjectClasses].sort(), "CARDINALITY", `${component.id}.durableObjectClasses`, "cardinality");
+  for (const binding of ["ALLOCATOR", "BOOTSTRAP", "JOURNAL", "TAG", "TAG_STATE"]) {
+    const actual = (config.durable_objects?.bindings ?? []).find((entry) => entry.name === binding);
+    if (actual?.class_name !== mapping.resources[binding].class_name) fail("RESOURCE_MISMATCH", `${component.id}.${binding}.class_name`, "resource-identity-mismatch");
+  }
   if ((config.services ?? []).length !== 0) fail("CARDINALITY", `${component.id}.DOWNSTREAM_DOORBELL`, "cardinality");
   const producer = config.queues?.producers ?? [];
   const consumer = config.queues?.consumers ?? [];
@@ -299,8 +320,7 @@ export function validateConfig(manifest, component, config, mapping, source = re
   if (consumer.length !== 1) fail("CARDINALITY", "queues.consumers", "cardinality");
   if (producer[0].binding !== "DOWNSTREAM_QUEUE" || producer[0].queue !== mapping.resources.DOWNSTREAM_QUEUE.queue) fail("RESOURCE_MISMATCH", `${component.id}.producer`, "resource-identity-mismatch");
   if (consumer[0].queue !== mapping.resources.DOWNSTREAM_QUEUE.consumerQueue || consumer[0].dead_letter_queue !== mapping.resources.DOWNSTREAM_QUEUE.dead_letter_queue) fail("CARDINALITY", `${component.id}.dlq-target`, "cardinality");
-  if (!source.includes('export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";')) fail("ENTRYPOINT_MISSING", "samples/meeting-room/src/worker.cloudflare-only.ts#MeetingRoomDownstreamDoorbell", "entrypoint-missing");
-  if (receiverSource.includes("fetch(")) fail("CARDINALITY", "samples/meeting-room/src/worker.g38-receiver.ts#default.fetch", "cardinality");
+  assertEntrypointSource(source, receiverSource);
   return config;
 }
 
@@ -350,14 +370,30 @@ export function runSelfTest() {
   const envelope = validateProfile(manifest, mapping);
   const worker = loadJson(manifest.components[0].config);
   const source = readFileSync(join(root, "samples/meeting-room/src/worker.cloudflare-only.ts"), "utf8");
-  if (jcs({ b: 1, a: 2 }) !== jcs({ a: 2, b: 1 }) || jcs(-0) !== "0" || jcs(1.5) !== "1.5") throw new Error("JCS serialization drifted");
+  const receiverSource = readFileSync(join(root, "samples/meeting-room/src/worker.g38-receiver.ts"), "utf8");
+  if (jcs({ b: 1, a: 2 }) !== jcs({ a: 2, b: 1 }) || jcs(-0) !== "0" || jcs(1.5) !== "1.5" || jcs({ b: 1, a: -0 }) !== '{"a":0,"b":1}') throw new Error("JCS serialization drifted");
   if (manifestDigest(manifest).digest === manifestDigest(manifest, "sekiban-dcb-ts/g30-bundle/v1").digest) throw new Error("cross-domain digest collided");
   const reversed = structuredClone(manifest); reversed.migrationDomains["durable-object"].worker.sequence = ["v2", "v1", "v3"];
   if (manifestDigest(reversed).digest === envelope.digest) throw new Error("migration order did not move the digest");
+  const shifted = structuredClone(manifest); shifted.resources = shifted.resources.map((resource) => resource.id === "pipeline-d1" ? { ...resource, resourceRef: "rref-00000000000000000000" } : resource);
+  if (manifestDigest(shifted).digest === envelope.digest) throw new Error("resource ref change did not move the digest");
+  const reorderedSets = structuredClone(manifest);
+  reorderedSets.components = [...manifest.components].reverse();
+  reorderedSets.durableObjectClasses = [...manifest.durableObjectClasses].reverse();
+  reorderedSets.scopeAxes = [...manifest.scopeAxes].reverse();
+  if (manifestDigest(reorderedSets).digest !== envelope.digest) throw new Error("set order changed the digest");
   const mutations = [];
   const expect = (name, fn, code, path, reason) => expectMutation(mutations, name, fn, { code, path, reason });
+  const expectUnlabelled = (fn, expected) => {
+    try {
+      fn();
+      throw new Error("expected diagnostic did not occur");
+    } catch (error) {
+      if (!(error instanceof CompositionDiagnostic) || JSON.stringify(error.diagnostic) !== JSON.stringify(expected)) throw error;
+    }
+  };
   expect("second-producer", () => validateConfig(manifest, manifest.components[0], { ...worker, queues: { ...worker.queues, producers: [...worker.queues.producers, { binding: "EXTRA", queue: "extra" }] } }, mapping), "CARDINALITY", "worker.bindings", "cardinality");
-  expect("second-shard", () => validateManifest({ ...manifest, resources: [...manifest.resources, { ...manifest.resources[0], id: "pipeline-d1-b" }] }, mapping), "CARDINALITY", "resources", "cardinality");
+  expect("second-shard", () => validateManifest({ ...manifest, resources: [...manifest.resources, { ...manifest.resources[0], id: "pipeline-d1-b" }] }, mapping), "SECOND_SHARD", "resources.pipeline-D1", "second-shard");
   expect("second-manifest", () => assertSingleSource([manifestPath, "contracts/provider-composition.copy.json"]), "SECOND_MANIFEST", "contracts/provider-composition.copy.json", "second-manifest");
   const committed = readFileSync(join(root, generatedPath), "utf8");
   expect("json-only", () => checkGenerated({ ...manifest, tenantRef: "tnrf-ffffffffffffffffffffffffffffffff" }, committed), "GENERATED_DRIFT", generatedPath, "generated-drift");
@@ -372,8 +408,10 @@ export function runSelfTest() {
   expect("deep-merge", () => resolveCompositionInput({ config: { vars: {} }, deepMerge: true }), "DEEP_MERGE_FORBIDDEN", "deepMerge", "deep-merge-forbidden");
   expect("no-tenant", () => validateManifest({ ...manifest, tenantRef: "" }, mapping), "SCOPE_PROOF_UNAVAILABLE", "tenantRef", "scope-proof-unavailable");
   expect("missing-map", () => { const partial = structuredClone(mapping); delete partial.resources.TAG_STATE; validateManifest(manifest, partial); }, "CARDINALITY", "resources", "cardinality");
+  expectUnlabelled(() => { const drifted = structuredClone(mapping); drifted.resources.D1.database_id = "REPLACE_WITH_DRIFTED_PIPELINE_D1_ID"; validateManifest(manifest, drifted); }, { code: "RESOURCE_MISMATCH", path: "resources.D1.database_id", reason: "resource-identity-mismatch" });
+  expectUnlabelled(() => { const drifted = structuredClone(mapping); drifted.resources.ALLOCATOR.class_name = "DriftedAllocatorDurableObject"; validateManifest(manifest, drifted); }, { code: "RESOURCE_MISMATCH", path: "resources.ALLOCATOR.class_name", reason: "resource-identity-mismatch" });
   expect("inflated-cardinality", () => validateManifest({ ...manifest, cardinalities: { ...manifest.cardinalities, worker: { ...manifest.cardinalities.worker, "producer-binding": 2 } } }, mapping), "CARDINALITY", "worker.cardinality", "cardinality");
-  expect("identity-stale", () => { const stale = structuredClone(mapping); stale.resources.D1.resourceRef = "rref-00000000000000000000"; validateManifest(manifest, stale); }, "RESOURCE_MISMATCH", "D1", "resource-identity-mismatch");
+  expect("identity-stale", () => { const stale = structuredClone(mapping); stale.resources.D1.resourceRef = "rref-00000000000000000000"; validateManifest(manifest, stale); }, "RESOURCE_MISMATCH", "resources.D1.resourceRef", "resource-identity-mismatch");
   expect("extra-cardinality-owner", () => validateManifest({ ...manifest, cardinalities: { ...manifest.cardinalities, extra: {} } }, mapping), "CARDINALITY", "cardinalities", "cardinality");
   const retargeted = structuredClone(manifest); retargeted.edges[2].to = "dlq-queue";
   expect("retarget-producer", () => validateManifest(retargeted, mapping), "CARDINALITY", "edges.worker-producer", "cardinality");
@@ -387,14 +425,24 @@ export function runSelfTest() {
   for (const [field, value, path] of [["main", "src/worker.g38-tombstone.ts", "worker.main"], ["name", "sekiban-dcb-meeting-room-doorbell", "worker.workerName"], ["exports", { MeetingRoomDownstreamDoorbell: "worker.g38-tombstone.ts" }, "worker.exports"]]) {
     const tombstone = { ...worker, [field]: value }; expect("forbidden-tombstone", () => validateConfig(manifest, manifest.components[0], tombstone, mapping), "CARDINALITY", path, "cardinality");
   }
-  expect("embedded-entrypoint-missing", () => assertEntrypointSource(source.replace('export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";\n', "")), "ENTRYPOINT_MISSING", "samples/meeting-room/src/worker.cloudflare-only.ts#MeetingRoomDownstreamDoorbell", "entrypoint-missing");
-  expect("embedded-default-fetch", () => { const receiver = `${readFileSync(join(root, "samples/meeting-room/src/worker.g38-receiver.ts"), "utf8")}\nexport default { fetch() {} };`; if (receiver.includes("fetch(")) fail("CARDINALITY", "samples/meeting-room/src/worker.g38-receiver.ts#default.fetch", "cardinality"); }, "CARDINALITY", "samples/meeting-room/src/worker.g38-receiver.ts#default.fetch", "cardinality");
+  expect("embedded-entrypoint-missing", () => validateConfig(manifest, manifest.components[0], worker, mapping, source.replace('export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";\n', ""), receiverSource), "ENTRYPOINT_MISSING", "samples/meeting-room/src/worker.cloudflare-only.ts#MeetingRoomDownstreamDoorbell", "entrypoint-missing");
+  expect("embedded-default-fetch", () => validateConfig(manifest, manifest.components[0], worker, mapping, source, `${receiverSource}\nexport default { fetch() {} };`), "CARDINALITY", "samples/meeting-room/src/worker.g38-receiver.ts#default.fetch", "cardinality");
   validateQueueTopology([{ script: "sekiban-dcb-meeting-room-cloudflare-only" }]);
   expect("receiver-consumer", () => validateQueueTopology([{ script: "synthetic-receiver" }]), "QUEUES_FORBIDDEN", "queues.consumers[0].script", "queues-forbidden");
   expect("extra-consumer", () => validateQueueTopology([{ script: "sekiban-dcb-meeting-room-cloudflare-only" }, { script: "unrelated-worker" }]), "CARDINALITY", "queues.consumers", "cardinality");
-  for (const sample of ['env.D1', 'env["D1"]', "env?.D1", "const { D1 } = env", "const { D1: alias } = env"]) if (!rawBindingHits(sample)) throw new Error(`raw binding scan missed ${sample}`);
+  for (const sample of ['env.D1', 'env["D1"]', "env?.D1", "const { D1 } = env", "const { D1: alias } = env", "const {\n  D1\n} = env"]) if (!rawBindingHits(sample)) throw new Error(`raw binding scan missed ${sample}`);
   if (rawBindingHits("pipelineD1(env)")) throw new Error("raw binding scan flagged an accessor");
-  const rendered = JSON.stringify(envelope) + JSON.stringify(publishedPayload(manifest)); if (rendered.includes("REPLACE_WITH_CLOUDFLARE_ONLY_PIPELINE_D1_ID")) throw new Error("published digest leaked a raw identity");
+  try {
+    const canary = structuredClone(mapping);
+    canary.resources.D1.database_id = "CANARY-SECRET-VALUE";
+    validateConfig(manifest, manifest.components[0], worker, canary);
+    throw new Error("canary unexpectedly passed");
+  } catch (error) {
+    if (!(error instanceof CompositionDiagnostic)) throw error;
+    const renderedDiagnostic = JSON.stringify(error.diagnostic);
+    if (!renderedDiagnostic.includes("resource-identity-mismatch") || renderedDiagnostic.includes("CANARY-SECRET-VALUE")) throw new Error("canary leaked or was not redacted");
+  }
+  const rendered = JSON.stringify(envelope) + JSON.stringify(publishedPayload(manifest)); if (rendered.includes(mapping.resources.D1.database_id) || rendered.includes("CANARY-SECRET-VALUE")) throw new Error("published digest leaked a raw identity");
   return { result: "g34-provider-composition-self-test-passed", digest: envelope.digest, mutations };
 }
 
