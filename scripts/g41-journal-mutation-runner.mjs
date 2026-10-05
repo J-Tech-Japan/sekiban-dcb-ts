@@ -21,7 +21,7 @@ export const G41_PRODUCTION_MUTATIONS = Object.freeze([
     to: `const g41MutantJournal = this.env.JOURNAL;
     if (g41MutantJournal !== undefined) {
       await g41MutantJournal.get(scopeIdFor(g41MutantJournal, { serviceId: this.serviceId, doClass: "journal", identity: attemptId })).fetch(
-        new Request("https://g41-mutant.internal/admit", { method: "POST" }),
+        new Request("https://mutant.invalid/admit", { method: "POST" }),
       );
     }
     const reservations = await this.acquireReservations(input, attemptId, fault, traceState?.scope);`,

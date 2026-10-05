@@ -1,7 +1,6 @@
 {
   "schema": "sdt-g41-journal-duty-inventory/v1",
-  "preChangeMain": "7cc38a4",
-  "scope": "Journal Durable Object duties after removal from the serialized commit path",
+  "scope": "Current Journal Durable Object duties after removal from the serialized commit path",
   "publicCommitWire": {
     "request": "PRESERVED",
     "response": "PRESERVED",
@@ -10,124 +9,27 @@
   "routeSet": [
     "POST <G42_JOURNAL_PROBE_INTERNAL_PREFIX>/*",
     "GET /state",
-    "GET /result",
     "GET /repair/workset",
     "GET /repair/observations",
-    "POST /admit",
-    "POST /transition",
-    "POST /reconcile",
-    "POST /reservation-failure",
-    "POST /takeover",
-    "POST /fault",
-    "POST /repair/observation",
-    "POST /debug/alarm"
+    "POST /repair/observation"
   ],
   "durableFieldSet": [
     "__sdt_g42_p1_alarm",
     "__sdt_g42_p1_index",
     "__sdt_g42_p1_record__:*",
     "journal",
-    "journal.alarm",
-    "journal.allocatorVector",
-    "journal.attemptId",
     "journal.candidates",
-    "journal.consistencyTags",
-    "journal.failureCause",
     "journal.missingTags",
-    "journal.ownerEpoch",
-    "journal.repairObservations",
-    "journal.state",
-    "journal.terminalResponse",
-    "journal.testFaults"
+    "journal.repairObservations"
   ],
   "callerSet": [
-    "CommitWorker.handleUntraced (pre-G41 only)",
-    "JournalDurableObject.alarm (inert after commit removal)",
     "packages/dcb-runtime/src/cli/OperatorRepairCli.ts:handleOperatorRepair -> RepairWorker",
-    "packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/result",
     "packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/state",
-    "packages/dcb-runtime/src/index.ts:/journals/:attemptId/result",
     "packages/dcb-runtime/src/index.ts:/journals/:attemptId/state",
     "packages/dcb-runtime/src/repair/RepairWorker.ts:enumerate",
     "packages/dcb-runtime/src/repair/RepairWorker.ts:recordClearedObservations",
-    "samples/meeting-room/src/worker.cloudflare-only.ts:handleG42JournalProbe",
-    "test/journal.spec.ts direct Journal-only fault fixture"
+    "samples/meeting-room/src/worker.cloudflare-only.ts:handleG42JournalProbe"
   ],
-  "historicalG41Universe": {
-    "preChangeMain": "7cc38a4",
-    "routeSet": [
-      "POST <G42_JOURNAL_PROBE_INTERNAL_PREFIX>/*",
-      "GET /state",
-      "GET /result",
-      "GET /repair/workset",
-      "GET /repair/observations",
-      "POST /admit",
-      "POST /transition",
-      "POST /reconcile",
-      "POST /reservation-failure",
-      "POST /takeover",
-      "POST /fault",
-      "POST /repair/observation",
-      "POST /debug/alarm"
-    ],
-    "durableFieldSet": [
-      "__sdt_g42_p1_alarm",
-      "__sdt_g42_p1_index",
-      "__sdt_g42_p1_record__:*",
-      "journal",
-      "journal.alarm",
-      "journal.allocatorVector",
-      "journal.attemptId",
-      "journal.candidates",
-      "journal.consistencyTags",
-      "journal.failureCause",
-      "journal.missingTags",
-      "journal.ownerEpoch",
-      "journal.repairObservations",
-      "journal.state",
-      "journal.terminalResponse",
-      "journal.testFaults"
-    ],
-    "callerSet": [
-      "CommitWorker.handleUntraced (pre-G41 only)",
-      "JournalDurableObject.alarm (inert after commit removal)",
-      "packages/dcb-runtime/src/cli/OperatorRepairCli.ts:handleOperatorRepair -> RepairWorker",
-      "packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/result",
-      "packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/state",
-      "packages/dcb-runtime/src/index.ts:/journals/:attemptId/result",
-      "packages/dcb-runtime/src/index.ts:/journals/:attemptId/state",
-      "packages/dcb-runtime/src/repair/RepairWorker.ts:enumerate",
-      "packages/dcb-runtime/src/repair/RepairWorker.ts:recordClearedObservations",
-      "samples/meeting-room/src/worker.cloudflare-only.ts:handleG42JournalProbe",
-      "test/journal.spec.ts direct Journal-only fault fixture"
-    ]
-  },
-  "postCleanupExpectedUniverse": {
-    "routeSet": [
-      "POST <G42_JOURNAL_PROBE_INTERNAL_PREFIX>/*",
-      "GET /state",
-      "GET /repair/workset",
-      "GET /repair/observations",
-      "POST /repair/observation"
-    ],
-    "durableFieldSet": [
-      "__sdt_g42_p1_alarm",
-      "__sdt_g42_p1_index",
-      "__sdt_g42_p1_record__:*",
-      "journal",
-      "journal.candidates",
-      "journal.missingTags",
-      "journal.repairObservations"
-    ],
-    "callerSet": [
-      "packages/dcb-runtime/src/cli/OperatorRepairCli.ts:handleOperatorRepair -> RepairWorker",
-      "packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/state",
-      "packages/dcb-runtime/src/index.ts:/journals/:attemptId/state",
-      "packages/dcb-runtime/src/repair/RepairWorker.ts:enumerate",
-      "packages/dcb-runtime/src/repair/RepairWorker.ts:recordClearedObservations",
-      "samples/meeting-room/src/worker.cloudflare-only.ts:handleG42JournalProbe"
-    ]
-  },
   "duties": [
     {
       "id": "J01-g42-private-probe",
@@ -135,7 +37,6 @@
       "durableFields": ["__sdt_g42_p1_record__:*", "__sdt_g42_p1_index", "__sdt_g42_p1_alarm"],
       "callers": ["samples/meeting-room/src/worker.cloudflare-only.ts:handleG42JournalProbe"],
       "verdict": "STILL_REQUIRED",
-      "postG41Surface": "LIVE_NON_COMMIT",
       "reason": "G42's authenticated, fenced first-touch probe is not a serialized commit.",
       "fixture": "test/g42-journal-first-touch.spec.ts"
     },
@@ -145,19 +46,8 @@
       "durableFields": ["journal"],
       "callers": ["packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/state", "packages/dcb-runtime/src/index.ts:/journals/:attemptId/state"],
       "verdict": "STILL_REQUIRED",
-      "postG41Surface": "RETAINED_DIAGNOSTIC",
       "reason": "The direct Journal diagnostic route remains a separately-addressed non-commit surface.",
       "fixture": "test/journal.spec.ts"
-    },
-    {
-      "id": "J03-direct-terminal-result",
-      "routes": ["GET /result"],
-      "durableFields": ["journal.terminalResponse"],
-      "callers": ["packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/result", "packages/dcb-runtime/src/index.ts:/journals/:attemptId/result"],
-      "verdict": "NO_LONGER_REQUIRED",
-      "postG41Surface": "DEAD_CODE_FOLLOW_UP",
-      "reason": "Commit responses are tag-head facts or explicit partial/undetermined results; a Journal terminal response is not their authority. The retained direct diagnostic route is dead code for a later Journal cleanup.",
-      "fixture": "test/g41-journal-removal.spec.ts"
     },
     {
       "id": "J04-repair-workset",
@@ -165,8 +55,7 @@
       "durableFields": ["journal.candidates", "journal.missingTags"],
       "callers": ["packages/dcb-runtime/src/repair/RepairWorker.ts:enumerate", "packages/dcb-runtime/src/cli/OperatorRepairCli.ts:handleOperatorRepair -> RepairWorker"],
       "verdict": "STILL_REQUIRED",
-      "postG41Surface": "LIVE_NON_COMMIT",
-      "reason": "RepairWorker is a named non-commit caller retained by AC6 for an explicitly seeded legacy Journal workset; normal G41 commits do not create one.",
+      "reason": "RepairWorker is a named non-commit caller retained for an explicitly seeded legacy Journal workset; normal G41 commits do not create one.",
       "fixture": "test/repair.spec.ts:seedLegacyRepairWorkset"
     },
     {
@@ -175,74 +64,8 @@
       "durableFields": ["journal.repairObservations"],
       "callers": ["packages/dcb-runtime/src/repair/RepairWorker.ts:recordClearedObservations", "packages/dcb-runtime/src/cli/OperatorRepairCli.ts:handleOperatorRepair -> RepairWorker"],
       "verdict": "STILL_REQUIRED",
-      "postG41Surface": "LIVE_NON_COMMIT",
       "reason": "Repair audit evidence remains a named non-commit caller for an explicitly seeded legacy Journal workset; normal G41 commits do not create one.",
       "fixture": "test/repair.spec.ts:seedLegacyRepairWorkset"
-    },
-    {
-      "id": "J06-admit-and-attempt-idempotency",
-      "routes": ["POST /admit"],
-      "durableFields": ["journal.attemptId", "journal.candidates", "journal.consistencyTags"],
-      "callers": ["CommitWorker.handleUntraced (pre-G41 only)"],
-      "verdict": "MOVED",
-      "postG41Surface": "DEAD_CODE_FOLLOW_UP",
-      "reason": "Per-tag /acquire records durable prepare identity and idempotency; CommitWorker has no JOURNAL namespace operation. The retained direct route is test-only dead code pending Journal cleanup.",
-      "fixture": "test/g41-journal-removal.spec.ts:AC2"
-    },
-    {
-      "id": "J07-reserved-allocated-writing-complete",
-      "routes": ["POST /transition"],
-      "durableFields": ["journal.state", "journal.allocatorVector", "journal.terminalResponse"],
-      "callers": ["CommitWorker.handleUntraced (pre-G41 only)"],
-      "verdict": "MOVED",
-      "postG41Surface": "DEAD_CODE_FOLLOW_UP",
-      "reason": "Tag reservations, allocator vector, tag append receipts, and G44 source facts are the separate authorities; one Journal terminal state is retired. The retained direct route is test-only dead code pending Journal cleanup.",
-      "fixture": "test/g41-journal-removal.spec.ts:AC3/AC4"
-    },
-    {
-      "id": "J08-reservation-failure-and-cancel",
-      "routes": ["POST /reservation-failure"],
-      "durableFields": ["journal.failureCause", "journal.missingTags"],
-      "callers": ["CommitWorker.handleUntraced (pre-G41 only)"],
-      "verdict": "MOVED",
-      "postG41Surface": "DEAD_CODE_FOLLOW_UP",
-      "reason": "CommitWorker force-tombstones every already-reserved tag and preserves the primary refusal or failure result. The retained direct route is test-only dead code pending Journal cleanup.",
-      "fixture": "test/g41-journal-removal.spec.ts:AC3 prepare failure"
-    },
-    {
-      "id": "J09-reconcile",
-      "routes": ["POST /reconcile"],
-      "durableFields": ["journal.state", "journal.failureCause"],
-      "callers": ["CommitWorker.handleUntraced (pre-G41 only)"],
-      "verdict": "NO_LONGER_REQUIRED",
-      "postG41Surface": "DEAD_CODE_FOLLOW_UP",
-      "reason": "Commit outcome reconciliation is tag-owned and source-scannable through G43/G44, not an attempt Journal state machine. The retained direct route is test-only dead code pending Journal cleanup.",
-      "fixture": "test/g41-journal-removal.spec.ts:AC4"
-    },
-    {
-      "id": "J10-alarm-and-takeover",
-      "routes": ["POST /takeover", "POST /debug/alarm"],
-      "durableFields": ["journal.ownerEpoch", "journal.alarm"],
-      "callers": ["JournalDurableObject.alarm (inert after commit removal)"],
-      "verdict": "NO_LONGER_REQUIRED",
-      "postG41Surface": "DEAD_CODE_FOLLOW_UP",
-      "reason": "Tag reservation expiry and obligation retry use the Tag DO's single scheduler; CommitWorker does not install a Journal alarm. The retained direct route is test-only dead code pending Journal cleanup.",
-      "fixture": "test/g41-journal-removal.spec.ts:AC4 boundaries"
-    },
-    {
-      "id": "J11-debug-fault",
-      "routes": ["POST /fault"],
-      "durableFields": ["journal.testFaults"],
-      "callers": ["test/journal.spec.ts direct Journal-only fault fixture"],
-      "verdict": "STILL_REQUIRED",
-      "postG41Surface": "TEST_ONLY",
-      "reason": "The direct Journal test/debug surface is preserved, but it is not reachable from CommitWorker.",
-      "fixture": "test/journal.spec.ts"
     }
-  ],
-  "retiredCommitAuthority": {
-    "singleJournalTerminalOutcome": "RETIRED",
-    "replacement": ["Tag Durable Object reservation and append facts", "G44 source obligation registry and reconciler"],
-    "followUp": "Remove the retained dead Journal commit-state routes only in a separately-owned cleanup after the named non-commit callers are retired."
-  }
+  ]
 }

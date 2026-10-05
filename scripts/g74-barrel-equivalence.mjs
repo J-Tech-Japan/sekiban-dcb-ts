@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { hashProjection, publicSurfaceHash } from "./g74-surface-hash.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const baselinePath = join(root, "docs/SDT-G74-surface-baseline.json");
+const baselinePath = join(root, "contracts/g74-surface-baseline.json");
 const extractorPath = join(root, "scripts/g74-release-surface.mjs");
 const wildcardMutatePath = join(root, "scripts/fixtures/g74-barrel-wildcard-mutate.json");
 const dropExportMutatePath = join(root, "scripts/fixtures/g74-barrel-drop-export-mutate.json");

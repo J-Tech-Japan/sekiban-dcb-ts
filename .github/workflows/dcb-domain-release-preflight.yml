@@ -6,7 +6,6 @@ on:
       - "packages/dcb-domain/**"
       - "scripts/dcb-domain-*.mjs"
       - "docs/release-process.md"
-      - "docs/SDT-G59-evidence.md"
       - "CHANGELOG.md"
       - ".github/workflows/release-dcb-domain.yml"
       - ".github/workflows/dcb-domain-release-preflight.yml"

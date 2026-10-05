@@ -14,7 +14,6 @@ import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
 const sourceRoot = resolve(root, "packages/dcb-client/src");
-const evidencePath = resolve(root, "docs/SDT-G78-evidence.md");
 const classificationModulePath = resolve(root, "packages/dcb-client/dist/classification.js");
 
 const classifications = Object.freeze({
@@ -80,13 +79,11 @@ function derive(sourceMap) {
   return found;
 }
 
-function check(sourceMap, evidence) {
+function check(sourceMap) {
   const found = derive(sourceMap);
   const expected = new Set(Object.keys(classifications));
   for (const code of found.keys()) assert(expected.has(code), `source code ${code} has no classification row`);
   for (const code of expected) assert(found.has(code), `classification row ${code} is not derived from client source`);
-  assert(evidence.includes("## AC3/AC4 error classification"), "evidence classification section is missing");
-  for (const code of expected) assert(evidence.includes(`| \`${code}\` |`), `evidence row ${code} is missing`);
   return { codes: [...found.keys()].sort(), sourceLocations: Object.fromEntries(found) };
 }
 
@@ -111,8 +108,7 @@ async function loadKinds() {
 }
 
 const sourceMap = await sources();
-const evidence = await readFile(evidencePath, "utf8");
-const result = check(sourceMap, evidence);
+const result = check(sourceMap);
 const kinds = await loadKinds();
 result.kinds = checkKinds(result.codes, kinds);
 if (process.argv.includes("--self-test")) {
@@ -126,7 +122,7 @@ if (process.argv.includes("--self-test")) {
   const withoutKind = { ...kinds };
   delete withoutKind.transport;
   result.selfTest = [
-    rejects("unclassified-code", () => check(mutant, evidence)),
+    rejects("unclassified-code", () => check(mutant)),
     rejects("injected-code-without-kind", () => checkKinds([...result.codes, "unclassified_future_code"], kinds)),
     rejects("deleted-kind", () => checkKinds(result.codes, withoutKind)),
     rejects("kind-outside-class", () => checkKinds(result.codes, { ...kinds, aborted: "invalid" })),
