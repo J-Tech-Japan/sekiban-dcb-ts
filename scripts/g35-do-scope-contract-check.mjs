@@ -57,7 +57,6 @@ function snapshot() {
     runtime: read("packages/dcb-runtime/src/index.ts"),
     cloudflare: read("packages/dcb-runtime/src/cloudflare.ts"),
     test: read("test/g35-do-scope.spec.ts"),
-    evidence: read("docs/SDT-G35-evidence.md"),
     packageJson: read("package.json"),
     laneManifest: JSON.parse(read("ci/lanes.json")),
   };
@@ -146,13 +145,6 @@ export function assertG35DoScopeContract(value) {
     "journal control route names include caller authority serviceId",
     "rejects control-route path serviceId that is not caller authority",
   ]) requireContains(value.test, token, "G35 confused-deputy fixtures");
-
-  for (const token of [
-    "means/18 requirement 1",
-    "means/18 requirement 4",
-    "CF-CODE-1 WAIT",
-    "scope fence",
-  ]) requireContains(value.evidence, token, "G35 Cloud-facing evidence");
 
   requireContains(value.packageJson, '"test:g35"', "G35 package lane");
   const lane = manifestCommand(value.laneManifest, "cheap", "g35");

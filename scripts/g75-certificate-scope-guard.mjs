@@ -17,7 +17,6 @@ const files = Object.freeze({
   materializedView: "packages/dcb-runtime/src/mv/MaterializedViewCatchUp.ts",
   index: "packages/dcb-runtime/src/index.ts",
   cloudflare: "packages/dcb-runtime/src/cloudflare.ts",
-  evidence: "docs/SDT-G70A-evidence.md",
   test: "test/g75-certificate-scope.spec.ts",
 });
 
@@ -93,12 +92,6 @@ export function checkG75Sources(sources = sourceMap()) {
   requireContains(files.index, [
     "await pollLiveProjections(env, { registry: composition.projectors, storeProvider, serviceIdentityProvider: serviceIdentity });",
   ], "ordinary scheduled caller");
-  requireContains(files.evidence, [
-    "## Complete certificate-reachable call-site classification",
-    "AC3 mutant results",
-    "omit-g44-settled-frontier",
-    "omit-closed-prefix-certificate-gate",
-  ], "evidence");
   requireContains(files.test, [
     "unmarked direct catchUp and pollRegistered ignore absent, null, and malformed certificate fields",
     "ordinary scheduled and diagnostic-style polling does not validate a certificate",
@@ -130,14 +123,14 @@ export function runSelfTest() {
     {
       id: "omit-g44-settled-frontier",
       file: files.projection,
-      from: "options.maximumSuid === null",
-      to: "false",
+      from: "if (options.maximumSuid === null || (\n          options.maximumSuid !== undefined && compareSuid(event.suid, options.maximumSuid) > 0\n        )) {",
+      to: "if (false) {",
     },
     {
       id: "omit-closed-prefix-certificate-gate",
       file: files.projection,
-      from: "certifiedClosedPrefixSuid === null",
-      to: "false",
+      from: "if (certifiedClosedPrefixSuid === null || (\n          certifiedClosedPrefixSuid !== undefined && compareSuid(event.suid, certifiedClosedPrefixSuid) > 0\n        )) {",
+      to: "if (false) {",
     },
   ];
   const results = mutations.map((mutation) => {

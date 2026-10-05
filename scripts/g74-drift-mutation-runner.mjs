@@ -25,7 +25,7 @@ import { hashProjection, publicSurfaceHash } from "./g74-surface-hash.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const extractor = resolve(root, "scripts/g74-release-surface.mjs");
 const guard = resolve(root, "scripts/g74-surface-guard.mjs");
-const baseline = JSON.parse(readFileSync(resolve(root, "docs/SDT-G74-surface-baseline.json"), "utf8"));
+const baseline = JSON.parse(readFileSync(resolve(root, "contracts/g74-surface-baseline.json"), "utf8"));
 
 const CLIENT_DTS = "dist/index.d.ts";
 const preflight = "export declare function preflightCommit(input: PreflightInput): void;";

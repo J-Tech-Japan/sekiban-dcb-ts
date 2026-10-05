@@ -6,9 +6,9 @@ export type FailureKind = "timeout" | "unavailable" | "partial" | "conflict" | "
 /**
  * SDT-G86: the one code-to-kind table shared by `ClaimLedgerExecutor` and
  * `SekibanExecutor`. Each kind follows the SDT-G78 class of the code
- * (`docs/SDT-G78-evidence.md`): caller-abort and deadline/unknown codes are
- * `timeout` or `unavailable`, definite refusals are `invalid`, `rejected`,
- * `conflict` or `partial`, and malformed/unknown codes are `transport`.
+ * Caller-abort and deadline/unknown codes are `timeout` or `unavailable`,
+ * definite refusals are `invalid`, `rejected`, `conflict` or `partial`, and
+ * malformed/unknown codes are `transport`.
  * `scripts/g78-error-classification-guard.mjs` imports the built module and
  * fails when a source-derived code has no kind or a kind outside its class.
  */

@@ -226,7 +226,7 @@ export function assertG42Evidence({
   receiptDocument,
   result,
   preRunCommit,
-  planPath = "docs/evidence/SDT-G42-pre-run-plan.json",
+  planPath,
   calculatorPath = "scripts/g42-probe-calculator.mjs",
   planBytes = JSON.stringify(plan, null, 2) + "\n",
   verifyGit = false,
@@ -247,7 +247,7 @@ export function assertG42Evidence({
 export function assertG42PreRunPlan({
   plan,
   preRunCommit,
-  planPath = "docs/evidence/SDT-G42-pre-run-plan.json",
+  planPath,
   calculatorPath = "scripts/g42-probe-calculator.mjs",
   planBytes = JSON.stringify(plan, null, 2) + "\n",
   verifyGit = false,

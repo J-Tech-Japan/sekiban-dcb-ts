@@ -9,8 +9,8 @@ import ts from "typescript";
 import { hashProjection, publicSurfaceHash } from "./g74-surface-hash.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const baselinePath = join(root, "docs/SDT-G74-surface-baseline.json");
-const classificationPath = join(root, "docs/SDT-G74-export-classification.json");
+const baselinePath = join(root, "contracts/g74-surface-baseline.json");
+const classificationPath = join(root, "contracts/g74-export-classification.json");
 const extractorPath = join(root, "scripts/g74-release-surface.mjs");
 
 function fail(message) {

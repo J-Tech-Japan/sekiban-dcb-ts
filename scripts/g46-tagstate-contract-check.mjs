@@ -46,7 +46,6 @@ function snapshot() {
     runtime: read("packages/dcb-runtime/src/index.ts"),
     cloudflare: read("packages/dcb-runtime/src/cloudflare.ts"),
     test: read("test/g46-tagstate.spec.ts"),
-    evidence: read("docs/SDT-G46-evidence.md"),
     packageJson: read("package.json"),
     ci: read(".github/workflows/ci.yml"),
     laneManifest: JSON.parse(read("ci/lanes.json")),
@@ -57,7 +56,7 @@ function snapshot() {
 
 export function assertG46TagStateContract(value) {
   const {
-    tagState, tag, readWorker, runtime, cloudflare, test, evidence,
+    tagState, tag, readWorker, runtime, cloudflare, test,
     packageJson, ci, rootConfig, sampleConfigs,
   } = value;
   if (JSON.stringify(["wrangler.jsonc", ...sampleConfigs.map(([name]) => name)]) !== JSON.stringify(CURRENT_CONFIGS)) fail("config enumeration is not the exact current set");
@@ -176,18 +175,6 @@ export function assertG46TagStateContract(value) {
     "intermediate source-row spike",
   ]) requireContains(test, token, "G46 fixture inventory");
 
-  for (const token of [
-    "SDT-G46 TagStateDO evidence",
-    "readHeadFacts",
-    "G43 incremental source",
-    "tag_state_source_frontier_failure",
-    "Read-response compatibility",
-    "AC8",
-    "deferred",
-    "test DB may be reset",
-    "not an O(1) claim",
-  ]) requireContains(evidence, token, "G46 evidence");
-
   requireContains(packageJson, '"test:g46"', "package scripts");
   const legacyWorkflowWiring = ci.includes("ci-g46:") && ci.includes("ci-g46");
   const lane = value.laneManifest?.lanes?.find((entry) => entry?.name === "g46");
@@ -216,7 +203,6 @@ function selfTest() {
   expectRed((value) => { value.tagState = value.tagState.replace("this.readSource(identity, cache.lastSuid, undefined)", 'this.readSource(identity, "", undefined)'); }, "normal delta reprojects from the origin");
   expectRed((value) => { value.readWorker = value.readWorker.replace("this.env.TAG_STATE.get", "this.env.TAG.get"); }, "read route bypasses TagStateDO");
   expectRed((value) => { value.test = value.test.replaceAll("intermediate source-row spike", "endpoint-only source-row check"); }, "all-points source measurement fixture is removed");
-  expectRed((value) => { value.evidence = value.evidence.replace("test DB may be reset", "legacy data is preserved"); }, "C-0 scope disclosure is removed");
   expectRed((value) => { value.rootConfig = value.rootConfig.replace('"class_name": "TagStateDurableObject"', '"class_name": "TagStateMissing"'); }, "tag-state-binding-missing");
   expectRed((value) => { value.rootConfig = value.rootConfig.replace('"new_sqlite_classes": ["TagStateDurableObject"]', '"new_sqlite_classes": []'); }, "tag-state-migration-missing");
   process.stdout.write(`${JSON.stringify({ selfTest: "g46-tagstate-contract-mutations-red" })}\n`);

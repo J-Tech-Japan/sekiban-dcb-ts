@@ -31,7 +31,6 @@
     "scripts/g29-authoring-doc-check.mjs",
     "scripts/g29-delivery-matrix.mjs",
     "scripts/g29-candidate-check.mjs",
-    "scripts/g20-candidate-check.mjs",
     "scripts/g29-mapping-contract.d.mts",
     "scripts/g29-delivery-matrix.d.mts",
     "scripts/deploy/g29-witness.mjs",

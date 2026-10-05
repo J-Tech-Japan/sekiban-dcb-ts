@@ -34,7 +34,6 @@ function snapshot() {
     tag: read("packages/dcb-runtime/src/tag/TagDurableObject.ts"),
     commit: read("packages/dcb-runtime/src/commit/CommitWorker.ts"),
     test: read("test/g45-head-facts.spec.ts"),
-    evidence: read("docs/SDT-G45-evidence.md"),
     packageJson: read("package.json"),
     ci: read(".github/workflows/ci.yml"),
     laneManifest: JSON.parse(read("ci/lanes.json")),
@@ -42,7 +41,7 @@ function snapshot() {
 }
 
 export function assertG45HeadFactsContract(value) {
-  const { tag, commit, test, evidence, packageJson, ci } = value;
+  const { tag, commit, test, packageJson, ci } = value;
   const route = between(tag, 'if (request.method === "GET" && url.pathname === "/head-facts")', 'if (request.method === "GET" && url.pathname === "/state")', "head-facts route");
   requireContains(route, "this.readHeadFacts(tag)", "head-facts route");
   requireContains(route, 'error(404, "tag_not_found"', "head-facts route");
@@ -72,16 +71,6 @@ export function assertG45HeadFactsContract(value) {
     "intermediateOnlySpike",
   ]) requireContains(test, token, "G45 runtime fixture inventory");
 
-  for (const token of [
-    "SDT-G45 scalar Tag head-facts evidence",
-    "all-points history measurement",
-    "SerializedReadWorker.readTag",
-    "JournalDurableObject.requeryCommitRecords",
-    "BootstrapCoordinatorDurableObject.verify",
-    "RepairWorker",
-    "No deployed-primary sampling window is claimed",
-  ]) requireContains(evidence, token, "G45 evidence inventory");
-
   requireContains(packageJson, '"test:g45"', "package scripts");
   const legacyWorkflowWiring = ci.includes("ci-g45:") && ci.includes("ci-g45");
   const lane = value.laneManifest?.lanes?.find((entry) => entry?.name === "cheap");
@@ -108,7 +97,6 @@ function selfTest() {
   expectRed((value) => { value.tag = value.tag.replace("private readHeadFacts", "private readG45MutantFacts"); }, "head-facts reader is removed");
   expectRed((value) => { value.test = value.test.replaceAll("intermediateOnlySpike", "endpointOnlySpike"); }, "all-points checker fixture is removed");
   expectRed((value) => { value.test = value.test.replaceAll("constantTagEventLimit", "constantLimitMutationRemoved"); }, "constant tag_event LIMIT fixture is removed");
-  expectRed((value) => { value.evidence = value.evidence.replace("all-points history measurement", "endpoint-only history measurement"); }, "all-points evidence is removed");
   process.stdout.write(`${JSON.stringify({ selfTest: "g45-head-facts-contract-mutations-red" })}\n`);
 }
 
