@@ -1,9 +1,12 @@
 {
   "resources": {
-    "pipeline-d1": { "database_id": "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID", "resourceRef": "rref-a17c4e90d2b68f53c04d" },
-    "mv-d1": { "database_id": "REPLACE_WITH_G32_FINAL_MV_D1_ID", "resourceRef": "rref-b28d5f01e3c79a64d15e" },
-    "work-queue": { "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox", "resourceRef": "rref-c39e6012f4d80b75e26f" },
-    "dlq-queue": { "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq", "resourceRef": "rref-d40f7123a5e91c86f370" },
-    "doorbell-service": { "service": "sekiban-dcb-meeting-room-doorbell-g38", "resourceRef": "rref-0732a456d81c4f1926a3" }
+    "D1": { "database_id": "REPLACE_WITH_CLOUDFLARE_ONLY_PIPELINE_D1_ID", "resourceRef": "rref-a17c4e90d2b68f53c04d" },
+    "D1_MV": { "database_id": "REPLACE_WITH_CLOUDFLARE_ONLY_MV_D1_ID", "resourceRef": "rref-b28d5f01e3c79a64d15e" },
+    "DOWNSTREAM_QUEUE": { "queue": "sekiban-dcb-meeting-room-cloudflare-outbox", "consumerQueue": "sekiban-dcb-meeting-room-cloudflare-outbox", "dead_letter_queue": "sekiban-dcb-meeting-room-cloudflare-outbox-dlq", "resourceRef": "rref-c39e6012f4d80b75e26f", "deadLetterResourceRef": "rref-d40f7123a5e91c86f370" },
+    "ALLOCATOR": { "class_name": "AllocatorDurableObject", "resourceRef": "rref-7ba7fb7d22ca57236b6a" },
+    "BOOTSTRAP": { "class_name": "BootstrapCoordinatorDurableObject", "resourceRef": "rref-06bb3fabe0ff9fbf1aa5" },
+    "JOURNAL": { "class_name": "JournalDurableObject", "resourceRef": "rref-711e4471e1117bcbc3e9" },
+    "TAG": { "class_name": "TagDurableObject", "resourceRef": "rref-8a294ee6138da14e0e6c" },
+    "TAG_STATE": { "class_name": "TagStateDurableObject", "resourceRef": "rref-919c2ad04fb274ab43c0" }
   }
 }

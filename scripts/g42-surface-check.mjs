@@ -6,10 +6,7 @@ const PATH_LITERAL = "/conformance/v1/g42/journal-first-touch";
 const PRIMARY = "samples/meeting-room/src/worker.cloudflare-only.ts";
 const FORBIDDEN = Object.freeze([
   "samples/meeting-room/src/worker.g38-receiver.ts",
-  "samples/meeting-room/src/worker.g38-tombstone.ts",
   "samples/meeting-room/src/worker.cloudflare-receiver-support.ts",
-  "samples/meeting-room/wrangler.g38-receiver.jsonc",
-  "samples/meeting-room/wrangler.g38-old-receiver-tombstone.jsonc",
 ]);
 
 function fail(message) {

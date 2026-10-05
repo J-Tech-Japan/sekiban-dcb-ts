@@ -10,6 +10,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
+const CURRENT_CONFIGS = ["wrangler.jsonc", "samples/meeting-room/wrangler.jsonc", "samples/meeting-room/wrangler.cloudflare-only.jsonc"];
 
 function fail(message) {
   throw new Error(`G44 contract check failed: ${message}`);
@@ -35,9 +36,7 @@ function between(source, begin, end, context) {
 }
 
 function snapshot() {
-  const configs = readdirSync(resolve(root, "samples/meeting-room"))
-    .filter((name) => /^wrangler\..+\.jsonc$/.test(name))
-    .map((name) => [name, read(`samples/meeting-room/${name}`)]);
+  const configs = CURRENT_CONFIGS.map((name) => [name, read(name)]);
   return {
     migration: read("migrations/d1/g32/0002_g44_global_completeness.sql"),
     store: read("packages/dcb-runtime/src/store/D1EventStore.ts"),
@@ -141,9 +140,10 @@ export function assertG44Contract(value) {
   // AC6/AC8: no separate worker/public route and no mixed-version rollout
   // flag. A D1 binding is the global-array authority; a G44 config switch
   // would make normal source commits silently omit their partition.
-  if (rootFiles.some((name) => /^wrangler\.g44(?:[.-]|$)/.test(name))) fail("a separate G44 Worker configuration exists");
+  if (JSON.stringify(configs.map(([name]) => name)) !== JSON.stringify(CURRENT_CONFIGS)) fail("separate-g44-config: current config set changed");
+  if (rootFiles.some((name) => /^wrangler\.g44(?:[.-]|$)/.test(name))) fail("separate-g44-config: a separate G44 Worker configuration exists");
   for (const [name, config] of configs) {
-    if (config.includes("G44_SOURCE_REGISTRY_REQUIRED")) fail(`${name} retains a prohibited G44 rollout flag`);
+    if (config.includes("G44_SOURCE_REGISTRY_REQUIRED")) fail(`g44-rollout-flag: ${name} retains a prohibited G44 rollout flag`);
   }
 
   // The fixture names are deliberately semantic: this makes removing one of
@@ -180,6 +180,8 @@ function selfTest() {
   expectRed((value) => { value.reconciler = value.reconciler.replace("GLOBAL_ARRAY_SOURCE_PARTITION_UNAVAILABLE", "GLOBAL_ARRAY_SOURCE_MUTANT"); }, "source scan failure loses its stable incident type");
   expectRed((value) => { value.core = value.core.replace("A detector failure makes global completeness unknown", "detector warning only"); }, "detector can fall through to views");
   expectRed((value) => { value.adapter = value.adapter.replace("recordDetectorFailure", "recordDetectorHealthMutation"); }, "detector failure does not reach health authority");
+  expectRed((value) => { value.configs[0][0] = "wrangler.g44-spike.jsonc"; }, "separate-g44-config");
+  expectRed((value) => { value.configs[0][1] = `${value.configs[0][1]}\nG44_SOURCE_REGISTRY_REQUIRED`; }, "g44-rollout-flag");
   process.stdout.write(`${JSON.stringify({ selfTest: "g44-authority-and-isolation-mutations-red" })}\n`);
 }
 

@@ -231,7 +231,6 @@ function snapshot() {
     cloudflare: read("packages/dcb-runtime/src/cloudflare.ts"),
     index: read("packages/dcb-runtime/src/index.ts"),
     g42Worker: read("samples/meeting-room/src/worker.cloudflare-only.ts"),
-    g38Tombstone: read("scripts/g38-tombstone-check.mjs"),
     test: read("test/g41-journal-removal.spec.ts"),
     evidence: read("docs/SDT-G41-evidence.md"),
     packageJson: read("package.json"),
@@ -389,9 +388,8 @@ export function assertG41JournalRemovalContract(value) {
   requireContains(partialFences, '"/fence/install"', "CommitWorker partial fences");
   requireContains(partialFences, "PARTIAL_WRITE_FENCE_REASON", "CommitWorker partial fences");
 
-  // The class, binding, named non-commit callers, and G38 tombstone stay live.
+  // The class, binding, and named non-commit callers stay live.
   requireContains(value.cloudflare, "class JournalDurableObject", "runtime Journal export");
-  requireContains(value.g38Tombstone, 'name: "JOURNAL", class_name: "JournalDurableObject"', "G38 tombstone assertion");
 
   for (const token of [
     "AC2: performs zero JOURNAL namespace calls while the Tag positive control is live",

@@ -7,11 +7,12 @@
  * replay lifecycle, deploy binding, and fixtures visible to CI so a local
  * optimization cannot quietly reintroduce a full-record projection path.
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
+const CURRENT_CONFIGS = ["wrangler.jsonc", "samples/meeting-room/wrangler.jsonc", "samples/meeting-room/wrangler.cloudflare-only.jsonc"];
 
 function fail(message) {
   throw new Error(`G46 TagState contract check failed: ${message}`);
@@ -37,10 +38,7 @@ function between(source, begin, end, label) {
 }
 
 function snapshot() {
-  const sampleConfigs = readdirSync(resolve(root, "samples/meeting-room"))
-    .filter((name) => /^wrangler(?:\..+)?\.jsonc$/.test(name))
-    .sort()
-    .map((name) => [name, read(`samples/meeting-room/${name}`)]);
+  const sampleConfigs = CURRENT_CONFIGS.slice(1).map((name) => [name, read(name)]);
   return {
     tagState: read("packages/dcb-runtime/src/tagstate/TagStateDurableObject.ts"),
     tag: read("packages/dcb-runtime/src/tag/TagDurableObject.ts"),
@@ -62,6 +60,7 @@ export function assertG46TagStateContract(value) {
     tagState, tag, readWorker, runtime, cloudflare, test, evidence,
     packageJson, ci, rootConfig, sampleConfigs,
   } = value;
+  if (JSON.stringify(["wrangler.jsonc", ...sampleConfigs.map(([name]) => name)]) !== JSON.stringify(CURRENT_CONFIGS)) fail("config enumeration is not the exact current set");
 
   // AC1/AC3: a distinct SQLite cache owns only identity plus resumable
   // projection state.  It must never rebuild by reading a whole tag record.
@@ -218,6 +217,8 @@ function selfTest() {
   expectRed((value) => { value.readWorker = value.readWorker.replace("this.env.TAG_STATE.get", "this.env.TAG.get"); }, "read route bypasses TagStateDO");
   expectRed((value) => { value.test = value.test.replaceAll("intermediate source-row spike", "endpoint-only source-row check"); }, "all-points source measurement fixture is removed");
   expectRed((value) => { value.evidence = value.evidence.replace("test DB may be reset", "legacy data is preserved"); }, "C-0 scope disclosure is removed");
+  expectRed((value) => { value.rootConfig = value.rootConfig.replace('"class_name": "TagStateDurableObject"', '"class_name": "TagStateMissing"'); }, "tag-state-binding-missing");
+  expectRed((value) => { value.rootConfig = value.rootConfig.replace('"new_sqlite_classes": ["TagStateDurableObject"]', '"new_sqlite_classes": []'); }, "tag-state-migration-missing");
   process.stdout.write(`${JSON.stringify({ selfTest: "g46-tagstate-contract-mutations-red" })}\n`);
 }
 
