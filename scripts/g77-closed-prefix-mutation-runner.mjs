@@ -193,8 +193,9 @@ try {
   for (const mutant of mutants) {
     const file = files[mutant.file];
     const original = sources[mutant.file];
-    if (!original.includes(mutant.from)) {
-      results.push({ mutant: mutant.name, status: "skipped", reason: "anchor not found" });
+    const anchorCount = original.split(mutant.from).length - 1;
+    if (anchorCount !== 1) {
+      results.push({ mutant: mutant.name, status: "anchor-error", reason: `anchor found ${anchorCount} times` });
       continue;
     }
     writeFileSync(file, original.replace(mutant.from, mutant.to), "utf8");
@@ -249,7 +250,5 @@ try {
 }
 
 console.log(JSON.stringify({ mutants: results }, null, 2));
-const unexpected = results.filter((entry) =>
-  entry.status === "unexpected-green" || entry.status === "unexpected-red" || entry.status === "build-break",
-);
-process.exit(unexpected.length === 0 ? 0 : 1);
+const unexpected = results.filter((entry) => entry.status !== "red");
+process.exit(unexpected.length === 0 && results.length === mutants.length ? 0 : 1);
