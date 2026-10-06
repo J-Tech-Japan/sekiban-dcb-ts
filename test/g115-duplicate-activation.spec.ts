@@ -17,6 +17,8 @@ interface Scope {
 interface TagFacts {
   readonly events: number;
   readonly receipts: number;
+  readonly memberships: number;
+  readonly obligations: number;
   readonly reservations: number;
   readonly version: number;
   readonly head: string;
@@ -67,6 +69,8 @@ async function facts(value: Scope): Promise<TagFacts> {
     const row = durableState.storage.sql.exec<{
       events: number;
       receipts: number;
+      memberships: number;
+      obligations: number;
       reservations: number;
       version: number;
       head: string;
@@ -74,6 +78,8 @@ async function facts(value: Scope): Promise<TagFacts> {
       SELECT
         (SELECT COUNT(*) FROM tag_event) AS events,
         (SELECT COUNT(*) FROM tag_commit_receipt) AS receipts,
+        (SELECT COUNT(*) FROM tag_committed_membership) AS memberships,
+        (SELECT COUNT(*) FROM tag_outbox_obligation) AS obligations,
         (SELECT COUNT(*) FROM tag_reservation) AS reservations,
         (SELECT version FROM tag_control WHERE singleton = 1) AS version,
         (SELECT head_suid FROM tag_head WHERE singleton = 1) AS head
@@ -174,6 +180,7 @@ describe("SDT-G115 duplicate activation", () => {
     const firstBody = first.body as { version: number; updatedAt: string };
     expect((await post(value, "/seal", { attemptId, epoch: 1 })).status).toBe(200);
     const before = await facts(value);
+    expect(before).toMatchObject({ events: 1, receipts: 1, memberships: 1, obligations: 1 });
 
     const replay = await post(value, "/append", appendBody(value, attemptId, 0, event));
     expect(replay.status).toBe(200);
