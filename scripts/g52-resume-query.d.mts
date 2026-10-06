@@ -1,4 +1,4 @@
-import type { G50LedgerEntry } from "./deploy/g50-commit-latency.mjs";
+import type { G50LedgerEntry } from "./g50-commit-latency.mjs";
 import type { G30NormalizedObservation, G30NormalizedTrace } from "./g30-trace-export.mjs";
 
 export const TASK: "SDT-G52";

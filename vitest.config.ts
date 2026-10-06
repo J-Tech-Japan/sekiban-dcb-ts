@@ -13,12 +13,9 @@ export default defineConfig({
   // to production runtime code.
   define: {
     __G32_PARITY_ARTIFACT_B64__: JSON.stringify(process.env.G32_PARITY_ARTIFACT_B64 ?? ""),
-    __SDT_G77_AC6_EMIT_REPORT__: JSON.stringify(process.env.SDT_G77_AC6_EMIT_REPORT ?? ""),
-    __SDT_G77_AC6_COHORT__: JSON.stringify(process.env.SDT_G77_AC6_COHORT ?? ""),
-    __SDT_G77_AC6_COMMIT_SIDE__: JSON.stringify(process.env.SDT_G77_AC6_COMMIT_SIDE ?? "main"),
   },
   test: {
-    // g15-deploy.sh is a host-shell entrypoint and is exercised by the
+    // sample-deploy.sh is a host-shell entrypoint and is exercised by the
     // dedicated Node-configured G24 lane, never inside Miniflare.
     exclude: ["**/node_modules/**", "**/.git/**", "test/g24-deploy-preflight.spec.mjs", "test/g26-topology.spec.mjs"],
     ...(process.env.SDT_G79_HOSTED_MEASURE === "1"

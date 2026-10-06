@@ -15,7 +15,7 @@ import {
   MAX_INGESTION_TIMEOUT_MS,
   STRUCTURALLY_REMOVED_G41_ROWS,
   captureG50AppCommitLatency,
-} from "./deploy/g50-commit-latency.mjs";
+} from "./g50-commit-latency.mjs";
 import { SNAPSHOT_LOG_DO_OWNED_ROWS } from "./g30-trace-export.mjs";
 
 export const TASK = "SDT-G52";
@@ -196,7 +196,7 @@ async function main() {
   if (!existsSync(tokenFile)) fail("G50_OBSERVABILITY_TOKEN_FILE does not exist");
   const observabilityToken = readFileSync(tokenFile, "utf8").trim();
   if (observabilityToken.length === 0) fail("G50_OBSERVABILITY_TOKEN_FILE is empty");
-  const queryTemplate = JSON.parse(readFileSync(argument("--query-template", "scripts/deploy/g37-observability-query.json"), "utf8"));
+  const queryTemplate = JSON.parse(readFileSync(argument("--query-template", "scripts/g37-observability-query.json"), "utf8"));
   const output = argument("--output", ".artifacts/sdt-g52-commit-breakdown.json");
   const sample = await captureG52CommitBreakdown({
     baseUrl,

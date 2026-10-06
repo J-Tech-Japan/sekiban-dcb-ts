@@ -16,6 +16,7 @@ const files = {
   allocator: join(root, "packages/dcb-runtime/src/allocator/AllocatorDurableObject.ts"),
   ledger: join(root, "packages/dcb-runtime/src/allocator/IssuanceLedger.ts"),
   reconciler: join(root, "packages/dcb-runtime/src/allocator/IssuanceReconciler.ts"),
+  fixtures: join(root, "test/helpers/g77-fixtures.ts"),
 };
 const sources = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, readFileSync(file, "utf8")]));
 
@@ -78,6 +79,30 @@ const mutants = [
       "G77 positive predecessor oracle with multi-candidate hole",
       "G77 predecessor lookup stays correct beyond 256 issuances",
     ],
+  },
+  {
+    name: "omitted-issuance-write",
+    file: "fixtures",
+    from: "const envelope = await state.storage.get(`issuance:envelope:${attemptId}:${candidateIndex}`);",
+    to: "const envelope = undefined;",
+    expectedTests: ["G77 current commit path writes the issuance envelope"],
+    unrelatedTests: ["G77 current seed preserves resolved history depth"],
+  },
+  {
+    name: "hidden-history-scan",
+    file: "fixtures",
+    from: "for (let index = 0; index < G77_AC6_RESOLVED_HISTORY; index += 1) {",
+    to: "for (let index = 0; index < 0; index += 1) {",
+    expectedTests: ["G77 current seed preserves resolved history depth"],
+    unrelatedTests: ["G77 current commit path writes the issuance envelope"],
+  },
+  {
+    name: "reduced-backlog",
+    file: "fixtures",
+    from: "for (let index = 0; index < G77_AC6_UNRESOLVED_BACKLOG; index += 1) {",
+    to: "for (let index = 0; index < 0; index += 1) {",
+    expectedTests: ["G77 current seed preserves unresolved backlog floor"],
+    unrelatedTests: ["G77 current commit path writes the issuance envelope"],
   },
 ];
 
@@ -178,12 +203,16 @@ try {
     const matched = mutant.expectedTests.filter((name) =>
       failures.some((failure) => failure.includes(name)),
     );
+    const unrelatedFailures = (mutant.unrelatedTests ?? []).filter((name) =>
+      failures.some((failure) => failure.includes(name)),
+    );
     results.push({
       mutant: mutant.name,
-      status: run.status === 0 ? "unexpected-green" : matched.length > 0 ? "red" : "unexpected-red",
+      status: run.status === 0 ? "unexpected-green" : matched.length > 0 && unrelatedFailures.length === 0 ? "red" : "unexpected-red",
       exitCode: run.status,
       failingTests: failures,
       matchedTests: matched,
+      unrelatedFailures,
     });
   }
 } finally {

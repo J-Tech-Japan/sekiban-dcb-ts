@@ -333,7 +333,7 @@ function main() {
   if (!existsSync(tokenFile)) fail("observability token file does not exist");
   const observabilityToken = readFileSync(tokenFile, "utf8").trim();
   if (observabilityToken.length === 0) fail("observability token file is empty");
-  const queryTemplatePath = argument("--query-template", "scripts/deploy/g37-observability-query.json");
+  const queryTemplatePath = argument("--query-template", "scripts/g37-observability-query.json");
   const queryTemplate = JSON.parse(readFileSync(queryTemplatePath, "utf8"));
   const sampleCount = positiveInteger("--samples", argument("--samples", String(DEFAULT_SAMPLE_COUNT)));
   const ingestionTimeoutMs = boundedPositiveInteger(

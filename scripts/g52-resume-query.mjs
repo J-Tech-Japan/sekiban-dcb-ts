@@ -14,7 +14,7 @@ import {
   ACTIVE_PER_HOP_ROWS,
   captureG50AppCommitLatency,
   STRUCTURALLY_REMOVED_G41_ROWS,
-} from "./deploy/g50-commit-latency.mjs";
+} from "./g50-commit-latency.mjs";
 import {
   clientRequestIdByPlatformRayId,
   exportCohortWindowTelemetry,

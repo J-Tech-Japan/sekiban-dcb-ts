@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Focused non-live checks for G51's bounded retained-trace ingestion poll. */
-import { telemetryForLedger } from "./deploy/g37-sample.mjs";
+import { telemetryForLedger } from "./g37-sample.mjs";
 
 const ledger = Object.freeze([
   Object.freeze({ requestId: "0000000000000001-SJC", startedAtMs: 1_000, completedAtMs: 1_020 }),

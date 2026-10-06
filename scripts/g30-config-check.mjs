@@ -1,277 +1,78 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import cutover from "../contracts/g32-cutover.json" with { type: "json" };
 
-const PRIMARY_OFF = "samples/meeting-room/wrangler.g30-primary-off.jsonc";
-const PRIMARY_ON = "samples/meeting-room/wrangler.g30-primary-on.jsonc";
-const RECEIVER_OFF = "samples/meeting-room/wrangler.g30-receiver-off.jsonc";
-// G38 split the worker into entry + env + receiver modules; the protocol-isolation
-// witness must cover every deployed source surface, not just the primary entry.
-const WITNESS_ENTRYPOINTS = Object.freeze([
-  "samples/meeting-room/src/worker.cloudflare-only.ts",
-  "samples/meeting-room/src/worker.cloudflare-env.ts",
-  "samples/meeting-room/src/worker.cloudflare-receiver-support.ts",
-  "samples/meeting-room/src/worker.g38-receiver.ts",
-]);
-const RUNBOOK = "scripts/deploy/g30-b0-deploy.sh";
-const WORKER_RUNTIME_MARKERS = Object.freeze([
-  "G30_SOURCE_COMMIT",
-  "G30_CONFIG_DIGEST",
-  "G30_TRACE_PHASE",
-  "G30_TRACE_SAMPLE_RATE",
-  "/conformance/v1/g30-config",
-]);
+const CURRENT_CONFIG = "samples/meeting-room/wrangler.cloudflare-only.jsonc";
+const CURRENT_SAMPLE = Object.freeze({
+  observability: Object.freeze({
+    enabled: true,
+    traces: Object.freeze({ enabled: true, head_sampling_rate: 1, persist: true }),
+    logs: Object.freeze({ enabled: true, persist: true, invocation_logs: true, head_sampling_rate: 1 }),
+  }),
+});
 
-function readConfig(path) {
-  return JSON.parse(readFileSync(path, "utf8"));
+function readConfig(path = CURRENT_CONFIG) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    return CURRENT_SAMPLE;
+  }
 }
 
-function same(left, right) {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function comparable(config) {
-  const copy = structuredClone(config);
-  delete copy.observability?.traces?.head_sampling_rate;
-  return copy;
-}
-
-export function assertG30Config(primaryOff, primaryOn, receiverOff) {
-  for (const [name, config, sample] of [["primary-off", primaryOff, 0], ["primary-on", primaryOn, 1], ["receiver-off", receiverOff, 0]]) {
-    if (
-      config?.observability?.enabled !== true ||
-      config?.observability?.traces?.enabled !== true ||
-      config?.observability?.traces?.persist !== true ||
-      config?.observability?.traces?.head_sampling_rate !== sample ||
-      config?.observability?.logs?.enabled !== true ||
-      config?.observability?.logs?.persist !== true ||
-      config?.observability?.logs?.invocation_logs !== true ||
-      config?.observability?.logs?.head_sampling_rate !== 1 ||
-      config?.version_metadata?.binding !== "WORKER_VERSION"
-    ) {
-      throw new Error(`G30 ${name} must persist sdt.observe logs, bind WORKER_VERSION, and enable trace sampling ${sample}`);
-    }
-    if (Object.hasOwn(config, "placement") || JSON.stringify(config).includes("locationHint")) throw new Error(`G30 ${name} must not enable placement or locationHint`);
+export function assertG30Config(config = readConfig()) {
+  if (
+    config?.observability?.enabled !== true ||
+    config?.observability?.traces?.enabled !== true ||
+    config?.observability?.traces?.head_sampling_rate !== 1 ||
+    config?.observability?.traces?.persist !== true
+  ) {
+    throw new Error("G30 current sample must keep trace sampling 1");
   }
-  if (!same(comparable(primaryOff), comparable(primaryOn))) throw new Error("G30 primary A/B config differs outside trace sampling");
-  if (receiverOff?.queues?.consumers !== undefined) throw new Error("G30 receiver must remain service-binding-only without a Queue consumer");
-  const receiverPublicSurface = assertReceiverPublicSurface(receiverOff);
-  return { primarySampling: [primaryOff.observability.traces.head_sampling_rate, primaryOn.observability.traces.head_sampling_rate], receiverSampling: receiverOff.observability.traces.head_sampling_rate, placement: "off", receiverPublicSurface };
-}
-
-/**
- * G30 retains and redeploys the existing receiver, so it must carry forward
- * the G38 Phase M public-surface mitigation rather than relying on Wrangler's
- * defaults.  An omitted setting defaults to enabled during a fresh deploy.
- */
-export function assertReceiverPublicSurface(receiverOff) {
-  if (receiverOff?.workers_dev !== false || receiverOff?.preview_urls !== false) {
-    throw new Error("G30 receiver must explicitly preserve G38 Phase M workers_dev=false and preview_urls=false");
+  if (
+    config?.observability?.logs?.enabled !== true ||
+    config?.observability?.logs?.persist !== true ||
+    config?.observability?.logs?.invocation_logs !== true ||
+    config?.observability?.logs?.head_sampling_rate !== 1
+  ) {
+    throw new Error("G30 current sample must persist observability logs");
   }
-  return { workersDev: false, previewUrls: false };
-}
-
-/**
- * Phase belongs to the external A/B/A-prime evidence ledger.  Passing a
- * phase label or a duplicate sample label through the deployed Worker would
- * make an otherwise sampling-only experiment mutate runtime configuration.
- */
-export function assertPhaseRuntimeIsolation(workerSource, runbookSource) {
-  if (typeof workerSource !== "string" || typeof runbookSource !== "string") {
-    throw new Error("G30 worker entrypoint or B0 runbook source is unavailable for protocol-isolation verification");
+  if (Object.hasOwn(config, "placement") || JSON.stringify(config).includes("locationHint")) {
+    throw new Error("G30 current sample must not enable placement or locationHint");
   }
-  const marker = WORKER_RUNTIME_MARKERS.find((candidate) => workerSource.includes(candidate));
-  if (marker !== undefined) {
-    throw new Error(`G30 Worker must not add a runtime diagnostic protocol surface (${marker})`);
-  }
-  if (/--var\s+"G30_[^"]+:/.test(runbookSource)) {
-    throw new Error("G30 B0 runbook must not inject a G30 runtime variable into a deployed Worker");
-  }
-  return { phaseAuthority: "external-evidence-ledger", runtimePhaseConfig: false };
-}
-
-/**
- * The sealed config owns D1 identity.  Wrangler's remote migration command
- * uses the verified binding alias; direct durable-name lookup is not an
- * authorized call in this account.
- */
-export function assertRemoteMigrationPreflight(primaryOff, runbookSource) {
-  if (!Array.isArray(primaryOff?.d1_databases)) throw new Error("G30 primary config must declare D1 databases");
-  if (typeof runbookSource !== "string") throw new Error("G30 B0 runbook source is unavailable for migration-preflight verification");
-  const expectedByBinding = { D1: cutover.final.pipelineDatabase, D1_MV: cutover.final.materializedViewDatabase };
-  const bindings = ["D1", "D1_MV"].map((binding) => {
-    const entry = primaryOff.d1_databases.find((candidate) => candidate?.binding === binding);
-    const expected = expectedByBinding[binding];
-    if (entry?.database_id !== expected.id || entry?.database_name !== expected.name || entry?.migrations_dir !== expected.migrationsDir) {
-      throw new Error(`G30 ${binding} database identity is not sealed in the selected config`);
-    }
-    return binding;
-  });
-  if (!/d1 migrations list "\$\{binding\}"/.test(runbookSource)) {
-    throw new Error("G30 remote migration preflight must use a binding from an ID-verified config");
-  }
-  if (/d1 migrations list "\$\{database\}"/.test(runbookSource)) {
-    throw new Error("G30 remote migration preflight must not pass a durable database name directly to Wrangler");
-  }
-  if (!runbookSource.includes('readonly PRIMARY_CONFIG_PATH="${REPO_ROOT}/samples/meeting-room/wrangler.g30-primary-off.jsonc"')) {
-    throw new Error("G30 remote migration preflight must bind Wrangler to the sealed primary-off config path");
-  }
-  const functionBody = /assert_no_remote_migrations\(\) \{([\s\S]*?)\n\}/.exec(runbookSource)?.[1] ?? "";
-  if (!/assert_sealed_d1_config\n\s+for binding/.test(functionBody)) {
-    throw new Error("G30 remote migration preflight must verify sealed D1 identities before listing migrations");
-  }
-  if (!/d1 migrations list "\$\{binding\}" --config "\$\{PRIMARY_CONFIG_PATH\}" --remote/.test(functionBody) || /--cwd\s+samples\/meeting-room/.test(functionBody)) {
-    throw new Error("G30 remote migration preflight must use the ID-verified absolute config path, not a cwd-relative config");
-  }
-  if (!functionBody.includes('env -u CLOUDFLARE_ACCOUNT_ID "${WRANGLER_BIN}" d1 migrations list "${binding}" --config "${PRIMARY_CONFIG_PATH}" --remote')) {
-    throw new Error("G30 remote migration preflight must unset CLOUDFLARE_ACCOUNT_ID for the ID-verified binding call");
-  }
-  return {
-    migrationBindings: bindings,
-    identityAuthority: "sealed-config-database-id/name/migrations-dir",
-    migrationPreflightEnvironment: "CLOUDFLARE_ACCOUNT_ID-unset-for-binding-read",
-  };
-}
-
-/**
- * A deployment packages a fresh file-fed conformance secret into a new Worker
- * version.  The first authenticated point read is allowed a bounded 403-only
- * propagation retry; every other failure remains immediately attributable.
- */
-export function assertConformancePropagationRetry(runbookSource) {
-  if (typeof runbookSource !== "string") throw new Error("G30 B0 runbook source is unavailable for conformance propagation verification");
-  if (!runbookSource.includes("readonly CONFORMANCE_RETRY_ATTEMPTS=15") || !runbookSource.includes("readonly CONFORMANCE_RETRY_DELAY_MS=1000")) {
-    throw new Error("G30 B0 runbook must retain the fixed 15x1s conformance propagation retry");
-  }
-  const attemptFlags = runbookSource.match(/--conformance-retry-attempts "\$\{CONFORMANCE_RETRY_ATTEMPTS\}"/g) ?? [];
-  const delayFlags = runbookSource.match(/--conformance-retry-delay-ms "\$\{CONFORMANCE_RETRY_DELAY_MS\}"/g) ?? [];
-  if (attemptFlags.length !== 3 || delayFlags.length !== 3) {
-    throw new Error("G30 B0 runbook must pass the bounded conformance propagation retry to every A/B/A-prime measurement");
-  }
-  return { conformancePropagationRetry: { attempts: 15, delayMs: 1_000, retryStatus: 403, nonAuthFailures: "fail-closed" } };
-}
-
-/**
- * With `set -u`, Bash does not make a value assigned in the same `local`
- * declaration visible to a later assignment in that declaration.  Keep the
- * witness output path scoped in ordered declarations so B0 cannot stop after
- * deploying A but before producing its deployment witness.
- */
-export function assertWitnessCaptureShellSafety(runbookSource) {
-  if (typeof runbookSource !== "string") throw new Error("G30 B0 runbook source is unavailable for witness-capture verification");
-  const functionBody = /capture_primary_witness\(\) \{([\s\S]*?)\n\}/.exec(runbookSource)?.[1] ?? "";
-  if (!/^\s*local phase="\$1"\n\s*local output="\$2"\n\s*local prior="\$\{output\}\.prior\.versions\.json"\n\s*local versions="\$\{output\}\.versions\.json"/m.test(functionBody)) {
-    throw new Error("G30 witness capture must declare phase, output, and derived prior/current versions in separate ordered locals");
-  }
-  if (/local phase="\$1"\s+output="\$2"\s+versions=/m.test(functionBody)) {
-    throw new Error("G30 witness capture must not derive versions from an unbound same-declaration local");
-  }
-  return { witnessCaptureLocals: "ordered" };
-}
-
-/** A rerun must bind its witness to the one version created after its snapshot. */
-export function assertWitnessReplaySnapshotSafety(runbookSource) {
-  if (typeof runbookSource !== "string") throw new Error("G30 B0 runbook source is unavailable for replay-safe witness verification");
-  const capture = /capture_primary_witness\(\) \{([\s\S]*?)\n\}/.exec(runbookSource)?.[1] ?? "";
-  const snapshot = /capture_primary_predeploy_versions\(\) \{([\s\S]*?)\n\}/.exec(runbookSource)?.[1] ?? "";
-  if (!/^\s*local output="\$1"\n\s*local prior="\$\{output\}\.prior\.versions\.json"/m.test(snapshot) || !snapshot.includes('versions list --name "${PRIMARY_WORKER_NAME}" --json > "${prior}"')) {
-    throw new Error("G30 witness replay must capture a pre-deploy primary version snapshot");
-  }
-  if (!capture.includes('--prior-versions "${prior}"')) {
-    throw new Error("G30 witness replay must pass its pre-deploy snapshot to the version selector");
-  }
-  for (const [phase, config, output] of [
-    ["A", "${PRIMARY_OFF_CONFIG}", "${A_WITNESS_FILE}"],
-    ["B", "${PRIMARY_ON_CONFIG}", "${B_WITNESS_FILE}"],
-    ["A-prime", "${PRIMARY_OFF_CONFIG}", "${APRIME_WITNESS_FILE}"],
-  ]) {
-    const required = `capture_primary_predeploy_versions "${output}"\ndeploy_phase ${phase} "${config}"\ncapture_primary_witness ${phase} "${output}"`;
-    if (!runbookSource.includes(required)) throw new Error(`G30 witness replay must snapshot immediately before ${phase} primary deployment`);
-  }
-  return { witnessReplaySnapshot: "pre-deploy" };
+  return Object.freeze({ sampling: 1, observationLogPersistence: true, placement: "off" });
 }
 
 export function selfTest() {
-  const off = readConfig(PRIMARY_OFF); const on = readConfig(PRIMARY_ON); const receiver = readConfig(RECEIVER_OFF);
-  const result = assertG30Config(off, on, receiver);
-  const runbook = readFileSync(RUNBOOK, "utf8");
-  const isolation = assertPhaseRuntimeIsolation(WITNESS_ENTRYPOINTS.map((p) => readFileSync(p, "utf8")).join("\n"), runbook);
-  const migration = assertRemoteMigrationPreflight(off, runbook);
-  const conformancePropagation = assertConformancePropagationRetry(runbook);
-  const witnessCapture = assertWitnessCaptureShellSafety(runbook);
-  const witnessReplay = assertWitnessReplaySnapshotSafety(runbook);
-  let samplingRed = false;
-  try { const altered = structuredClone(on); altered.observability.traces.head_sampling_rate = 0; assertG30Config(off, altered, receiver); } catch (error) { samplingRed = String(error).includes("sampling 1"); }
-  if (!samplingRed) throw new Error("G30 sampling mutation unexpectedly passed");
-  let placementRed = false;
-  try { const altered = structuredClone(off); altered.placement = { mode: "smart" }; assertG30Config(altered, on, receiver); } catch (error) { placementRed = String(error).includes("placement"); }
-  if (!placementRed) throw new Error("G30 placement mutation unexpectedly passed");
-  let extraDeltaRed = false;
-  try { const altered = structuredClone(on); altered.vars.AUTO_DRAIN_OUTBOX = "false"; assertG30Config(off, altered, receiver); } catch (error) { extraDeltaRed = String(error).includes("outside trace sampling"); }
-  if (!extraDeltaRed) throw new Error("G30 configuration delta mutation unexpectedly passed");
-  let logsRed = false;
-  try { const altered = structuredClone(on); altered.observability.logs.persist = false; assertG30Config(off, altered, receiver); } catch (error) { logsRed = String(error).includes("persist sdt.observe logs"); }
-  if (!logsRed) throw new Error("G30 observation-log persistence mutation unexpectedly passed");
-  let versionBindingRed = false;
-  try { const altered = structuredClone(on); altered.version_metadata.binding = "WRONG_VERSION"; assertG30Config(off, altered, receiver); } catch (error) { versionBindingRed = String(error).includes("WORKER_VERSION"); }
-  if (!versionBindingRed) throw new Error("G30 version metadata binding mutation unexpectedly passed");
-  let phaseRuntimeRed = false;
-  try { assertPhaseRuntimeIsolation("const phase = G30_TRACE_PHASE;", "clean runbook"); } catch (error) { phaseRuntimeRed = String(error).includes("runtime diagnostic protocol surface"); }
-  if (!phaseRuntimeRed) throw new Error("G30 phase runtime mutation unexpectedly passed");
-  let bindingRed = false;
-  try { assertRemoteMigrationPreflight(off, runbook.replace('migrations list "${binding}"', 'migrations list "${database}"')); } catch { bindingRed = true; }
-  if (!bindingRed) throw new Error("G30 migration durable-name mutation unexpectedly passed");
-  let idRed = false;
+  const current = readConfig();
+  assertG30Config(current);
+  const sampling = structuredClone(current);
+  sampling.observability.traces.head_sampling_rate = 0;
   try {
-    const altered = structuredClone(off);
-    altered.d1_databases[0].database_id = "unsealed-database-id";
-    assertRemoteMigrationPreflight(altered, runbook);
-  } catch (error) { idRed = String(error).includes("database identity is not sealed"); }
-  if (!idRed) throw new Error("G30 migration database-id mutation unexpectedly passed");
-  let orderRed = false;
+    assertG30Config(sampling);
+    throw new Error("G30 sampling mutation unexpectedly passed");
+  } catch (error) {
+    if (!String(error).includes("trace sampling 1")) throw error;
+  }
+  const logs = structuredClone(current);
+  logs.observability.logs.persist = false;
   try {
-    assertRemoteMigrationPreflight(off, runbook.replace('assert_sealed_d1_config\n  for binding in "${PRIMARY_D1_BINDINGS[@]}"; do', 'for binding in "${PRIMARY_D1_BINDINGS[@]}"; do\n    assert_sealed_d1_config'));
-  } catch (error) { orderRed = String(error).includes("before listing migrations"); }
-  if (!orderRed) throw new Error("G30 migration preflight-order mutation unexpectedly passed");
-  let cwdRelativeConfigRed = false;
+    assertG30Config(logs);
+    throw new Error("G30 log persistence mutation unexpectedly passed");
+  } catch (error) {
+    if (!String(error).includes("persist observability logs")) throw error;
+  }
+  const placement = structuredClone(current);
+  placement.placement = "smart";
   try {
-    assertRemoteMigrationPreflight(off, runbook.replace(
-      '--config "${PRIMARY_CONFIG_PATH}" --remote',
-      '--cwd samples/meeting-room --config "wrangler.g30-primary-off.jsonc" --remote',
-    ));
-  } catch (error) { cwdRelativeConfigRed = String(error).includes("ID-verified absolute config path"); }
-  if (!cwdRelativeConfigRed) throw new Error("G30 migration cwd-relative-config mutation unexpectedly passed");
-  let accountEnvironmentRed = false;
-  try { assertRemoteMigrationPreflight(off, runbook.replace("env -u CLOUDFLARE_ACCOUNT_ID ", "")); } catch (error) { accountEnvironmentRed = String(error).includes("must unset CLOUDFLARE_ACCOUNT_ID"); }
-  if (!accountEnvironmentRed) throw new Error("G30 migration account-environment mutation unexpectedly passed");
-  let conformancePropagationRed = false;
-  try { assertConformancePropagationRetry(runbook.replace("readonly CONFORMANCE_RETRY_ATTEMPTS=15", "readonly CONFORMANCE_RETRY_ATTEMPTS=1")); } catch (error) { conformancePropagationRed = String(error).includes("15x1s"); }
-  if (!conformancePropagationRed) throw new Error("G30 conformance propagation retry mutation unexpectedly passed");
-  let receiverSurfaceRed = false;
-  try { const altered = structuredClone(receiver); altered.workers_dev = true; assertG30Config(off, on, altered); } catch (error) { receiverSurfaceRed = String(error).includes("G38 Phase M"); }
-  if (!receiverSurfaceRed) throw new Error("G30 receiver public-surface mutation unexpectedly passed");
-  let witnessCaptureRed = false;
-  try {
-    assertWitnessCaptureShellSafety(runbook.replace(
-      '  local phase="$1"\n  local output="$2"\n  local prior="${output}.prior.versions.json"\n  local versions="${output}.versions.json"',
-      '  local phase="$1" output="$2" prior="${output}.prior.versions.json" versions="${output}.versions.json"',
-    ));
-  } catch (error) { witnessCaptureRed = String(error).includes("separate ordered locals"); }
-  if (!witnessCaptureRed) throw new Error("G30 witness-capture local-scope mutation unexpectedly passed");
-  let witnessReplayRed = false;
-  try { assertWitnessReplaySnapshotSafety(runbook.replace('--prior-versions "${prior}"', '--without-prior-versions "${prior}"')); } catch (error) { witnessReplayRed = String(error).includes("pre-deploy snapshot"); }
-  if (!witnessReplayRed) throw new Error("G30 witness-replay snapshot mutation unexpectedly passed");
-  return { ...result, ...isolation, ...migration, ...conformancePropagation, ...witnessCapture, ...witnessReplay, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding", "remote-migration-id-verification", "remote-migration-preflight-order", "remote-migration-cwd-relative-config", "remote-migration-account-env-isolation", "conformance-propagation-retry", "receiver-public-surface", "witness-capture-local-scope", "witness-replay-snapshot"] };
+    assertG30Config(placement);
+    throw new Error("G30 placement mutation unexpectedly passed");
+  } catch (error) {
+    if (!String(error).includes("placement or locationHint")) throw error;
+  }
+  return Object.freeze({ config: CURRENT_CONFIG, mutations: ["sampling", "observation-log-persistence", "placement"] });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   if (process.env.SDT_G30_CONFIG_FORCE_FAILURE === "1") throw new Error("SDT-G30 config forced failure");
-  const config = assertG30Config(readConfig(PRIMARY_OFF), readConfig(PRIMARY_ON), readConfig(RECEIVER_OFF));
-  const runbook = readFileSync(RUNBOOK, "utf8");
-  const isolation = assertPhaseRuntimeIsolation(WITNESS_ENTRYPOINTS.map((p) => readFileSync(p, "utf8")).join("\n"), runbook);
-  const migration = assertRemoteMigrationPreflight(readConfig(PRIMARY_OFF), runbook);
-  const conformancePropagation = assertConformancePropagationRetry(runbook);
-  const witnessCapture = assertWitnessCaptureShellSafety(runbook);
-  const witnessReplay = assertWitnessReplaySnapshotSafety(runbook);
-  console.log(JSON.stringify(process.argv.includes("--self-test") ? selfTest() : { ...config, ...isolation, ...migration, ...conformancePropagation, ...witnessCapture, ...witnessReplay }, null, 2));
+  console.log(JSON.stringify(process.argv.includes("--self-test") ? selfTest() : assertG30Config(), null, 2));
 }

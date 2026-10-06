@@ -1,4 +1,4 @@
-# Commit tracing and the SDT-G30 B0 runbook
+# Commit tracing and current verification
 
 SDT-G30 observes the existing serialized-commit path. It does not change a
 request body, response body, header, Journal transition, bootstrap admission,
@@ -62,111 +62,20 @@ the preceding and following request IDs. Overlapping `activationFirst`,
 `scriptVersion`, and `colo` must exactly equal the joined S00 root. A human
 declaration, elapsed time alone, or an unjoined log is not evidence.
 
-## Repeating B0
+## Current verification
 
-Use B0 only to attribute time. It is not a G37 optimization denominator and
-does not assert a performance pass/fail.
+The current sample configuration is the sole G30 configuration surface. Run
+`npm run test:g30` to check its observability settings, trace sampling,
+log persistence, and placement guard, together with the retained trace
+mutation checks. The check is current-only: it does not require a historical
+deployment, live endpoint, or external evidence bundle.
 
-1. Finish every runtime, configuration, test, documentation, tool, and
-   manifest change. Run `npm run test:g30` and the project CI suite. Do not
-   seal a candidate while a material change remains.
-2. Seal final candidate C once. Check it out cleanly and set
-   `G30_SOURCE_COMMIT` to C. The dry run is:
+The commit-trace authority remains repository-owned and is checked with:
 
-   ```sh
-   npm run deploy:g30:b0
-   ```
+```sh
+node scripts/commit-trace-contract.mjs --check
+```
 
-   It verifies the target bundle, trace and B0
-   mutation lanes, both Worker dry deployments, and remote D1 migration
-   emptiness before any live change.
-3. Prepare the file-fed conformance and observability API-token files. The
-   checked-in query template is materialized from the actual B ledger; do not
-   supply activation/idle/outlier assertion files. Keep all credentials out of
-   command arguments, logs, and evidence.
-4. Run with `G30_B0_LIVE=1` and the required file paths. The runbook rotates
-   only the conformance token through a temporary file, deploys receiver once,
-   then performs primary A(off), B(on), and A-prime(off) on the existing G32
-   service ID. It retains a 100-request, fixed-payload, fixed-tag,
-   single-client-region, single-concurrency ledger per phase at a 2-second
-   cadence.
-   Before B's warmups begin, it waits until 120 seconds after B's immutable
-   Worker Version `createdOn` timestamp. The B ledger records that version,
-   the derived deadline, settlement completion, and first measurement time;
-   the evidence validator rejects a cohort that began earlier. This is a
-   post-deploy Durable Object trace-sampling convergence precondition, not a
-   phase-specific Worker setting or a delivery-loss exception.
-   If the authenticated fixed-tag point read is not HTTP 200, the measuring
-   helper writes a local failure artifact containing the complete conformance
-   response body, raw response text, CF-Ray, and the provider-response
-   timestamp before exiting fail-closed. It never retains the request tag or
-   either credential; do not retry after the temporary conformance token has
-   been removed by the run trap.
-   A timeout or other non-200 **commit** inside the eligible phase window is
-   different: it is an AC7 window-reset event, not an invitation to resend the
-   same attempt. The helper retains its redacted response/transport evidence,
-   rereads the durable fixed-tag head, moves every provisional successful row
-   to `rawAttempts`, and starts a new 100-request window with a new attempt.
-   Missing/regressing rereads fail closed; a sixth reset stops with the full
-   reset distribution. The resulting evidence never claims whether the
-   indeterminate request itself landed merely because the durable head advanced.
-5. The phase is an external runbook/evidence label. It is never sent through
-   deployed Worker variables. The only phase configuration difference is the
-   selected `observability.traces.head_sampling_rate` (0, 1, 0) and the
-   resulting deployment identity. `wrangler versions list --json` is captured
-   immediately before and after each primary deployment;
-   `g30-deployment-witness.mjs` requires exactly one matching immutable Worker
-   Version absent from the pre-deploy snapshot. This makes a same-C rerun bind
-   its newly deployed version rather than a stale identical message, while the
-   witness records the source candidate, configuration digest, service, and
-   placement observation. No G30 route,
-   header, body field, or runtime variable is added for this purpose.
-6. The exporter materializes bounded cohort queries from B's immutable,
-   100-request client ledger. It discovers S00 first by provider CF-Ray and,
-   when a custom root omits that field, only through the existing
-   `worker.invocation` post-admission correlation and an exact
-   `correlation.id` → one-traceId query. It then performs each full-trace
-   expansion through exactly one traceId (while discovery and observation
-   queries remain bounded at ten identities): a four-trace live query reached
-   the provider's 2,000-result ceiling although every individual trace was
-   below it. It never joins by time proximity or
-   assumes a structured console log has a platform trace ID.
-   `schemaCompleteCount >= 85` is the frozen operator-authorized delivery budget:
-   sixteen losses fail,
-   while every permitted loss is enumerated as either `root-absent` or
-   `schema-incomplete` UNKNOWN. The exact rank-1..5 tail, sorted by client
-   latency descending then request ID ascending, must all be schema-complete.
-   Client p50/p95/p99 use the sealed nearest-rank estimator over all 100
-   client rows, never the joined subset. Joined per-hop p50/p95 metrics are
-   joined-cohort conditional descriptive estimates and retain a missing-stage
-   sensitivity envelope. A saturated
-   subquery, replacement, unknown/mismatched observation, export after the
-   ten-minute deadline, a tail loss, or a schema-complete joined request whose
-   caller-union unattributed ratio exceeds 5% fails the run. It retains safe provider span
-   names for refresh exclusion, while queue/doorbell lifecycle, idle, and
-   activation facts come from the joined observation stream—not an
-   operator-supplied boolean or declaration.
-   The same Worker observation carries the set of local native span callbacks
-   actually entered through S15. The exporter retains a per-request emitted /
-   ingested / diff sidecar solely to classify a missing Worker row as emission
-   or ingestion. It is never an input to schema completeness, the 85/100
-   floor, the tail set, the deadline, or an otherwise successful result.
-
-The live run writes only raw evidence artifacts and the summary evidence.
-After it succeeds, make bookkeeping commit R with exactly the evidence files
-under `docs/SDT-G30-*evidence*.{json,md}` and one retained-C append in
-`.github/workflows/ci.yml`. Any other post-C change needs a new final
-candidate and a new B0 acquisition.
-
-## Evidence required for the former 21.5-second class
-
-The B0 validator derives one attributable or excluded result for each
-hypothesis: Worker-isolate first invocation, Durable Object wake, token
-rotation, and queue/doorbell backpressure. Every raw observation cites a B
-request present in both the client ledger and schema-complete joined trace cohort. Worker
-facts are cross-checked against the cited root's version and colo. Token
-rotation is excluded only when the exporter finds no refresh span on the
-joined trace. When a 21.5-second target is observed, the queue/doorbell path
-requires bounded `started` → `ended` → `drained` observation events; a
-no-target run does not invent a fault claim. No external proof file is copied
-or accepted.
+The verifier is observation-only. It checks row shape, typed attributes,
+parent containment, clock domains, boundary sets, and caller coverage. A
+tracing or export failure cannot change a commit result or durable outcome.

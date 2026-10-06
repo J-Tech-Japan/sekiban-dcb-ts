@@ -69,7 +69,7 @@ tests, and a Wrangler dry-run build.
 
 ## Meeting-room consumer sample
 
-`samples/meeting-room` is the SDT-G14/G15/G29 consumer sample. Its domain is
+`samples/meeting-room` is the meeting-room consumer sample. Its domain is
 authored with the public `@sekiban/dcb-domain` event/state/projector/command
 surface and bridged with `toRuntimeDomain()`; the runtime's
 projector/query registries remain private. A consumer composes its domain into
@@ -78,8 +78,8 @@ its application command API and keeps raw V1 routes behind the authenticated
 `/conformance/v1` lane. Its
 framework-free `public/` frontend calls only the application command/read API
 and uses the V1 sortable-id head to report pending, visible, conflict,
-rejected, and partial outcomes honestly. Run `npm run deploy:g15` to deploy
-the Worker and its static assets, then use `npm run e2e:g15 -- --base-url
+rejected, and partial outcomes honestly. Run `npm run deploy:sample` to deploy
+the Worker and its static assets, then use `npm run e2e:sample -- --base-url
 <deployed-url> --report <path>` for redacted command-to-visible evidence.
 Hyperdrive caching is disabled by the deployment script.
 
@@ -130,10 +130,8 @@ namespace requires a fresh service identity). The authenticated conformance
 lane and the app-layer UI/e2e harness use that configured identity; internal
 test headers are never forwarded by the sample.
 
-G20 uses a candidate-commit protocol: the runtime, variant config, and this
-quickstart switch are committed together, deployed and verified at one exact
-candidate. Any later PR commit may change only redacted JSON evidence under
-`docs/`; `npm run test:g20:candidate` machine-checks that boundary.
+G20 checks the current Cloudflare-only composition and its gate with
+`npm run test:g20`, `npm run test:g20:gate`, and `npm run build:g20`.
 
 ## License
 

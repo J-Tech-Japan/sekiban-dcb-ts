@@ -17,7 +17,9 @@ import {
 import type { StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 import {
-  G77_PINNED_MAIN,
+  G77_AC6_LEGACY_PRECUT,
+  G77_AC6_RESOLVED_HISTORY,
+  G77_AC6_UNRESOLVED_BACKLOG,
   allocatorPost,
   allocatorStub,
   candidateEventId,
@@ -27,6 +29,7 @@ import {
   expireTagReservation,
   forwardingTagNamespace,
   g77Receipt,
+  seedLongHistoryAndBacklog,
   probeG77Capabilities,
   probeIssuanceRegistration,
   readAllocation,
@@ -66,7 +69,21 @@ beforeAll(async () => {
   await applyG44D1Migration(database());
 });
 
-describe("SDT-G77 AC9 frozen scenario matrix", () => {
+describe("SDT-G77 current closed-prefix scenarios", () => {
+  it("G77 current seed preserves resolved history depth", async () => {
+    const serviceId = `g77-current-history-${crypto.randomUUID()}`;
+    const seeded = await seedLongHistoryAndBacklog(serviceId);
+    expect(seeded.resolvedCount).toBe(G77_AC6_RESOLVED_HISTORY);
+    expect(seeded.legacyCount).toBe(G77_AC6_LEGACY_PRECUT);
+  }, 600_000);
+
+  it("G77 current seed preserves unresolved backlog floor", async () => {
+    const serviceId = `g77-current-backlog-${crypto.randomUUID()}`;
+    const seeded = await seedLongHistoryAndBacklog(serviceId);
+    expect(seeded.backlogCount).toBe(G77_AC6_UNRESOLVED_BACKLOG);
+    expect(seeded.certificate.unresolvedCount).toBeGreaterThanOrEqual(G77_AC6_UNRESOLVED_BACKLOG);
+  }, 600_000);
+
   describe("A — reachable public-commit scenarios", () => {
     it("A01 pause after allocation before every Tag append", async () => {
       const serviceId = `g77-a01-${crypto.randomUUID()}`;
@@ -90,7 +107,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       const registration = await probeIssuanceRegistration(serviceId, attemptId);
       const caps = await probeG77Capabilities(serviceId);
       if (!caps.issuanceLedger) {
-        record(g77Receipt("A01", "BR", "P01/P02/P04 absent on main", {
+        record(g77Receipt("A01", "P01/P02/P04 absent on main", {
           allocationStatus: allocation.status,
           tagEventCount: tagState.events.length,
           registration,
@@ -124,7 +141,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       expect(state.events).toEqual([]);
       const caps = await probeG77Capabilities(serviceId);
       if (!caps.reconcilerRoute) {
-        record(g77Receipt("A02", "BR", "P07/P09: no durable recovery on main", {
+        record(g77Receipt("A02", "P07/P09: no durable recovery on main", {
           allocationSurvives: true,
           tagEvents: state.events.length,
         }));
@@ -181,7 +198,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       expect(response.status).toBe(503);
       expect((await response.json<{ code: string }>()).code).toBe("allocator_order_clock_failed");
       expect(Object.fromEntries(values)).toEqual(before);
-      record(g77Receipt("A10", "PG", "clock-before-write all-none invariant preserved", {
+      record(g77Receipt("A10", "clock-before-write all-none invariant preserved", {
         status: response.status,
       }));
     });
@@ -196,7 +213,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       });
       expect(response.status).toBe(503);
       expect((await readAllocation(serviceId, attemptId)).status).toBe(404);
-      record(g77Receipt("A11", "PG", "vector/state rollback preserved", { status: response.status }));
+      record(g77Receipt("A11", "vector/state rollback preserved", { status: response.status }));
     });
 
     it("A15 journal-cas-after-allocator is cleanup not worker crash", async () => {
@@ -209,7 +226,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         consistencyHeads: [head],
       }));
       expect(response.status).toBe(504);
-      record(g77Receipt("A15", "PG", "cleanup regression only; not G77 crash evidence", {
+      record(g77Receipt("A15", "cleanup regression only; not G77 crash evidence", {
         status: response.status,
       }));
     });
@@ -265,7 +282,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       expect(certificate.unresolvedCount).toBeGreaterThan(0);
       expect(certificate.closedPrefixSuid === null || certificate.closedPrefixSuid < lowSuid).toBe(true);
       expect(certificate.closedPrefixSuid).not.toBe(highSuid);
-      record(g77Receipt("A03", "PG", "prefix stays before lower unresolved hole", {
+      record(g77Receipt("A03", "prefix stays before lower unresolved hole", {
         lowSuid, highSuid,
       }));
       releaseLow?.();
@@ -307,7 +324,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         expect(absent?.status).toBe("absent-and-irrevocably-fenced");
         expect(await state.storage.get(`issuance:unresolved:${envelope!.suid}:${attemptId}:0`)).toBeUndefined();
       });
-      record(g77Receipt("A04", "PG", "mixed closure resolves installed and fenced targets once", {
+      record(g77Receipt("A04", "mixed closure resolves installed and fenced targets once", {
         status: response.status,
         unresolvedCount: certificate.unresolvedCount,
       }));
@@ -334,7 +351,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         await triggerReconcile(serviceId);
         await triggerReconcile(serviceId);
       }
-      record(g77Receipt("A05", caps.resolveRoute ? "PG" : "BR", "both race orders retain durable facts", {
+      record(g77Receipt("A05", "both race orders retain durable facts", {
         firstStatus: first.status,
         secondStatus: second.status,
       }));
@@ -358,7 +375,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         const certificate = await readCertificate(serviceId);
         expect(certificate.unresolvedCount).toBeGreaterThan(0);
       }
-      record(g77Receipt("A06", "PG", "expiry remains non-terminal; recovery may follow", {
+      record(g77Receipt("A06", "expiry remains non-terminal; recovery may follow", {
         reservationExpired: true,
       }));
       release?.();
@@ -390,7 +407,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       if (caps.reconcileNowRoute) {
         await triggerReconcile(serviceId);
       }
-      record(g77Receipt("A07", caps.resolveRoute ? "PG" : "BR", "installed facts survive dropped acknowledgement", {
+      record(g77Receipt("A07", "installed facts survive dropped acknowledgement", {
         appendCalls: appends.length,
         tagEvents: 1,
       }));
@@ -423,7 +440,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         const certificate = await readCertificate(serviceId);
         expect(certificate.unresolvedCount).toBe(0);
       }
-      record(g77Receipt("A08", caps.resolveRoute ? "PG" : "BR", "retry yields one terminal transition", {
+      record(g77Receipt("A08", "retry yields one terminal transition", {
         appendCalls,
       }));
     });
@@ -445,7 +462,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         const certificate = await readCertificate(serviceId);
         expect(certificate.unresolvedCount).toBeGreaterThan(0);
       }
-      record(g77Receipt("A09", "PG", "retry exhaustion is not closure", { status: response.status }));
+      record(g77Receipt("A09", "retry exhaustion is not closure", { status: response.status }));
     });
 
     it("A12 after-append-before-confirm rolls back Tag transaction", async () => {
@@ -458,7 +475,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       }));
       expect(response.status).toBeGreaterThanOrEqual(500);
       expect((await readTagState(serviceId, tag)).events).toEqual([]);
-      record(g77Receipt("A12", "PG", "append rollback preserved; issuance stays unresolved", {
+      record(g77Receipt("A12", "append rollback preserved; issuance stays unresolved", {
         status: response.status,
       }));
     });
@@ -483,7 +500,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         const certificate = await readCertificate(serviceId);
         expect(["ready", "unreconciled"]).toContain(certificate.status);
       }
-      record(g77Receipt("A13", "PG", "scanner partition semantics preserved; cert composition separate", {
+      record(g77Receipt("A13", "scanner partition semantics preserved; cert composition separate", {
         tagA, tagB,
       }));
     });
@@ -500,7 +517,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       } as never, G44_SCANNER_VERSION);
       const coverage = await scanner.coverage(serviceId, Date.now());
       expect(coverage.kind).toBeTruthy();
-      record(g77Receipt("A14", "PG", "UNKNOWN/BLOCK cannot be converted into closure", {
+      record(g77Receipt("A14", "UNKNOWN/BLOCK cannot be converted into closure", {
         coverageKind: coverage.kind,
       }));
     });
@@ -524,7 +541,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         const certificate = await readCertificate(serviceId);
         expect(certificate.unresolvedCount).toBe(0);
       }
-      record(g77Receipt("A16", caps.resolveRoute ? "PG" : "BR", "504 preserved; durable inspection may close", {
+      record(g77Receipt("A16", "504 preserved; durable inspection may close", {
         status: response.status,
       }));
     });
@@ -535,28 +552,28 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       const serviceId = `g77-b01-${crypto.randomUUID()}`;
       const caps = await probeG77Capabilities(serviceId);
       expect(caps.issuanceLedger).toBe(true);
-      record(g77Receipt("B01", "PG", "issuance ledger port present on implementation head", { caps }));
+      record(g77Receipt("B01", "issuance ledger port present on implementation head", { caps }));
     });
 
     it("B05 certificate producer route", async () => {
       const serviceId = `g77-b05-${crypto.randomUUID()}`;
       const caps = await probeG77Capabilities(serviceId);
       expect(caps.certificateRoute).toBe(true);
-      record(g77Receipt("B05", "PG", "certificate route present on implementation head", { caps }));
+      record(g77Receipt("B05", "certificate route present on implementation head", { caps }));
     });
 
     it("B06 durable closure coordinator", async () => {
       const serviceId = `g77-b06-${crypto.randomUUID()}`;
       const caps = await probeG77Capabilities(serviceId);
       expect(caps.reconcilerRoute).toBe(true);
-      record(g77Receipt("B06", "PG", "closure coordinator present on implementation head", { caps }));
+      record(g77Receipt("B06", "closure coordinator present on implementation head", { caps }));
     });
 
     it("B09 per-target closure ledger", async () => {
       const serviceId = `g77-b09-${crypto.randomUUID()}`;
       const caps = await probeG77Capabilities(serviceId);
       expect(caps.resolveRoute).toBe(true);
-      record(g77Receipt("B09", "PG", "per-target resolution port present on implementation head", { caps }));
+      record(g77Receipt("B09", "per-target resolution port present on implementation head", { caps }));
     });
 
     it("B06 restart coordinator resumes bounded reconciliation", async () => {
@@ -574,7 +591,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       await abortAllDurableObjects();
       const after = await triggerReconcile(serviceId);
       expect(after.processed).toBeGreaterThanOrEqual(0);
-      record(g77Receipt("B06", "PG", "restart reconciliation re-arms and progresses", {
+      record(g77Receipt("B06", "restart reconciliation re-arms and progresses", {
         processed: after.processed,
       }));
     });
@@ -599,7 +616,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       const second = await triggerReconcile(serviceId);
       const certificate = await readCertificate(serviceId);
       expect(certificate.unresolvedCount).toBe(0);
-      record(g77Receipt("B07", "PG", "reinspection closes installed duplicate once", {
+      record(g77Receipt("B07", "reinspection closes installed duplicate once", {
         firstProcessed: first.processed,
         secondProcessed: second.processed,
       }));
@@ -615,7 +632,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       await triggerReconcile(serviceId);
       const second = await readCertificate(serviceId);
       expect(second.unresolvedCount).toBe(first.unresolvedCount);
-      record(g77Receipt("B08", "PG", "duplicate reconciliation does not double-decrement", {
+      record(g77Receipt("B08", "duplicate reconciliation does not double-decrement", {
         unresolvedCount: second.unresolvedCount,
       }));
     });
@@ -626,7 +643,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       const serviceId = `g77-c01-${crypto.randomUUID()}`;
       const caps = await probeG77Capabilities(serviceId);
       if (!caps.migrationCut) {
-        record(g77Receipt("C01", "MR", "no migration cut transition", { caps }));
+        record(g77Receipt("C01", "no migration cut transition", { caps }));
         expect(caps.migrationCut).toBe(false);
       }
     });
@@ -635,7 +652,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       const serviceId = `g77-c02-${crypto.randomUUID()}`;
       const caps = await probeG77Capabilities(serviceId);
       if (!caps.migrationCut) {
-        record(g77Receipt("C02", "MR", "membership/cut contract absent", { caps }));
+        record(g77Receipt("C02", "membership/cut contract absent", { caps }));
         return;
       }
       await allocatorPost(serviceId, "/__internal/g77/migration-cut", { cutAt: Date.now() });
@@ -664,7 +681,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       });
       expect(replay.status).toBe(200);
       expect(await replay.json()).toEqual(bytes);
-      record(g77Receipt("C03", "PG", "legacy replay byte-exact; membership never upgrades", {
+      record(g77Receipt("C03", "legacy replay byte-exact; membership never upgrades", {
         attemptId,
       }));
     });
@@ -688,7 +705,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       expect(resumed.status).toBe(200);
       const body = await resumed.json<{ inventoryComplete: boolean; pageCount: number }>();
       expect(body.inventoryComplete).toBe(true);
-      record(g77Receipt("C04", "PG", "inventory cursor survives crash between pages", body));
+      record(g77Receipt("C04", "inventory cursor survives crash between pages", body));
     });
 
     it("C05 unreconciled migration blocks opted-in consumer outright", async () => {
@@ -702,7 +719,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       const certificate = await readCertificate(serviceId);
       expect(certificate.status).toBe("unreconciled");
       expect(certificate.closedPrefixSuid).toBeNull();
-      record(g77Receipt("C05", "PG", "opted-in consumer blocked while migration unreconciled", {
+      record(g77Receipt("C05", "opted-in consumer blocked while migration unreconciled", {
         status: certificate.status,
       }));
     });
@@ -711,7 +728,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       const serviceId = `g77-c02b-${crypto.randomUUID()}`;
       const caps = await probeG77Capabilities(serviceId);
       if (!caps.migrationCut) {
-        record(g77Receipt("C02", "MR", "membership/cut contract absent", { caps }));
+        record(g77Receipt("C02", "membership/cut contract absent", { caps }));
         return;
       }
       await allocatorPost(serviceId, "/__internal/g77/migration-cut", { cutAt: Date.now() });
@@ -758,7 +775,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         const inventoried = await state.storage.list({ prefix: "issuance:legacy-inventoried:" });
         expect(inventoried.size).toBe(attemptCount);
       });
-      record(g77Receipt("C07", "PG", "legacy inventory enumerates full region before completion", {
+      record(g77Receipt("C07", "legacy inventory enumerates full region before completion", {
         attemptCount,
         pages,
       }));
@@ -790,7 +807,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         boundEvidence: { serviceId },
       });
       expect(proof.status).toBe(409);
-      record(g77Receipt("C08", "PG", "unclassifiable legacy region blocks ready certificate", {
+      record(g77Receipt("C08", "unclassifiable legacy region blocks ready certificate", {
         status: certificate.status,
       }));
     });
@@ -813,7 +830,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       const certificate = await readCertificate(serviceId);
       expect(certificate.status).toBe("ready");
       expect(certificate.migrationProofId).toBe("g77-c06-proof");
-      record(g77Receipt("C06", "PG", "proof id names retained evidence; ready when no unresolved", {
+      record(g77Receipt("C06", "proof id names retained evidence; ready when no unresolved", {
         migrationProofId: certificate.migrationProofId,
       }));
     });
@@ -879,13 +896,13 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       const fixture = new StoreFixture([event("one")]);
       const result = await new ProjectionRuntime(fixture.store).catchUp(SERVICE, IDENTITY, NOW_MS);
       expect(result.advancedSourceEvents).toBe(1);
-      record(g77Receipt("D01", "PG", "ordinary catchUp unchanged without certificate", {}));
+      record(g77Receipt("D01", "ordinary catchUp unchanged without certificate", {}));
     });
 
     it("D02 explicit safeViewAdvance without certificate fails closed", async () => {
       const fixture = new StoreFixture([event("one")]);
       await expect(poll(fixture, { safeViewAdvance: true })).rejects.toThrow("ordering_certificate_unavailable");
-      record(g77Receipt("D02", "PG", "ordering_certificate_unavailable preserved", {}));
+      record(g77Receipt("D02", "ordering_certificate_unavailable preserved", {}));
     });
 
     it("D03 unreconciled certificate blocks outright", async () => {
@@ -901,23 +918,15 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
           authority: "g44-g62", serviceId: SERVICE, startOfPass: "PROVEN", kind: "FULL", frontierSuid: null,
         },
       })).rejects.toThrow("ordering_certificate_unavailable");
-      record(g77Receipt("D03", "PG", "unreconciled status fails closed via validator shape", {}));
+      record(g77Receipt("D03", "unreconciled status fails closed via validator shape", {}));
     });
 
     it("D07 no explicit option keeps safeViewAdvance false", async () => {
       const fixture = new StoreFixture([event("one")]);
       const result = await new ProjectionRuntime(fixture.store).catchUp(SERVICE, IDENTITY, NOW_MS);
       expect(result.advancedSourceEvents).toBe(1);
-      record(g77Receipt("D07", "PG", "default gate remains false", {}));
+      record(g77Receipt("D07", "default gate remains false", {}));
     });
   });
 
-  it("exports immutable matrix receipts marker", () => {
-    expect(G77_PINNED_MAIN).toMatch(/^[0-9a-f]{40}$/);
-    expect(receipts.length).toBeGreaterThan(0);
-    for (const receipt of receipts) {
-      expect(receipt.sourcePin).toBe(G77_PINNED_MAIN);
-      expect(["BR", "MR", "PG"]).toContain(receipt.classification);
-    }
-  });
 });

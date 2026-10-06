@@ -15,8 +15,6 @@ const root = process.cwd();
 const workflowPath = resolve(root, ".github/workflows/ci.yml");
 const manifestPath = resolve(root, "ci/lanes.json");
 const packageJsonPath = resolve(root, "package.json");
-const historicalSourceHead = "21427a58534efe8af4b3553322268f84fd6cbbd6";
-const reviewedHead = "cd15a2729ea2aa062515012ad1938266856ede2b";
 
 function checkedOutCommitSha() {
   if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA;
@@ -44,12 +42,6 @@ function sourceHeadSha(checkoutSha) {
     // A shallow non-PR checkout may not expose a parent graph.
   }
   return checkoutSha;
-}
-
-function sourceReceiptClass(sha) {
-  if (sha === historicalSourceHead) return "historical-source-head-21427a5";
-  if (sha === reviewedHead) return "reviewed-head-cd15a27-docs-only-equivalent";
-  return "current-source-head";
 }
 
 function packageScripts() {
@@ -186,7 +178,6 @@ function inventory() {
     workflowAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
     commitSha: sha,
     workflowCheckoutSha,
-    sourceReceiptClass: sourceReceiptClass(sha),
     workflow: process.env.GITHUB_WORKFLOW ?? "CI",
   };
   const workflowRows = jobs.flatMap((job) => job.commands.flatMap((command, index) => {
@@ -218,7 +209,6 @@ function inventory() {
     manifestPath,
     commitSha: sha,
     workflowCheckoutSha,
-    sourceReceiptClass: sourceReceiptClass(sha),
     jobs: jobs.map((job) => job.name),
     manifestLanes: (manifest.lanes ?? []).map((lane) => ({ name: lane.name, tier: lane.tier })),
     invocations: rows,
@@ -264,7 +254,6 @@ function main() {
     manifestPath,
     commitSha: result.commitSha,
     workflowCheckoutSha: result.workflowCheckoutSha,
-    sourceReceiptClass: sourceReceiptClass(result.commitSha),
     workflowRunId: process.env.GITHUB_RUN_ID ?? null,
     workflowAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
     workflow: process.env.GITHUB_WORKFLOW ?? "CI",
