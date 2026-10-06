@@ -158,3 +158,57 @@ SDT-G65. It is not a claim that D1, the receiver, or the platform will always
 finish within the budget. Crash, duplicate, partial-fanout, D1-outage, and
 sustained-write cases must retain the durable outbox/Queue recovery path and
 must not weaken ordering, reservation/fence, or G44 proof obligations.
+
+## Duplicate activation guarantee and rolling updates
+
+### Duplicate activation guarantee
+
+Durable persistence arbitrates all authoritative state changes. Tag append,
+reservation, allocator, bootstrap, outbox acknowledgement, and checkpoint
+writes happen only after their storage transaction re-validates the relevant
+head/version/epoch/token or expected predecessor. Derived D1 writes use
+conflict-safe identity keys and exact readback.
+
+### Platform basis and limit
+
+The [Global uniqueness](https://developers.cloudflare.com/durable-objects/platform/known-issues/#global-uniqueness)
+section of the platform known-issues documentation is the basis for this
+boundary. Uniqueness is enforced at event start and storage access, while an
+event that never touches storage, or finishes after its last storage access,
+can complete on a replaced instance. Rolling updates allow old and new code to
+coexist temporarily.
+
+### Audit table
+
+| audited path | classification | public conclusion |
+| --- | --- | --- |
+| Tag append, reservation, allocator, bootstrap lifecycle, outbox acknowledgement, and projection checkpoint | safe by construction | Durable transactions re-validate the relevant facts before authoritative writes. |
+| Read workers, TagState, projections, and CommitWorker recovery | caller-revalidated | Derived or recovered results are checked against durable source facts before use. |
+| D1 delivery and identity rows | safe by construction | Conflict-safe writes and exact identity readback make retries idempotent; SUID/lineage conflicts remain incidents. |
+| sample Bootstrap `/safe-lane/schedule` request | transaction-safe | Alarm state and the alarm are recorded together. |
+| sample Bootstrap alarm | durable-state-first, derived/retryable, with cron recovery | Durable pending state is consumed before the safe-lane kick; missed or failed derived work is recoverable. |
+| `safeLaneKickSchedulers` | advisory single-isolate coalescing only | Process-local coalescing is not authoritative scheduling state. |
+| malformed Queue message | platform transport disposition, not business authority | Validation logs the disposition and calls `queued.retry()` before store initialization. |
+| valid Queue message | caller-revalidated and derived | Ingress is observed, Bootstrap admission runs, delivery is processed, and the final disposition is `ack` or `retry`. |
+| Worker/DO activation observations | observation-only | They emit `storageWrites: 0`, `usedForControl: false`, and do not influence public responses. |
+| handlers that finish before storage or after their last storage access | platform-limited | They are not authoritative business writes or public state guarantees. |
+
+### Rolling-update wire rule
+
+The versioned input surfaces are the public commit request envelope and
+internal downstream Queue message, both currently version 1. Preserve their
+required members and current unknown-field behavior; an incompatible change
+requires a new envelope/message version. Current public responses are
+unversioned exact shapes: preserve their status, content type, keys, and
+semantics. An incompatible response change requires a separately versioned
+endpoint or response envelope. State and projector version values are not wire
+versions. Internal Worker-to-Durable-Object request and response surfaces
+(CommitWorker to Tag `/acquire` and `/append`, CommitWorker to Allocator
+`/allocate` and `/attempts/:id`, ReadWorker to TagState `/read`, TagState to
+Tag source reads, and Outbox to Tag internal routes) are currently unversioned.
+During rolling updates, preserve their methods, paths, required request
+members, accepted omissions and unknown-field behavior, response statuses,
+content types, required members, and semantics in both directions between old
+and new callers and callees. An incompatible internal change requires a
+parallel versioned endpoint or envelope and a staged overlap in which both
+generations remain mutually consumable until the old generation is retired.
