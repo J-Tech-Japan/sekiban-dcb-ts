@@ -9,7 +9,7 @@ This Worker is a small consumer of the matched npm packages
 (`@sekiban/dcb-{core,domain,client,runtime}@0.2.0`) plus the unpublished
 workspace helper `@sekiban/dcb-cloudflare`. The helper mounts storage beside
 a caller's own Worker; this sample is not that caller's only application.
-For tip Cloudflare speed/latency deploys use `./scripts/deploy/g99-npm-consumer-deploy.sh`
+For tip Cloudflare speed/latency deploys use `./scripts/deploy/npm-consumer-deploy.sh`
 (it packs this worktree). The registry `0.2.0` dry-run is `npm run test:g102`.
 Domain definitions live in `src/domain.ts`; the sample does not deep-import a
 package `src` directory.
@@ -30,7 +30,7 @@ budget.
 their tags, state is a closed `status` union, command reads are declared with
 `read`/`readSet`, and the command clock is captured separately from the
 allocator `OrderClock`. See [`docs/domain-authoring.md`](../../docs/domain-authoring.md)
-and the G29 mapping/compatibility artifacts for the portable contract.
+and the current mapping checks for the portable contract.
 
 `public/` is served directly by Workers Assets. There is no frontend framework
 or build step: `index.html` loads `app.js`, which uses `fetch` only against the

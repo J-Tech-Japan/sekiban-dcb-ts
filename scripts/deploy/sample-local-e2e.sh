@@ -48,9 +48,9 @@ trap 'kill "${SERVER_PID}" 2>/dev/null || true' EXIT
 for _ in $(seq 1 60); do
   if curl --silent --show-error --fail "${BASE_URL}/" >/dev/null 2>&1; then
     if [[ "${G15_INCLUDE_QUERY_VIEWS:-false}" == "true" ]]; then
-      G15_TRIGGER_SCHEDULED=true G15_EXPECTED_SERVICE_ID="${EXPECTED_SERVICE_ID}" exec python3 "${SCRIPT_DIR}/g15-e2e.py" --base-url "${BASE_URL}" --report "${REPORT}" --include-query-views
+      G15_TRIGGER_SCHEDULED=true G15_EXPECTED_SERVICE_ID="${EXPECTED_SERVICE_ID}" exec python3 "${SCRIPT_DIR}/sample-e2e.py" --base-url "${BASE_URL}" --report "${REPORT}" --include-query-views
     fi
-    G15_EXPECTED_SERVICE_ID="${EXPECTED_SERVICE_ID}" exec python3 "${SCRIPT_DIR}/g15-e2e.py" --base-url "${BASE_URL}" --report "${REPORT}"
+    G15_EXPECTED_SERVICE_ID="${EXPECTED_SERVICE_ID}" exec python3 "${SCRIPT_DIR}/sample-e2e.py" --base-url "${BASE_URL}" --report "${REPORT}"
   fi
   sleep 1
 done

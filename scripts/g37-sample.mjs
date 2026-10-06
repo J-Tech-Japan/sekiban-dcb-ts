@@ -802,7 +802,7 @@ async function main() {
       observabilityTokenReason = "G37 observability token file could not be read";
     }
   }
-  const template = JSON.parse(readFileSync(argument("--query-template", "scripts/deploy/g37-observability-query.json"), "utf8"));
+  const template = JSON.parse(readFileSync(argument("--query-template", "scripts/g37-observability-query.json"), "utf8"));
   const candidate = required("--candidate", argument("--candidate"));
   const sourceCommit = required("--source-commit", argument("--source-commit"));
   const sampleCount = positiveInteger("--samples", argument("--samples", String(DEFAULT_SAMPLE_COUNT)), MAX_SAMPLE_COUNT);

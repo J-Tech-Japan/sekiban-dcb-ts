@@ -14,7 +14,7 @@ Worker module graph.
 | Path | What it installs | When |
 |---|---|---|
 | Workspace | this repo's `packages/` via npm workspaces | developing in this repository |
-| Packed tip | `./scripts/deploy/g99-npm-consumer-deploy.sh` (`npm pack` of the current commit) | tip Cloudflare speed/latency deploys |
+| Packed tip | `./scripts/deploy/npm-consumer-deploy.sh` (`npm pack` of the current commit) | tip Cloudflare speed/latency deploys |
 | Registry | `@sekiban/dcb-{core,domain,client,runtime}@0.2.0` from registry.npmjs.org | `npm run test:g102` dry-run. This does not deploy the live sample worker |
 
 In-repo `npm ci` workspace-links the sample. Do not treat that as a registry install.
@@ -68,17 +68,17 @@ That script calls `dcb-cloudflare migrate --config samples/meeting-room/wrangler
 ./samples/meeting-room/scripts/deploy.sh
 ```
 
-Add `--keep-vars` only when you intend to preserve existing vars. The helper does not add it unless you pass it. `scripts/deploy/g20-deploy.sh` remains the G20 witness: it still checks `G20_SERVICE_ID` and pipes the conformance secret, and it calls this same helper for migrate and deploy.
+Add `--keep-vars` only when you intend to preserve existing vars. The helper does not add it unless you pass it. `scripts/deploy/cloudflare-only-deploy.sh` performs the Cloudflare-only migration and deployment workflow.
 
 Note the printed `*.workers.dev` URL.
 
 The packed-tip path remains:
 
 ```sh
-./scripts/deploy/g99-npm-consumer-deploy.sh
+./scripts/deploy/npm-consumer-deploy.sh
 ```
 
-Dry-run packing/install only: `G99_DRY_RUN=1 ./scripts/deploy/g99-npm-consumer-deploy.sh`.
+Dry-run packing/install only: `G99_DRY_RUN=1 ./scripts/deploy/npm-consumer-deploy.sh`.
 
 ## 4. Smoke (create → reserve → read)
 

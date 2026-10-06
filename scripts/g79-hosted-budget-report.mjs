@@ -15,8 +15,6 @@ const root = process.cwd();
 const reportPath = resolve(root, process.argv[2] ?? ".artifacts/sdt-g79-vitest.json");
 const inheritedBudgetMs = 5_000;
 const nearBudgetFraction = 0.5;
-const historicalSourceHead = "21427a58534efe8af4b3553322268f84fd6cbbd6";
-const reviewedHead = "cd15a2729ea2aa062515012ad1938266856ede2b";
 const backlogTitle = "AC6: a backlog larger than one alarm budget progresses and re-arms instead of starving its tail";
 const measurementTitle = "consumes the packet-owned measurement spec with real Tag DO SQL transitions and a closed range-plan predicate";
 
@@ -64,12 +62,6 @@ function sourceHeadSha(checkoutSha) {
   return checkoutSha;
 }
 
-function sourceReceiptClass(commitSha) {
-  if (commitSha === historicalSourceHead) return "historical-source-head-21427a5";
-  if (commitSha === reviewedHead) return "reviewed-head-cd15a27-docs-only-equivalent";
-  return "current-source-head";
-}
-
 function main() {
   const report = JSON.parse(readFileSync(reportPath, "utf8"));
   const files = report.testResults ?? [];
@@ -82,7 +74,6 @@ function main() {
   const receipt = {
     commitSha,
     workflowCheckoutSha: checkoutSha,
-    sourceReceiptClass: sourceReceiptClass(commitSha),
     workflowRunId: process.env.GITHUB_RUN_ID ?? null,
     workflowAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
     workflow: process.env.GITHUB_WORKFLOW ?? null,

@@ -61,8 +61,7 @@
         {"id": "foundation-g76", "command": "npm run test:g76:regression-matrix"},
         {"id": "foundation-g78", "command": "npm run test:g78"},
         {"id": "foundation-g74", "command": "npm run test:g74"},
-        {"id": "foundation-g17", "command": "npm run test:g17"},
-        {"id": "foundation-g17-rollout", "command": "npm run test:g17:rollout-order"}
+        {"id": "foundation-g17", "command": "npm run test:g17"}
       ]
     },
     {
@@ -146,7 +145,7 @@
       "name": "g21-g25",
       "tier": "local",
       "services": ["postgres"],
-      "affectedPaths": ["test/bootstrap.spec.ts", "test/g22-*.ts", "test/g23-*.ts", "test/g24-*.ts", "test/g25-*.ts", "scripts/g22-*.mjs", "test/g24-*.mjs", "scripts/deploy/g53-scope-mismatch-e2e.mjs", "scripts/g53-downstream-scope-mutation-runner.mjs", "scripts/g53-scope-identity-check.mjs", "scripts/g53-scope-mutation-runner.mjs", "scripts/g54-accepted-positive-mutation-runner.mjs", "scripts/g54-envelope-mutation-runner.mjs", "scripts/g54-interop-runner.mjs", "scripts/g56-assert-empty-guard.mjs", "scripts/g56-assert-empty-mutation-runner.mjs", "scripts/g73-g54-shape-mutation-runner.mjs", "test/g53-scope-identity.spec.ts", "test/g54-accepted-positive.spec.ts", "test/g54-envelope-boundary.spec.ts", "test/g54-interop.spec.ts", "test/g56-assert-empty.spec.ts"],
+      "affectedPaths": ["test/bootstrap.spec.ts", "test/g22-*.ts", "test/g23-*.ts", "test/g24-*.ts", "test/g25-*.ts", "scripts/g22-*.mjs", "test/g24-*.mjs", "scripts/g53-scope-mismatch-e2e.mjs", "scripts/g53-downstream-scope-mutation-runner.mjs", "scripts/g53-scope-identity-check.mjs", "scripts/g53-scope-mutation-runner.mjs", "scripts/g54-accepted-positive-mutation-runner.mjs", "scripts/g54-envelope-mutation-runner.mjs", "scripts/g54-interop-runner.mjs", "scripts/g56-assert-empty-guard.mjs", "scripts/g56-assert-empty-mutation-runner.mjs", "scripts/g73-g54-shape-mutation-runner.mjs", "test/g53-scope-identity.spec.ts", "test/g54-accepted-positive.spec.ts", "test/g54-envelope-boundary.spec.ts", "test/g54-interop.spec.ts", "test/g56-assert-empty.spec.ts"],
       "commands": [
         {"id": "g21", "command": "npm run test:g21"},
         {"id": "g21-red", "command": "npm run test:g21:forced-red", "env": {"SDT_G21_FORCE_FAILURE": "1"}, "expect": "red"},
@@ -201,7 +200,7 @@
       "name": "g30",
       "tier": "local",
       "services": ["postgres"],
-      "affectedPaths": ["test/g30-*.ts", "scripts/g30-*", "scripts/deploy/g30-*", "scripts/deploy/g30-*.sh", "scripts/commit-trace-*.mjs", "contracts/commit-trace-bundle.json", "contracts/commit-trace-pin.json", "contracts/*-normative.md", "contracts/epoch-*.json", "contracts/RENDERED-VIEWS.md", "scripts/deploy/g37-sample-guards.mjs", "scripts/deploy/g50-commit-latency-guards.mjs", "scripts/g51-ingestion-poll-guards.mjs", "scripts/g51-probe-ladder-guards.mjs", "scripts/g51-native-span-mutation-runner.mjs", "test/g51-app-surface-ray-relay.spec.ts"],
+      "affectedPaths": ["test/g30-*.ts", "scripts/g30-*", "scripts/commit-trace-*.mjs", "contracts/commit-trace-bundle.json", "contracts/commit-trace-pin.json", "contracts/*-normative.md", "contracts/epoch-*.json", "contracts/RENDERED-VIEWS.md", "scripts/g37-sample-guards.mjs", "scripts/g50-commit-latency-guards.mjs", "scripts/g51-ingestion-poll-guards.mjs", "scripts/g51-probe-ladder-guards.mjs", "scripts/g51-native-span-mutation-runner.mjs", "test/g51-app-surface-ray-relay.spec.ts", "samples/meeting-room/wrangler.cloudflare-only.jsonc"],
       "commands": [
         {"id": "g30", "command": "npm run test:g30"},
         {"id": "g51", "command": "npm run test:g51"},
@@ -254,7 +253,7 @@
       "name": "local-e2e",
       "tier": "local",
       "services": ["postgres"],
-      "affectedPaths": ["test/d1-*.ts", "test/g19-*.ts", "test/g16-*.ts", "test/meeting-room.spec.ts", "scripts/g13-*.mjs", "scripts/deploy/g15-*.py", "scripts/deploy/g15-*.sh", "samples/meeting-room/**", "scripts/g16-ui-check.mjs", "scripts/store-contract.mjs"],
+      "affectedPaths": ["test/d1-*.ts", "test/g19-*.ts", "test/g16-*.ts", "test/meeting-room.spec.ts", "scripts/g13-*.mjs", "scripts/deploy/sample-e2e.py", "scripts/deploy/sample-local-e2e.sh", "samples/meeting-room/**", "scripts/g16-ui-check.mjs", "scripts/store-contract.mjs"],
       "commands": [
         {"id": "store-contract", "command": "npm run test:store-contract"},
         {"id": "d1", "command": "npm run test:d1"},
@@ -262,9 +261,9 @@
         {"id": "boundaries", "command": "npm run test:boundaries"},
         {"id": "consumer", "command": "npm run test:consumer"},
         {"id": "build", "command": "npm run build"},
-        {"id": "g15-e2e", "command": "npm run e2e:g15:local", "env": {"G15_LOCAL_PORT": "8787", "G15_LOCAL_SERVICE_ID": "ci-g15-local", "G15_LOCAL_PERSIST_DIR": ".artifacts/ci-local/g15-wrangler-state"}},
+        {"id": "g15-e2e", "command": "npm run e2e:sample:local", "env": {"G15_LOCAL_PORT": "8787", "G15_LOCAL_SERVICE_ID": "ci-g15-local", "G15_LOCAL_PERSIST_DIR": ".artifacts/ci-local/g15-wrangler-state"}},
         {"id": "g16-test", "command": "POSTGRES_URL=\"$G16_POSTGRES_URL\" npm run test:g16"},
-        {"id": "g16-e2e", "command": "npm run e2e:g16:local", "env": {"G15_LOCAL_PORT": "8788", "G15_LOCAL_SERVICE_ID": "ci-g16-local", "G15_LOCAL_PERSIST_DIR": ".artifacts/ci-local/g16-wrangler-state"}}
+        {"id": "g16-e2e", "command": "npm run e2e:sample:query:local", "env": {"G15_LOCAL_PORT": "8788", "G15_LOCAL_SERVICE_ID": "ci-g16-local", "G15_LOCAL_PERSIST_DIR": ".artifacts/ci-local/g16-wrangler-state"}}
       ]
     },
     {

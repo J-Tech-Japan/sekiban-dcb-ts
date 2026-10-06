@@ -18,7 +18,7 @@ import {
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 import { reconcileIssuanceBatch } from "../packages/dcb-runtime/src/allocator/IssuanceReconciler";
 import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
-import { tagRequest } from "./helpers/g77-fixtures";
+import { envelopeExists, runG77CurrentCommitSample, tagRequest } from "./helpers/g77-fixtures";
 
 async function allocatorRequest(path: string, body?: unknown): Promise<Response> {
   const init =
@@ -231,6 +231,12 @@ describe("AllocatorDurableObject", () => {
       recoverySchedule: true,
     });
   });
+
+  it("G77 current commit path writes the issuance envelope", async () => {
+    const sample = await runG77CurrentCommitSample();
+    expect(sample.issuanceEnvelope).toBe(true);
+    expect(await envelopeExists(sample.serviceId, sample.attemptId)).toBe(true);
+  }, 120_000);
 
   it("G77 arms recovery alarm after membership-carrying allocation", async () => {
     const serviceId = `g77-recovery-alarm-${crypto.randomUUID()}`;

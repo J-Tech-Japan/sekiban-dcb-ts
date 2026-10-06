@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { captureG47HistoryLengthSample } from "./g37-sample.mjs";
 
 const REPO_ROOT = process.cwd();
-const SAMPLER = join(REPO_ROOT, "scripts/deploy/g37-sample.mjs");
+const SAMPLER = join(REPO_ROOT, "scripts/g37-sample.mjs");
 const SOURCE_COMMIT = "a".repeat(40);
 
 function fail(message) {

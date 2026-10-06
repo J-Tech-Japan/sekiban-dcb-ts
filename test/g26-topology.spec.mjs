@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { runVerifiedTopology } from "../scripts/deploy/g26-measure.mjs";
+import { runVerifiedTopology } from "../scripts/g26-topology.mjs";
 
 const expectedViewCount = 2;
 const expectedAllowedViews = ["ReservationProjector", "G26FanoutView02"];

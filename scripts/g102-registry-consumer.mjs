@@ -268,11 +268,11 @@ run("npm", ["run", "build", "-w", "@sekiban/dcb-cloudflare"]);
 const probes = await helperProbes();
 const registry = await registryProof();
 const migrateScript = readFileSync(join(root, "samples/meeting-room/scripts/migrate-remote.sh"), "utf8");
-const g99 = readFileSync(join(root, "scripts/deploy/g99-npm-consumer-deploy.sh"), "utf8");
+const g99 = readFileSync(join(root, "scripts/deploy/npm-consumer-deploy.sh"), "utf8");
 const transport = readFileSync(join(root, "samples/meeting-room/src/transport.ts"), "utf8");
 if (!transport.includes('case "create-room"')) fail("sample command route moved");
 const deployScript = readFileSync(join(root, "samples/meeting-room/scripts/deploy.sh"), "utf8");
-const g20 = readFileSync(join(root, "scripts/deploy/g20-deploy.sh"), "utf8");
+const g20 = readFileSync(join(root, "scripts/deploy/cloudflare-only-deploy.sh"), "utf8");
 const sampleCallsHelper = [migrateScript, deployScript, g20].every((script) => script.includes("packages/dcb-cloudflare/dist/cli.js") && script.includes("wrangler.cloudflare-only.jsonc"));
 if (!sampleCallsHelper) fail("sample migrate/deploy does not call the helper");
 console.log(JSON.stringify({

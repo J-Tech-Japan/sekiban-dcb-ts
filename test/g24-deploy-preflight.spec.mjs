@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-const deployScript = join(repoRoot, "scripts/deploy/g15-deploy.sh");
+const deployScript = join(repoRoot, "scripts/deploy/sample-deploy.sh");
 const temporaryDirectories = [];
 
 afterEach(() => {

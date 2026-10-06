@@ -2,7 +2,7 @@
 /** Recomputes the committed SDT-G52 client, snapshot-root, and DO summaries. */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { STRUCTURALLY_REMOVED_G41_ROWS } from "./deploy/g50-commit-latency.mjs";
+import { STRUCTURALLY_REMOVED_G41_ROWS } from "./g50-commit-latency.mjs";
 import { SNAPSHOT_PER_HOP_ROWS } from "./g52-commit-breakdown.mjs";
 
 function fail(message) {

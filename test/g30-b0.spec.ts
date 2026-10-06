@@ -10,7 +10,7 @@ import {
   observationLedgerForPhase,
   reconcileEmittedRowInventory,
 } from "../scripts/g30-b0-contract.mjs";
-import { assertConformancePropagationRetry, assertG30Config, assertPhaseRuntimeIsolation, assertRemoteMigrationPreflight, assertWitnessCaptureShellSafety, assertWitnessReplaySnapshotSafety } from "../scripts/g30-config-check.mjs";
+import { assertG30Config } from "../scripts/g30-config-check.mjs";
 import {
   acquireCohortTelemetry,
   buildTraceExportFailureEvidence,
@@ -40,7 +40,6 @@ import {
   measureB0Phase,
 } from "../scripts/g30-b0-measure.mjs";
 import manifest from "../contracts/commit-trace-manifest.json";
-import meetingRoomWorker, { type MeetingRoomCloudflareEnv } from "../samples/meeting-room/src/worker.cloudflare-only";
 
 type Phase = "A" | "B" | "A-prime";
 
@@ -56,22 +55,6 @@ const EMITTED_WORKER_ROWS = manifest.schemas["sdt.commit/v1"].rows
   .map((row) => row.rowId)
   .sort();
 const IDLE_SCHEDULE_MS = [2_000, 15_000, 180_000];
-
-function deploymentConfig(sample: 0 | 1): Record<string, unknown> {
-  return {
-    name: "g30-fixture",
-    main: "src/worker.cloudflare-only.ts",
-    observability: {
-      enabled: true,
-      logs: { enabled: true, persist: true, invocation_logs: true, head_sampling_rate: 1 },
-      traces: { enabled: true, persist: true, head_sampling_rate: sample },
-    },
-    version_metadata: { binding: "WORKER_VERSION" },
-    workers_dev: false,
-    preview_urls: false,
-    vars: { SDT_SERVICE_ID: SERVICE },
-  };
-}
 
 function actorClass(emitter: string): string {
   if (emitter === "root-worker") return "ROOT";
@@ -375,19 +358,12 @@ function withoutTrace(document: ReturnType<typeof evidence>, requestIds: readonl
 }
 
 describe("SDT-G30 B0 trace/evidence gates", () => {
-  it("allows only head sampling to vary across the deployment configs", () => {
-    expect(assertG30Config(deploymentConfig(0), deploymentConfig(1), deploymentConfig(0))).toMatchObject({
-      primarySampling: [0, 1],
-      receiverSampling: 0,
+  it("retains the current sample observability, trace-sampling, log-persistence, and no-placement contract", () => {
+    expect(assertG30Config()).toMatchObject({
+      sampling: 1,
+      observationLogPersistence: true,
       placement: "off",
-      receiverPublicSurface: { workersDev: false, previewUrls: false },
     });
-  });
-
-  it("carries G38 Phase M public-surface settings through the G30 receiver deployment", () => {
-    const receiver = deploymentConfig(0);
-    expect(() => assertG30Config(deploymentConfig(0), deploymentConfig(1), { ...receiver, workers_dev: true })).toThrow(/G38 Phase M/);
-    expect(() => assertG30Config(deploymentConfig(0), deploymentConfig(1), { ...receiver, preview_urls: true })).toThrow(/G38 Phase M/);
   });
 
   it("takes phase continuity from the durable fixed-tag head", async () => {
@@ -530,20 +506,6 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     } finally {
       fetchSpy.mockRestore();
     }
-  });
-
-  it("requires the fixed 15x1s conformance propagation retry for every phase", () => {
-    const runbook = [
-      "readonly CONFORMANCE_RETRY_ATTEMPTS=15",
-      "readonly CONFORMANCE_RETRY_DELAY_MS=1000",
-      'node g30-b0-measure.mjs --phase A --conformance-retry-attempts "${CONFORMANCE_RETRY_ATTEMPTS}" --conformance-retry-delay-ms "${CONFORMANCE_RETRY_DELAY_MS}"',
-      'node g30-b0-measure.mjs --phase B --conformance-retry-attempts "${CONFORMANCE_RETRY_ATTEMPTS}" --conformance-retry-delay-ms "${CONFORMANCE_RETRY_DELAY_MS}"',
-      'node g30-b0-measure.mjs --phase A-prime --conformance-retry-attempts "${CONFORMANCE_RETRY_ATTEMPTS}" --conformance-retry-delay-ms "${CONFORMANCE_RETRY_DELAY_MS}"',
-    ].join("\n");
-    expect(assertConformancePropagationRetry(runbook)).toEqual({
-      conformancePropagationRetry: { attempts: 15, delayMs: 1_000, retryStatus: 403, nonAuthFailures: "fail-closed" },
-    });
-    expect(() => assertConformancePropagationRetry(runbook.replace("readonly CONFORMANCE_RETRY_ATTEMPTS=15", "readonly CONFORMANCE_RETRY_ATTEMPTS=1"))).toThrow(/15x1s/);
   });
 
   it("requires raw durable reread evidence for every retained B0 window reset", () => {
@@ -921,70 +883,6 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     }
   });
 
-  it("captures deployment witness paths with ordered shell locals under set -u", () => {
-    const runbook = [
-      "capture_primary_witness() {",
-      '  local phase="$1"',
-      '  local output="$2"',
-      '  local prior="${output}.prior.versions.json"',
-      '  local versions="${output}.versions.json"',
-      '  printf "%s" "${versions}"',
-      "}",
-    ].join("\n");
-    expect(assertWitnessCaptureShellSafety(runbook)).toEqual({ witnessCaptureLocals: "ordered" });
-    expect(() => assertWitnessCaptureShellSafety(runbook.replace(
-      '  local phase="$1"\n  local output="$2"\n  local prior="${output}.prior.versions.json"\n  local versions="${output}.versions.json"',
-      '  local phase="$1" output="$2" prior="${output}.prior.versions.json" versions="${output}.versions.json"',
-    ))).toThrow(/separate ordered locals/);
-  });
-
-  it("snapshots primary versions so a repeated phase selects only its new deployment", () => {
-    const runbook = [
-      "capture_primary_witness() {",
-      '  local phase="$1"',
-      '  local output="$2"',
-      '  local prior="${output}.prior.versions.json"',
-      '  local versions="${output}.versions.json"',
-      '  node witness --versions "${versions}" --prior-versions "${prior}"',
-      "}",
-      "capture_primary_predeploy_versions() {",
-      '  local output="$1"',
-      '  local prior="${output}.prior.versions.json"',
-      '  versions list --name "${PRIMARY_WORKER_NAME}" --json > "${prior}"',
-      "}",
-      'capture_primary_predeploy_versions "${A_WITNESS_FILE}"',
-      'deploy_phase A "${PRIMARY_OFF_CONFIG}"',
-      'capture_primary_witness A "${A_WITNESS_FILE}"',
-      'capture_primary_predeploy_versions "${B_WITNESS_FILE}"',
-      'deploy_phase B "${PRIMARY_ON_CONFIG}"',
-      'capture_primary_witness B "${B_WITNESS_FILE}"',
-      'capture_primary_predeploy_versions "${APRIME_WITNESS_FILE}"',
-      'deploy_phase A-prime "${PRIMARY_OFF_CONFIG}"',
-      'capture_primary_witness A-prime "${APRIME_WITNESS_FILE}"',
-    ].join("\n");
-    expect(assertWitnessReplaySnapshotSafety(runbook)).toEqual({ witnessReplaySnapshot: "pre-deploy" });
-    expect(() => assertWitnessReplaySnapshotSafety(runbook.replace('--prior-versions "${prior}"', ""))).toThrow(/pre-deploy snapshot/);
-  });
-
-  it("keeps A/B/A-prime phase labels out of deployed runtime configuration", () => {
-    expect(assertPhaseRuntimeIsolation("export const witness = true;", "deploy --config primary-on")).toEqual({
-      phaseAuthority: "external-evidence-ledger",
-      runtimePhaseConfig: false,
-    });
-    expect(() => assertPhaseRuntimeIsolation("const x = G30_TRACE_PHASE;", "deploy --config primary-on")).toThrow(/runtime diagnostic protocol surface/);
-  });
-
-  it("does not add a G30 diagnostic route or runtime variable to the authenticated Worker protocol", async () => {
-    const fetch = meetingRoomWorker.fetch;
-    if (fetch === undefined) throw new Error("meeting-room Worker lacks fetch");
-    const response = await fetch(
-      new Request("https://g30.test/conformance/v1/g30-config", { headers: { authorization: "Bearer fixture-token" } }) as never,
-      { CONFORMANCE_TOKEN: "fixture-token", SDT_SERVICE_ID: SERVICE, G32_COMPONENT: "primary" } as never as MeetingRoomCloudflareEnv,
-      { waitUntil: () => undefined } as never,
-    );
-    expect(response.status).toBe(404);
-  });
-
   it("binds a measurement phase to one external Cloudflare Worker Version rather than a Worker route", () => {
     const sourceCommit = "c".repeat(40);
     const configDigest = "d".repeat(64);
@@ -1333,83 +1231,6 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
       schemaComplete: true,
       missingRequiredRows: [],
     });
-  });
-
-  it("rejects an unsealed D1 database identity before migration listing", () => {
-    const config = {
-      d1_databases: [
-        { binding: "D1", database_id: "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
-        { binding: "D1_MV", database_id: "REPLACE_WITH_G32_FINAL_MV_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
-      ],
-    };
-    const runbook = [
-      'readonly PRIMARY_CONFIG_PATH="${REPO_ROOT}/samples/meeting-room/wrangler.g30-primary-off.jsonc"',
-      "assert_no_remote_migrations() {",
-      "  assert_sealed_d1_config",
-      '  for binding in "${PRIMARY_D1_BINDINGS[@]}"; do',
-      '    output="$(wrangler d1 migrations list "${binding}" --config "${PRIMARY_CONFIG_PATH}" --remote)"',
-      "  done",
-      "}",
-    ].join("\n");
-    config.d1_databases[0].database_id = "unsealed-database-id";
-    expect(() => assertRemoteMigrationPreflight(config, runbook)).toThrow("database identity is not sealed");
-  });
-
-  it("rejects a direct durable database-name migration lookup", () => {
-    const config = {
-      d1_databases: [
-        { binding: "D1", database_id: "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
-        { binding: "D1_MV", database_id: "REPLACE_WITH_G32_FINAL_MV_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
-      ],
-    };
-    const runbook = [
-      'readonly PRIMARY_CONFIG_PATH="${REPO_ROOT}/samples/meeting-room/wrangler.g30-primary-off.jsonc"',
-      "assert_no_remote_migrations() {",
-      "  assert_sealed_d1_config",
-      '  for binding in "${PRIMARY_D1_BINDINGS[@]}"; do',
-      '    output="$(wrangler d1 migrations list "${database}" --config "${PRIMARY_CONFIG_PATH}" --remote)"',
-      "  done",
-      "}",
-    ].join("\n");
-    expect(() => assertRemoteMigrationPreflight(config, runbook)).toThrow("must use a binding");
-  });
-
-  it("rejects a cwd-relative config before remote migration listing", () => {
-    const config = {
-      d1_databases: [
-        { binding: "D1", database_id: "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
-        { binding: "D1_MV", database_id: "REPLACE_WITH_G32_FINAL_MV_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
-      ],
-    };
-    const runbook = [
-      'readonly PRIMARY_CONFIG_PATH="${REPO_ROOT}/samples/meeting-room/wrangler.g30-primary-off.jsonc"',
-      "assert_no_remote_migrations() {",
-      "  assert_sealed_d1_config",
-      '  for binding in "${PRIMARY_D1_BINDINGS[@]}"; do',
-      '    output="$(wrangler d1 migrations list "${binding}" --cwd samples/meeting-room --config "wrangler.g30-primary-off.jsonc" --remote)"',
-      "  done",
-      "}",
-    ].join("\n");
-    expect(() => assertRemoteMigrationPreflight(config, runbook)).toThrow("ID-verified absolute config path");
-  });
-
-  it("rejects a migration listing that inherits the telemetry account override", () => {
-    const config = {
-      d1_databases: [
-        { binding: "D1", database_id: "REPLACE_WITH_G32_FINAL_PIPELINE_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
-        { binding: "D1_MV", database_id: "REPLACE_WITH_G32_FINAL_MV_D1_ID", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
-      ],
-    };
-    const runbook = [
-      'readonly PRIMARY_CONFIG_PATH="${REPO_ROOT}/samples/meeting-room/wrangler.g30-primary-off.jsonc"',
-      "assert_no_remote_migrations() {",
-      "  assert_sealed_d1_config",
-      '  for binding in "${PRIMARY_D1_BINDINGS[@]}"; do',
-      '    output="$("${WRANGLER_BIN}" d1 migrations list "${binding}" --config "${PRIMARY_CONFIG_PATH}" --remote)"',
-      "  done",
-      "}",
-    ].join("\n");
-    expect(() => assertRemoteMigrationPreflight(config, runbook)).toThrow("must unset CLOUDFLARE_ACCOUNT_ID");
   });
 
   it("classifies a telemetry group without an S00 root as root-absent instead of matching by time", () => {
