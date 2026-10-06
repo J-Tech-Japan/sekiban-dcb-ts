@@ -27,6 +27,7 @@ const mutants = [
     from: "await registerIssuanceInTransaction(txn, {",
     to: "void ({ // mutant: registration removed",
     expectedTests: ["G77 registers issuance ledger facts atomically when membership is supplied"],
+    unrelatedTests: ["G77 predecessor lookup stays correct beyond 256 issuances"],
   },
   {
     name: "single-tag-resolved-early",
@@ -34,6 +35,7 @@ const mutants = [
     from: "if (!resolved) return { candidateResolved: false, duplicate: false };",
     to: "if (!resolved) return { candidateResolved: true, duplicate: false };",
     expectedTests: ["G77 mutant oracle: multi-tag candidate stays unresolved until every target terminal"],
+    unrelatedTests: ["G77 inspection failure does not force-tombstone pending targets"],
   },
   {
     name: "expired-writer-accepted",
@@ -41,6 +43,7 @@ const mutants = [
     from: "evidence.pinnedWriterEpoch !== envelope.pinnedWriterEpoch",
     to: "evidence.pinnedWriterEpoch !== envelope.pinnedWriterEpoch && false",
     expectedTests: ["G77 rejects resolution with mismatched pinned writer epoch"],
+    unrelatedTests: ["G77 fenced absence resolves a pending target without accepting expiry alone"],
   },
   {
     name: "wrong-prefix-watermark",
@@ -51,6 +54,7 @@ const mutants = [
       "G77 predecessor prefix excludes the least unresolved hole",
       "G77 positive predecessor oracle with multi-candidate hole",
     ],
+    unrelatedTests: ["G77 predecessor lookup stays correct beyond 256 issuances"],
   },
   {
     name: "highest-completed-prefix",
@@ -76,9 +80,9 @@ const mutants = [
   }
   return best;`,
     expectedTests: [
-      "G77 positive predecessor oracle with multi-candidate hole",
       "G77 predecessor lookup stays correct beyond 256 issuances",
     ],
+    unrelatedTests: ["G77 predecessor prefix excludes the least unresolved hole"],
   },
   {
     name: "omitted-issuance-write",
@@ -125,10 +129,18 @@ function runBuild() {
 }
 
 function failingTestNames(report) {
+  return assertionNames(report, "failed");
+}
+
+function passingTestNames(report) {
+  return assertionNames(report, "passed");
+}
+
+function assertionNames(report, status) {
   if (!Array.isArray(report?.testResults)) return [];
   return report.testResults.flatMap((file) =>
     (file.assertionResults ?? [])
-      .filter((assertion) => assertion.status === "failed")
+      .filter((assertion) => assertion.status === status)
       .map((assertion) => assertion.fullName ?? assertion.title ?? ""),
   );
 }
@@ -200,19 +212,34 @@ try {
     restore();
     runBuild();
     const failures = failingTestNames(run.report);
+    const passes = passingTestNames(run.report);
     const matched = mutant.expectedTests.filter((name) =>
       failures.some((failure) => failure.includes(name)),
+    );
+    const missingTargets = mutant.expectedTests.filter((name) =>
+      !failures.some((failure) => failure.includes(name)),
     );
     const unrelatedFailures = (mutant.unrelatedTests ?? []).filter((name) =>
       failures.some((failure) => failure.includes(name)),
     );
+    const missingUnrelated = (mutant.unrelatedTests ?? []).filter((name) =>
+      !passes.some((pass) => pass.includes(name)),
+    );
     results.push({
       mutant: mutant.name,
-      status: run.status === 0 ? "unexpected-green" : matched.length > 0 && unrelatedFailures.length === 0 ? "red" : "unexpected-red",
+      status:
+        run.status === 0
+          ? "unexpected-green"
+          : missingTargets.length === 0 && unrelatedFailures.length === 0 && missingUnrelated.length === 0
+            ? "red"
+            : "unexpected-red",
       exitCode: run.status,
       failingTests: failures,
+      passingTests: passes,
       matchedTests: matched,
+      missingTargets,
       unrelatedFailures,
+      missingUnrelated,
     });
   }
 } finally {

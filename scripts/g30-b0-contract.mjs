@@ -590,7 +590,7 @@ export function assertTraceCohort(ledger, traces, exportCompletedAtMs, phase = "
     }));
   }
 
-  const tail = ranking.ranked.slice(0, G30_TAIL_RANK_COUNT - 1);
+  const tail = ranking.ranked.slice(0, G30_TAIL_RANK_COUNT);
   const missingRequestIds = new Set(missing.map((entry) => entry.requestId));
   const missingTail = tail.filter((entry) => missingRequestIds.has(entry.requestId));
   if (missingTail.length > 0) {
