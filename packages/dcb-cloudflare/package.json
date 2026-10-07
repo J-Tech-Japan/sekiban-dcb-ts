@@ -20,7 +20,7 @@
   "type": "module",
   "sideEffects": false,
   "bin": {
-    "dcb-cloudflare": "./dist/cli.js"
+    "dcb-cloudflare": "dist/cli.js"
   },
   "exports": {
     ".": {
