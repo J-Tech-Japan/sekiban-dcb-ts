@@ -1,6 +1,6 @@
-import { composeHandlers, type FetchHandler, type QueueHandler, type ScheduledHandler } from "@sekiban/dcb-cloudflare";
+import { composeHandlers, requireHandlers } from "@sekiban/dcb-cloudflare";
 import { createCloudflareOnlyRuntimeWorker } from "@sekiban/dcb-runtime/cloudflare";
-import { applicationFetch, type StarterEnvironment, type StarterRuntime } from "./booking-routes";
+import { applicationFetch, type StarterEnvironment } from "./booking-routes";
 import { bookingDomain, bookingRuntimeConfig } from "./booking-domain";
 import { bookingDeliveryViews, catchUpBookingViews, ensureBookingViews } from "./booking-mv";
 
@@ -12,7 +12,7 @@ export {
   TagStateDurableObject,
 } from "@sekiban/dcb-cloudflare";
 
-const runtime = createCloudflareOnlyRuntimeWorker({
+const runtime = requireHandlers(createCloudflareOnlyRuntimeWorker({
   domain: bookingDomain,
   config: bookingRuntimeConfig,
   afterBootstrapVerify: async ({ serviceId, env }) => {
@@ -20,24 +20,19 @@ const runtime = createCloudflareOnlyRuntimeWorker({
     await catchUpBookingViews(env, serviceId);
   },
   deliveryViews: ({ env }) => bookingDeliveryViews(env),
-}) as unknown as StarterRuntime & {
-  readonly queue?: (batch: unknown, env: StarterEnvironment, ctx: ExecutionContext) => Promise<void>;
-  readonly scheduled?: (controller: unknown, env: StarterEnvironment, ctx: ExecutionContext) => Promise<void>;
-};
+}));
 
-const handlers = composeHandlers({
+const worker: ExportedHandler<StarterEnvironment> = composeHandlers<StarterEnvironment>({
   application: {
-    fetch: ((request: Request, env: unknown, ctx: unknown) => applicationFetch(request, env as StarterEnvironment, ctx as ExecutionContext, runtime)) as unknown as FetchHandler,
+    fetch: (request, env, ctx) => applicationFetch(request, env, ctx, runtime),
   },
   sekiban: {
     prefix: "/internal/sekiban",
-    fetch: runtime.fetch as unknown as FetchHandler,
+    fetch: runtime.fetch,
     authorize: () => true,
-    queue: runtime.queue as QueueHandler,
-    scheduled: runtime.scheduled as ScheduledHandler,
+    queue: runtime.queue,
+    scheduled: runtime.scheduled,
   },
 });
-
-const worker = handlers as unknown as ExportedHandler<StarterEnvironment>;
 
 export default worker;

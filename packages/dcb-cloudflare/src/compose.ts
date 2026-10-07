@@ -6,25 +6,90 @@ export const SERIALIZED_PATHS = [
   "/api/sekiban/serialized/tag-state",
 ] as const;
 
-export type FetchHandler = (request: Request, env?: unknown, ctx?: unknown) => Promise<Response> | Response;
-export type QueueHandler = (batch: unknown, env?: unknown, ctx?: unknown) => Promise<void> | void;
-export type ScheduledHandler = (controller: unknown, env?: unknown, ctx?: unknown) => Promise<void> | void;
-export type AuthorizeResult = boolean | Response;
-export type Authorize = (request: Request) => AuthorizeResult | Promise<AuthorizeResult>;
+export type IncomingRequest<CfHostMetadata = unknown> = Request<
+  CfHostMetadata,
+  IncomingRequestCfProperties<CfHostMetadata>
+>;
 
-export interface SekibanMount {
+export type FetchHandler<
+  Env = unknown,
+  Ctx = ExecutionContext,
+  RequestType extends Request = IncomingRequest,
+> = (request: RequestType, env: Env, ctx: Ctx) => Promise<Response> | Response;
+export type QueueHandler<
+  Env = unknown,
+  Ctx = ExecutionContext,
+  Batch = MessageBatch<unknown>,
+> = (batch: Batch, env: Env, ctx: Ctx) => Promise<void> | void;
+export type ScheduledHandler<
+  Env = unknown,
+  Ctx = ExecutionContext,
+  Controller = ScheduledController,
+> = (controller: Controller, env: Env, ctx: Ctx) => Promise<void> | void;
+export type AuthorizeResult = boolean | Response;
+export type Authorize<RequestType extends Request = IncomingRequest> = (
+  request: RequestType,
+) => AuthorizeResult | Promise<AuthorizeResult>;
+
+export interface SekibanMount<
+  Env = unknown,
+  Ctx = ExecutionContext,
+  RequestType extends Request = IncomingRequest,
+  Batch = MessageBatch<unknown>,
+  Controller = ScheduledController,
+> {
   prefix: string;
-  fetch: FetchHandler;
-  authorize: Authorize;
+  fetch: FetchHandler<Env, Ctx, Request>;
+  authorize: Authorize<RequestType>;
   extraPaths?: readonly string[];
-  queue?: QueueHandler;
-  scheduled?: ScheduledHandler;
+  queue?: QueueHandler<Env, Ctx, Batch>;
+  scheduled?: ScheduledHandler<Env, Ctx, Controller>;
 }
 
-export interface ApplicationHandlers {
-  fetch: FetchHandler;
-  queue?: QueueHandler;
-  scheduled?: ScheduledHandler;
+export interface ApplicationHandlers<
+  Env = unknown,
+  Ctx = ExecutionContext,
+  RequestType extends Request = IncomingRequest,
+  Batch = MessageBatch<unknown>,
+  Controller = ScheduledController,
+> {
+  fetch: FetchHandler<Env, Ctx, RequestType>;
+  queue?: QueueHandler<Env, Ctx, Batch>;
+  scheduled?: ScheduledHandler<Env, Ctx, Controller>;
+}
+
+export interface RequiredHandlers<
+  Env,
+  Ctx = ExecutionContext,
+  Batch = MessageBatch<unknown>,
+  Controller = ScheduledController,
+> {
+  fetch: (request: Request, env: Env, ctx: Ctx) => Promise<Response>;
+  queue: QueueHandler<Env, Ctx, Batch>;
+  scheduled: ScheduledHandler<Env, Ctx, Controller>;
+}
+
+/** Bridge the optional handler members returned by createCloudflareOnlyRuntimeWorker(). */
+export function requireHandlers<
+  Env,
+  Ctx,
+  CfHostMetadata,
+  Batch,
+  Controller,
+>(handlers: {
+  fetch?: FetchHandler<Env, Ctx, IncomingRequest<CfHostMetadata>>;
+  queue?: QueueHandler<Env, Ctx, Batch>;
+  scheduled?: ScheduledHandler<Env, Ctx, Controller>;
+}): RequiredHandlers<Env, Ctx, Batch, Controller> {
+  const { fetch, queue, scheduled } = handlers;
+  if (fetch === undefined) throw new Error("fetch handler is required");
+  if (queue === undefined) throw new Error("queue handler is required");
+  if (scheduled === undefined) throw new Error("scheduled handler is required");
+  return {
+    fetch: async (request, env, ctx) => fetch(request as IncomingRequest<CfHostMetadata>, env, ctx),
+    queue,
+    scheduled,
+  };
 }
 
 function assertPrefix(prefix: string): void {
@@ -51,11 +116,18 @@ function rewriteRequest(request: Request, pathname: string): Request {
   return new Request(url, request);
 }
 
-function allowlist(mount: SekibanMount): ReadonlySet<string> {
+function allowlist(mount: Pick<SekibanMount, "extraPaths">): ReadonlySet<string> {
   return new Set<string>([...SERIALIZED_PATHS, ...(mount.extraPaths ?? [])]);
 }
 
-export function composeFetch(input: { application: FetchHandler; sekiban?: SekibanMount }): FetchHandler {
+export function composeFetch<
+  Env = unknown,
+  Ctx = ExecutionContext,
+  RequestType extends Request = IncomingRequest,
+>(input: {
+  application: FetchHandler<Env, Ctx, RequestType>;
+  sekiban?: SekibanMount<Env, Ctx, RequestType, never, never>;
+}): FetchHandler<Env, Ctx, RequestType> {
   const mount = input.sekiban;
   if (mount !== undefined) {
     if (typeof mount.authorize !== "function") {
@@ -77,20 +149,30 @@ export function composeFetch(input: { application: FetchHandler; sekiban?: Sekib
   };
 }
 
-function chain<T extends (...args: never[]) => Promise<void> | void>(first?: T, second?: T): T | undefined {
+type VoidHandler<Input, Env, Ctx> = (input: Input, env: Env, ctx: Ctx) => Promise<void> | void;
+
+function chain<Input, Env, Ctx>(
+  first?: VoidHandler<Input, Env, Ctx>,
+  second?: VoidHandler<Input, Env, Ctx>,
+): VoidHandler<Input, Env, Ctx> | undefined {
   if (first === undefined && second === undefined) return undefined;
-  const wrapped = async (...args: never[]) => {
+  const wrapped: VoidHandler<Input, Env, Ctx> = async (...args) => {
     if (first !== undefined) await first(...args);
     if (second !== undefined) await second(...args);
   };
-  return wrapped as T;
+  return wrapped;
 }
 
-export function composeHandlers(input: { application: ApplicationHandlers; sekiban?: SekibanMount }): {
-  fetch: FetchHandler;
-  queue?: QueueHandler;
-  scheduled?: ScheduledHandler;
-} {
+export function composeHandlers<
+  Env = unknown,
+  Ctx = ExecutionContext,
+  RequestType extends Request = IncomingRequest,
+  Batch = MessageBatch<unknown>,
+  Controller = ScheduledController,
+>(input: {
+  application: ApplicationHandlers<Env, Ctx, RequestType, Batch, Controller>;
+  sekiban?: SekibanMount<Env, Ctx, RequestType, Batch, Controller>;
+}): ApplicationHandlers<Env, Ctx, RequestType, Batch, Controller> {
   const fetch = composeFetch({ application: input.application.fetch, sekiban: input.sekiban });
   const queue = chain(input.sekiban?.queue, input.application.queue);
   const scheduled = chain(input.sekiban?.scheduled, input.application.scheduled);
