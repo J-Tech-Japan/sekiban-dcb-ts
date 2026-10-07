@@ -40,11 +40,11 @@ describe("SDT-G49 binding-parity parser", () => {
     expect(declarations[3].namedImports).toEqual([{ imported: "ConsecutiveValue", local: "ConsecutiveValue" }]);
 
     expect(() => namedImportFrom(
-      'import { Present } from "./other";',
+      'import { Present } from "./runtime";',
       "./runtime",
-      "missing expected runtime module",
+      "missing expected runtime binding",
       ["Expected"],
-    )).toThrow(/exactly one usable named import/);
+    )).toThrow(/cannot resolve expected runtime binding Expected/);
     expect(() => namedImportFrom(
       'import { First } from "./runtime"; import { Second } from "./runtime";',
       "./runtime",
