@@ -6,8 +6,9 @@ import {
   type InternalRuntimeFetcher,
 } from "./booking-transport";
 import { reservationTag, roomTag } from "./booking-domain";
+import type { CloudflareOnlyEnv } from "@sekiban/dcb-runtime/cloudflare";
 
-export interface StarterEnvironment {
+export interface StarterEnvironment extends CloudflareOnlyEnv {
   readonly ASSETS?: Fetcher;
   readonly SDT_SERVICE_ID: string;
 }
