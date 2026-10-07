@@ -7,9 +7,10 @@ dependency-ordered public set before any publish command:
 1. `@sekiban/dcb-core`
 2. `@sekiban/dcb-domain`
 3. `@sekiban/dcb-client`
+4. `@sekiban/dcb-runtime`
 
 The workflow selects exactly one authentication mode from the same product
-selection code that is guarded by `npm run test:g72:trusted-publishing`:
+selection code that is checked in the repository:
 
 1. `NPM_TRUSTED_PUBLISHING=true` selects `trusted-publishing` first. The
    publish command runs with GitHub Actions OIDC and explicitly removes
@@ -21,19 +22,19 @@ selection code that is guarded by `npm run test:g72:trusted-publishing`:
    was published, and keeps the credential-free `npm publish --dry-run`
    proof as the fallback.
 
-The operator must not append a fourth path or make the fallback look like a
+The maintainer must not append a fourth path or make the fallback look like a
 successful release.
 
 ## Trusted-publisher registration
 
-The packages must already exist on the npm registry before npm will allow a
-trusted publisher to be registered. All three matched packages already exist
-there at `0.1.0` (the matched release prepared by this repository is `0.2.0`).
-Register the publisher separately on each package's npm access page:
+The four matched-set packages already exist on the npm registry, and each
+needs its own trusted-publisher registration. Register the publisher
+separately on each package's npm access page:
 
 - [`@sekiban/dcb-core` access settings](https://www.npmjs.com/package/@sekiban/dcb-core/access)
 - [`@sekiban/dcb-domain` access settings](https://www.npmjs.com/package/@sekiban/dcb-domain/access)
 - [`@sekiban/dcb-client` access settings](https://www.npmjs.com/package/@sekiban/dcb-client/access)
+- [`@sekiban/dcb-runtime` access settings](https://www.npmjs.com/package/@sekiban/dcb-runtime/access)
 
 On each page, open **Trusted publishing**, choose **GitHub Actions**, and enter
 these exact values:
@@ -53,39 +54,50 @@ permissions for trusted publishing. See the [npm trusted publishing
 documentation](https://docs.npmjs.com/trusted-publishers/) for the npm-side
 form and OIDC model.
 
-After all three registrations succeed, set the repository Actions variable
+After all four registrations succeed, set the repository Actions variable
 `NPM_TRUSTED_PUBLISHING` to the exact string `true`:
 
-1. Open `J-Tech-Japan/sekiban-dcb-ts` on GitHub.
+1. Open the repository on GitHub.
 2. Go to **Settings → Secrets and variables → Actions → Variables**.
 3. Add or edit repository variable `NPM_TRUSTED_PUBLISHING` with value `true`.
-4. Leave `NPM_TOKEN` in place only until the first operator-controlled release
+4. Leave `NPM_TOKEN` in place only until the first maintainer-controlled release
    has verified the trusted branch; then delete the `NPM_TOKEN` repository
    secret from **Settings → Secrets and variables → Actions → Secrets**.
 
 This implementation does not register publishers, set variables, delete
 secrets, push tags, or publish packages.
 
-## Visibility-driven provenance policy
+## Starter packages
 
-The workflow reads the repository's live `.private` value with:
+`@sekiban/dcb-cloudflare` and `@sekiban/create-dcb` are published through
+`.github/workflows/publish-dcb-unpublished.yml`. When either starter package
+is selected, the workflow runs `npm run test:starter-cold-install` before any
+publish command. The gate proves creation, installation, typechecking, and a
+Wrangler dry-run from packed artifacts outside the repository.
+
+Trusted publishing requires an existing npm package, so the first publish of
+each starter package is a maintainer-controlled action. This document does
+not prescribe the method for that first publish.
+
+After a starter package is published, run:
 
 ```sh
-gh api "repos/${GITHUB_REPOSITORY}" --jq '.private'
+npm run test:starter-cold-install -- --source registry
 ```
 
-That runtime value is the only source for the provenance branch. For a public
-source repository, the publish arguments include `--provenance`. For the
-current private source repository, the publish arguments omit `--provenance`,
-set `NPM_CONFIG_PROVENANCE=false`, and remove `publishConfig.provenance` from
-the isolated publish checkout before running npm. npm rejects provenance
-bundles for private source repositories; omitting it is therefore deliberate,
-not a token or trusted-publisher decision. A hard-coded public or private
-visibility mutant is red in the G72 guard.
+## Visibility-driven provenance policy
 
-## Operator verification
+The workflow reads the repository's live visibility value and uses it as the
+only source for the provenance branch. For a public source repository, the
+publish arguments include `--provenance`. For a non-public source repository,
+the publish arguments omit `--provenance`, set `NPM_CONFIG_PROVENANCE=false`,
+and remove `publishConfig.provenance` from the isolated publish checkout.
+npm does not accept provenance bundles for a non-public source repository;
+omitting it is deliberate, not a token or trusted-publisher decision.
 
-After registration and the variable change, the operator may perform the
+## Release verification
+
+After registration and the variable change, the maintainer may perform the
 normal tag-triggered release using the existing matched-set tag procedure:
 
 ```sh
@@ -104,12 +116,11 @@ the GitHub Actions log:
   OIDC; NPM_TOKEN omitted)` while the secret still exists for the first
   verification;
 - no `authentication branch: token` or credential-free fallback line appears;
-- the repository-visibility log and publish command match the private/public
+- the repository-visibility log and publish command match the visibility
   policy above; and
-- each of the three package pages shows the newly published version. Public
-  source repositories should show npm provenance; private source repositories
-  should not, because npm does not generate provenance for private source
-  repositories.
+- each of the four package pages shows the newly published version. Public
+  source repositories should show npm provenance; non-public source
+  repositories should not, because npm does not generate provenance for them.
 
 If the run reports `authentication branch: credential-free-dry-run`, the
 workflow intentionally published nothing. Fix the repository variable or
@@ -121,5 +132,5 @@ dry-run-only job as a release.
 The older `.github/workflows/release-dcb-domain.yml` remains a separate
 single-package workflow. Its existing token/trusted-publisher branch is not
 the matched-set path described above. Do not use its
-`release-dcb-domain.yml` filename when registering the three matched-set
+`release-dcb-domain.yml` filename when registering the four matched-set
 publishers.

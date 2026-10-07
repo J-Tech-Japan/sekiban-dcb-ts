@@ -8,7 +8,7 @@ cd my-booking-app
 npm install
 ```
 
-Until this package is published, run the local CLI from this repository:
+If `npm view @sekiban/create-dcb` reports E404, the package has not been published yet; use the repository-checkout alternative:
 
 ```sh
 node packages/create-dcb/bin/create-dcb.mjs my-booking-app

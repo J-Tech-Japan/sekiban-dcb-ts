@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "migrate": "dcb-cloudflare migrate --config wrangler.jsonc",
-    "deploy": "dcb-cloudflare deploy --config wrangler.jsonc"
+    "deploy": "dcb-cloudflare deploy --config wrangler.jsonc",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@sekiban/dcb-client": "0.2.0",
@@ -15,5 +16,9 @@
     "@sekiban/dcb-runtime": "0.2.0",
     "@sekiban/dcb-cloudflare": "^0.1.0",
     "wrangler": "4.125.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@cloudflare/workers-types": "5.20260820.1"
   }
 }

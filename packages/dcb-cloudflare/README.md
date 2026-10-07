@@ -16,7 +16,7 @@ and Node 22 or newer. cf is intentionally not a dependency of this package.
 
 `composeFetch` publishes runtime HTTP routes only when the caller supplies `authorize`. The default forward list is the five serialized paths. `queue` and `scheduled` from the runtime and the caller both run, runtime first.
 
-It is not published yet. Inside this repository the sample depends on it as a workspace package. Other applications install it only after an operator publishes it.
+If `npm view @sekiban/dcb-cloudflare` reports E404, the package has not been published yet; use the repository-checkout alternative. The helper requires `@sekiban/dcb-runtime` 0.2.x, and the generated starter pins 0.2.0.
 
 ## License
 
