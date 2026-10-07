@@ -10,9 +10,13 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
 
 const root = process.cwd();
 const entrypointPath = "samples/meeting-room/src/worker.cloudflare-only.ts";
@@ -113,38 +117,83 @@ function jsonc(path) {
   }
 }
 
-function parseNamedSpecifiers(block, label) {
-  const entries = new Map();
-  for (const raw of block.split(",")) {
-    const cleaned = raw.trim().replace(/^type\s+/, "");
-    if (cleaned.length === 0) continue;
-    const parts = cleaned.split(/\s+as\s+/);
-    if (parts.length > 2) fail(label + " has an invalid specifier " + JSON.stringify(cleaned));
-    const imported = identifier(parts[0].trim(), label);
-    const local = identifier((parts[1] ?? parts[0]).trim(), label);
-    if (entries.has(local)) fail(label + " repeats local import " + local);
-    entries.set(local, imported);
+function parsedSourceFile(source, label) {
+  const sourceFile = ts.createSourceFile(label + ".ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  if (sourceFile.parseDiagnostics.length > 0) {
+    fail(label + " has malformed TypeScript import syntax");
   }
-  if (entries.size === 0) fail(label + " has no specifiers");
-  return entries;
+  return sourceFile;
 }
 
-function namedImportFrom(source, moduleName, label) {
-  const escapedModule = moduleName.replace(/[.*+?^$()|[\]{}]/g, "\\$&");
-  const expression = new RegExp("import\\s*\\{([\\s\\S]*?)\\}\\s*from\\s*[\\\"']" + escapedModule + "[\\\"']\\s*;", "g");
-  const matches = [...source.matchAll(expression)];
-  if (matches.length !== 1) fail(label + " must have exactly one named import from " + moduleName);
-  return parseNamedSpecifiers(matches[0][1], label);
+export function parseImportDeclarations(source, label = "source") {
+  const sourceFile = parsedSourceFile(source, label);
+  const declarations = [];
+  const runtimeLocals = new Set();
+  const addRuntimeLocal = (local, declarationLabel) => {
+    identifier(local, declarationLabel);
+    if (runtimeLocals.has(local)) fail(declarationLabel + " repeats local runtime import " + local);
+    runtimeLocals.add(local);
+  };
+
+  sourceFile.forEachChild((node) => {
+    if (!ts.isImportDeclaration(node)) return;
+    if (!ts.isStringLiteral(node.moduleSpecifier)) fail(label + " import module specifier must be a string literal");
+    const moduleName = node.moduleSpecifier.text;
+    const importClause = node.importClause;
+    const declaration = {
+      moduleName,
+      isTypeOnly: importClause?.isTypeOnly === true,
+      defaultImport: undefined,
+      namespaceImport: undefined,
+      namedImports: [],
+    };
+    if (importClause === undefined || importClause.isTypeOnly) {
+      declarations.push(declaration);
+      return;
+    }
+    if (importClause.name !== undefined) {
+      declaration.defaultImport = importClause.name.text;
+      addRuntimeLocal(importClause.name.text, label + " import " + moduleName);
+    }
+    if (importClause.namedBindings !== undefined && ts.isNamespaceImport(importClause.namedBindings)) {
+      declaration.namespaceImport = importClause.namedBindings.name.text;
+      addRuntimeLocal(importClause.namedBindings.name.text, label + " import " + moduleName);
+    } else if (importClause.namedBindings !== undefined && ts.isNamedImports(importClause.namedBindings)) {
+      for (const specifier of importClause.namedBindings.elements) {
+        if (specifier.isTypeOnly) continue;
+        const importedNode = specifier.propertyName ?? specifier.name;
+        const imported = ts.isIdentifier(importedNode) || ts.isStringLiteral(importedNode)
+          ? importedNode.text
+          : undefined;
+        if (imported === undefined) fail(label + " import " + moduleName + " has an invalid imported name");
+        const local = specifier.name.text;
+        addRuntimeLocal(local, label + " import " + moduleName);
+        declaration.namedImports.push({ imported, local });
+      }
+    }
+    declarations.push(declaration);
+  });
+  return declarations;
+}
+
+export function namedImportFrom(source, moduleName, label, expectedLocals = []) {
+  const matches = parseImportDeclarations(source, label)
+    .filter((declaration) => declaration.moduleName === moduleName && !declaration.isTypeOnly && declaration.namedImports.length > 0);
+  if (matches.length !== 1) fail(label + " must have exactly one usable named import from " + moduleName);
+  const entries = new Map(matches[0].namedImports.map(({ local, imported }) => [local, imported]));
+  for (const expectedLocal of expectedLocals) {
+    if (!entries.has(expectedLocal)) fail(label + " cannot resolve expected runtime binding " + expectedLocal + " from " + moduleName);
+  }
+  return entries;
 }
 
 function allRelativeNamedImports(source, label) {
   const imports = new Map();
-  const expression = /import\s+\{([\s\S]*?)\}\s+from\s+["'](\.[^"']+)["']\s*;/g;
-  for (const match of source.matchAll(expression)) {
-    const specifiers = parseNamedSpecifiers(match[1], label + " import " + match[2]);
-    for (const [local, imported] of specifiers) {
+  for (const declaration of parseImportDeclarations(source, label)) {
+    if (declaration.isTypeOnly || !declaration.moduleName.startsWith(".")) continue;
+    for (const { local, imported } of declaration.namedImports) {
       if (imports.has(local)) fail(label + " repeats local runtime import " + local);
-      imports.set(local, { imported, moduleName: match[2] });
+      imports.set(local, { imported, moduleName: declaration.moduleName });
     }
   }
   return imports;
@@ -152,18 +201,21 @@ function allRelativeNamedImports(source, label) {
 
 function namedExports(source, label) {
   const exports = new Map();
-  const classExpression = /^export\s+class\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/gm;
-  for (const match of source.matchAll(classExpression)) {
-    exports.set(match[1], match[1]);
-  }
-  const expression = /^export\s*\{([^}]*)\}\s*;$/gm;
-  for (const match of source.matchAll(expression)) {
-    const specifiers = parseNamedSpecifiers(match[1], label);
-    for (const [local, exported] of specifiers) {
+  const sourceFile = parsedSourceFile(source, label);
+  sourceFile.forEachChild((node) => {
+    if (ts.isClassDeclaration(node) && node.name !== undefined && node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) {
+      exports.set(node.name.text, node.name.text);
+      return;
+    }
+    if (!ts.isExportDeclaration(node) || node.moduleSpecifier !== undefined || !ts.isNamedExports(node.exportClause)) return;
+    for (const specifier of node.exportClause.elements) {
+      if (specifier.isTypeOnly) continue;
+      const local = (specifier.propertyName ?? specifier.name).text;
+      const exported = specifier.name.text;
       if (exports.has(local)) fail(label + " repeats local export " + local);
       exports.set(local, exported);
     }
-  }
+  });
   return exports;
 }
 
@@ -411,7 +463,56 @@ function requireRed(configPath, label) {
   if (result.status === 0) fail(label + " mutant unexpectedly passed");
 }
 
+function requireFailure(action, label) {
+  try {
+    action();
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("G49 binding parity check failed: ")) return;
+    throw error;
+  }
+  fail(label + " unexpectedly passed");
+}
+
+function parserSelfTest() {
+  const source = `
+    // Consecutive declarations must remain separate.
+    import DefaultValue, {
+      /* runtime alias */ RuntimeValue as LocalRuntime,
+      type InlineType,
+    } from "./runtime";
+    import type { TypeOnly } from "./types";
+    import "./side-effect";
+    import { OtherValue } from "./other";
+  `;
+  const declarations = parseImportDeclarations(source, "parser fixture");
+  if (declarations.length !== 4) fail("parser fixture did not preserve declaration boundaries");
+  const runtime = declarations[0];
+  if (runtime.moduleName !== "./runtime" || runtime.defaultImport !== "DefaultValue" || runtime.namedImports.length !== 1) {
+    fail("parser fixture did not retain runtime default and named imports");
+  }
+  if (runtime.namedImports[0].imported !== "RuntimeValue" || runtime.namedImports[0].local !== "LocalRuntime") {
+    fail("parser fixture did not retain the aliased runtime import");
+  }
+  if (!declarations[1].isTypeOnly || declarations[1].namedImports.length !== 0 || declarations[2].namedImports.length !== 0) {
+    fail("parser fixture treated type-only or side-effect imports as runtime bindings");
+  }
+  requireFailure(
+    () => namedImportFrom('import { OtherValue } from "./other";', "./runtime", "missing expected module"),
+    "missing expected module",
+  );
+  requireFailure(
+    () => namedImportFrom('import { First } from "./runtime"; import { Second } from "./runtime";', "./runtime", "ambiguous expected module"),
+    "ambiguous expected module",
+  );
+  requireFailure(
+    () => namedImportFrom('import { OtherValue } from "./runtime";', "./runtime", "missing expected binding", ["ExpectedValue"]),
+    "missing expected binding",
+  );
+  return { declarations: declarations.length, result: "parser-fixtures-red-and-green" };
+}
+
 function selfTest(configPath) {
+  const parserFixtures = parserSelfTest();
   const inspection = inspectBindingParity(configPath);
   const temporary = mkdtempSync(resolve(tmpdir(), "sdt-g49-binding-parity-"));
   const bindingOmissions = [];
@@ -471,6 +572,7 @@ function selfTest(configPath) {
   }
   process.stdout.write(JSON.stringify({
     result: "g49-binding-parity-mutants-red",
+    parserFixtures,
     bindingOmissionMutants: bindingOmissions,
     migrationOmissionMutants: migrationOmissions,
     databaseLineageMutations,

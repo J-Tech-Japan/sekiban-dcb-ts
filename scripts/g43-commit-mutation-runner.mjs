@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * G43's five-fact rule is a runtime mutation check, not a source-text tally.
+ * G43's commit-fact rule is a runtime mutation check, not a source-text tally.
  * Each mutant suppresses one production transaction write, rebuilds the
  * Worker bundle, and proves the SQLite fact oracle turns red. The original
  * source is restored and rebuilt in `finally` after every case.
@@ -13,14 +13,15 @@ import { spawnSync } from "node:child_process";
 const root = process.cwd();
 const sourceFile = "packages/dcb-runtime/src/tag/TagDurableObject.ts";
 const vitest = resolve(root, "node_modules/vitest/vitest.mjs");
-const oracleTitle = "AC2/AC3: commits event, head, membership, obligation, and receipt together";
+const oracleTitle = "AC2/AC3: commits event, head, membership, obligation, and receipt together in literal normalized tables";
 
 export const G43_COMMIT_FACT_MUTATIONS = Object.freeze([
   { fact: "event", from: "this.writeCommittedSqlEvent(sql, serviceId, event);", to: "void 0; // G43 mutant: omit event fact" },
   { fact: "committedMembership", from: "this.writeCommittedSqlMembership(sql, serviceId, event.eventId, tag, committedAt);", to: "void 0; // G43 mutant: omit membership fact" },
   { fact: "outbox_obligation", from: "this.writeCommittedSqlObligation(sql, serviceId, tag, event, artifact, trackSourcePartitionRegistration);", to: "void 0; // G43 mutant: omit obligation fact" },
   { fact: "head", from: "this.writeCommittedSqlHead(sql, serviceId, head, version + 1, committedAt);", to: "void 0; // G43 mutant: omit head fact" },
-  { fact: "commit_receipt", from: "this.writeCommittedSqlReceipt(sql, input, committedAt, events.length, head, confirmsReservation);", to: "void 0; // G43 mutant: omit receipt fact" },
+  { fact: "commit_receipt", from: "this.writeCommittedSqlReceipt(sql, input, committedAt, events.length, head, confirmsReservation, version + 1);", to: "void 0; // G43 mutant: omit receipt fact" },
+  { fact: "commit_receipt_written_version", from: "this.writeCommittedSqlReceipt(sql, input, committedAt, events.length, head, confirmsReservation, version + 1);", to: "this.writeCommittedSqlReceipt(sql, input, committedAt, events.length, head, confirmsReservation, version);" },
 ]);
 
 function run(command, args, label) {
@@ -35,7 +36,7 @@ function requirePass(result) {
 
 function requireRed(result, fact) {
   if (result.status !== 0) return;
-  throw new Error(`G43 ${fact} omission was vacuous: the five-fact SQLite oracle remained green`);
+  throw new Error(`G43 ${fact} mutation was vacuous: the commit-fact SQLite oracle remained green`);
 }
 
 function build() {
@@ -85,7 +86,7 @@ function main() {
   if (process.argv.includes("--self-test")) return selfTest();
   requirePass(build());
   const results = G43_COMMIT_FACT_MUTATIONS.map(runMutation);
-  process.stdout.write(`${JSON.stringify({ result: "all-five-production-mutants-red", rows: results })}\n`);
+  process.stdout.write(`${JSON.stringify({ result: "all-six-production-mutants-red", rows: results })}\n`);
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();

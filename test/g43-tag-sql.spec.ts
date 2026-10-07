@@ -159,7 +159,9 @@ async function replaceQueue(
 describe("SDT-G43 normalized Tag SQLite authority", () => {
   it("AC2/AC3: commits event, head, membership, obligation, and receipt together in literal normalized tables", async () => {
     const value = scope();
-    expect((await append(value, "five-facts")).status).toBe(201);
+    const appendResponse = await append(value, "five-facts");
+    expect(appendResponse.status).toBe(201);
+    const appendBody = await appendResponse.json<{ version: number }>();
 
     const tables = await runInDurableObject(tagStub(value), (_instance, state) => state.storage.sql.exec<{ name: string }>(`
       SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'tag_%' ORDER BY name COLLATE BINARY
@@ -184,6 +186,11 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
     await expect(count(value, "tag_committed_membership")).resolves.toBe(1);
     await expect(count(value, "tag_outbox_obligation")).resolves.toBe(1);
     await expect(count(value, "tag_commit_receipt")).resolves.toBe(1);
+    const writtenVersion = await runInDurableObject(tagStub(value), (_instance, state) => state.storage.sql.exec<{
+      [key: string]: SqlStorageValue;
+      written_version: number;
+    }>("SELECT written_version FROM tag_commit_receipt WHERE attempt_id = ? AND epoch = ?", "g43-attempt-five-facts", 0).one().written_version);
+    expect(writtenVersion).toBe(appendBody.version);
     const head = await runInDurableObject(tagStub(value), (_instance, state) => state.storage.sql.exec<{
       [key: string]: SqlStorageValue;
       head_suid: string;
