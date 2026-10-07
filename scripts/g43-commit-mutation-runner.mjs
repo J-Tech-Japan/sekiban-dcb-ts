@@ -171,7 +171,8 @@ function selfTest() {
 }
 
 function main() {
-  if (process.argv.includes("--self-test")) return selfTest();
+  selfTest();
+  if (process.argv.includes("--self-test")) return;
   requirePass(build());
   const results = G43_COMMIT_FACT_MUTATIONS.map(runMutation);
   process.stdout.write(`${JSON.stringify({ result: "all-six-production-mutants-red", rows: results })}\n`);
