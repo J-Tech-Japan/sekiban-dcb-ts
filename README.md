@@ -67,6 +67,8 @@ alarm behavior. `wrangler.jsonc` declares the Journal binding and SQLite
 Durable Object migration; the GitHub Actions workflow runs lint, typecheck,
 tests, and a Wrangler dry-run build.
 
+`ci.yml` runs the foundation and cheap lanes for pull requests and pushes to main. `ci-full.yml` runs all 11 manifest lanes weekly on the default branch and can be manually dispatched for a selected ref.
+
 ## Meeting-room consumer sample
 
 `samples/meeting-room` is the meeting-room consumer sample. Its domain is

@@ -159,7 +159,10 @@ async function replaceQueue(
 describe("SDT-G43 normalized Tag SQLite authority", () => {
   it("AC2/AC3: commits event, head, membership, obligation, and receipt together in literal normalized tables", async () => {
     const value = scope();
-    expect((await append(value, "five-facts")).status).toBe(201);
+    const appendResponse = await append(value, "five-facts");
+    const appendText = await appendResponse.text();
+    expect(appendResponse.status, `G43 append-status assertion: ${appendText}`).toBe(201);
+    const appendBody = JSON.parse(appendText) as { version: number };
 
     const tables = await runInDurableObject(tagStub(value), (_instance, state) => state.storage.sql.exec<{ name: string }>(`
       SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'tag_%' ORDER BY name COLLATE BINARY
@@ -179,16 +182,21 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
     expect(TAG_SQL_SCHEMA_DDL).toContain("UNIQUE (service_id, event_id, attempt_id)");
     expect(TAG_SQL_SCHEMA_DDL).toContain("canonical_bytes BLOB NOT NULL");
 
-    await expect(count(value, "tag_event")).resolves.toBe(1);
-    await expect(count(value, "tag_head")).resolves.toBe(1);
-    await expect(count(value, "tag_committed_membership")).resolves.toBe(1);
-    await expect(count(value, "tag_outbox_obligation")).resolves.toBe(1);
-    await expect(count(value, "tag_commit_receipt")).resolves.toBe(1);
+    await expect(count(value, "tag_event"), "G43 event-count assertion").resolves.toBe(1);
+    await expect(count(value, "tag_head"), "G43 head-count assertion").resolves.toBe(1);
+    await expect(count(value, "tag_committed_membership"), "G43 committed-membership-count assertion").resolves.toBe(1);
+    await expect(count(value, "tag_outbox_obligation"), "G43 obligation-count assertion").resolves.toBe(1);
+    await expect(count(value, "tag_commit_receipt"), "G43 receipt-count assertion").resolves.toBe(1);
+    const writtenVersion = await runInDurableObject(tagStub(value), (_instance, state) => state.storage.sql.exec<{
+      [key: string]: SqlStorageValue;
+      written_version: number;
+    }>("SELECT written_version FROM tag_commit_receipt WHERE attempt_id = ? AND epoch = ?", "g43-attempt-five-facts", 0).one().written_version);
+    expect(writtenVersion, "G43 stored-versus-response written-version assertion").toBe(appendBody.version);
     const head = await runInDurableObject(tagStub(value), (_instance, state) => state.storage.sql.exec<{
       [key: string]: SqlStorageValue;
       head_suid: string;
     }>("SELECT head_suid FROM tag_head WHERE singleton = 1").one().head_suid);
-    expect(head).toBe(candidate(value, "five-facts").suid);
+    expect(head, "G43 head-value assertion").toBe(candidate(value, "five-facts").suid);
 
     const stored = await runInDurableObject(tagStub(value), (_instance, state) => state.storage.sql.exec<{
       payload: string;
