@@ -160,8 +160,9 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
   it("AC2/AC3: commits event, head, membership, obligation, and receipt together in literal normalized tables", async () => {
     const value = scope();
     const appendResponse = await append(value, "five-facts");
-    expect(appendResponse.status).toBe(201);
-    const appendBody = await appendResponse.json<{ version: number }>();
+    const appendText = await appendResponse.text();
+    expect(appendResponse.status, `G43 append-status assertion: ${appendText}`).toBe(201);
+    const appendBody = JSON.parse(appendText) as { version: number };
 
     const tables = await runInDurableObject(tagStub(value), (_instance, state) => state.storage.sql.exec<{ name: string }>(`
       SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'tag_%' ORDER BY name COLLATE BINARY
@@ -195,7 +196,7 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
       [key: string]: SqlStorageValue;
       head_suid: string;
     }>("SELECT head_suid FROM tag_head WHERE singleton = 1").one().head_suid);
-    expect(head).toBe(candidate(value, "five-facts").suid);
+    expect(head, "G43 head-value assertion").toBe(candidate(value, "five-facts").suid);
 
     const stored = await runInDurableObject(tagStub(value), (_instance, state) => state.storage.sql.exec<{
       payload: string;

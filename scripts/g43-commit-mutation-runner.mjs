@@ -17,13 +17,16 @@ const vitest = resolve(root, "node_modules/vitest/vitest.mjs");
 const oracleTitle = "AC2/AC3: commits event, head, membership, obligation, and receipt together in literal normalized tables";
 const oracleFullTitle = `SDT-G43 normalized Tag SQLite authority ${oracleTitle}`;
 
+// Omitting the event row makes the membership foreign key reject the whole
+// transaction, and the head row already exists before the first commit, so
+// those two facts are observed through the append status and head value.
 export const G43_ORACLE_FACT_MARKERS = Object.freeze({
-  event: "G43 event-count assertion",
-  committedMembership: "G43 committed-membership-count assertion",
-  outbox_obligation: "G43 obligation-count assertion",
-  head: "G43 head-count assertion",
-  commit_receipt: "G43 receipt-count assertion",
-  commit_receipt_written_version: "G43 stored-versus-response written-version assertion",
+  event: Object.freeze(["G43 append-status assertion", "tag_append_failure"]),
+  committedMembership: Object.freeze(["G43 committed-membership-count assertion"]),
+  outbox_obligation: Object.freeze(["G43 obligation-count assertion"]),
+  head: Object.freeze(["G43 head-value assertion"]),
+  commit_receipt: Object.freeze(["G43 receipt-count assertion"]),
+  commit_receipt_written_version: Object.freeze(["G43 stored-versus-response written-version assertion"]),
 });
 
 export const G43_COMMIT_FACT_MUTATIONS = Object.freeze([
@@ -46,8 +49,8 @@ function requirePass(result) {
 }
 
 export function classifyOracleResult(result, fact) {
-  const marker = G43_ORACLE_FACT_MARKERS[fact];
-  if (marker === undefined) return { killed: false, reason: `unknown mutation fact ${fact}` };
+  const markers = G43_ORACLE_FACT_MARKERS[fact];
+  if (markers === undefined) return { killed: false, reason: `unknown mutation fact ${fact}` };
   if (result.status === 0) return { killed: false, reason: "oracle exited zero" };
   if (result.report === undefined || result.report === null || typeof result.report !== "object") {
     return { killed: false, reason: "oracle produced no structured JSON report" };
@@ -72,10 +75,12 @@ export function classifyOracleResult(result, fact) {
   if (assertion.status !== "failed" || assertion.title !== oracleTitle || assertion.fullName !== oracleFullTitle) {
     return { killed: false, reason: "oracle report failed the wrong test title" };
   }
-  if (!Array.isArray(assertion.failureMessages) || !assertion.failureMessages.some((message) => typeof message === "string" && message.includes(marker))) {
-    return { killed: false, reason: `oracle failure did not contain marker ${marker}` };
+  const messages = Array.isArray(assertion.failureMessages) ? assertion.failureMessages.filter((message) => typeof message === "string") : [];
+  const missing = markers.filter((marker) => !messages.some((message) => message.includes(marker)));
+  if (missing.length > 0) {
+    return { killed: false, reason: `oracle failure did not contain marker ${missing.join(", ")}` };
   }
-  return { killed: true, marker };
+  return { killed: true, markers };
 }
 
 function requireRed(result, fact) {
@@ -152,15 +157,16 @@ function selfTest() {
         status: "failed",
         title: oracleTitle,
         fullName: oracleFullTitle,
-        failureMessages: [G43_ORACLE_FACT_MARKERS.event],
+        failureMessages: [G43_ORACLE_FACT_MARKERS.event.join(": ")],
       }],
     }],
     ...overrides,
   });
   const checks = [
     ["correct kill", classifyOracleResult({ status: 1, report: syntheticReport() }, "event"), true],
-    ["wrong title", classifyOracleResult({ status: 1, report: syntheticReport({ testResults: [{ status: "failed", assertionResults: [{ status: "failed", title: "wrong title", fullName: "wrong title", failureMessages: [G43_ORACLE_FACT_MARKERS.event] }] }] }) }, "event"), false],
+    ["wrong title", classifyOracleResult({ status: 1, report: syntheticReport({ testResults: [{ status: "failed", assertionResults: [{ status: "failed", title: "wrong title", fullName: "wrong title", failureMessages: [G43_ORACLE_FACT_MARKERS.event.join(": ")] }] }] }) }, "event"), false],
     ["wrong marker", classifyOracleResult({ status: 1, report: syntheticReport({ testResults: [{ status: "failed", assertionResults: [{ status: "failed", title: oracleTitle, fullName: oracleFullTitle, failureMessages: ["unrelated assertion"] }] }] }) }, "event"), false],
+    ["partial marker", classifyOracleResult({ status: 1, report: syntheticReport({ testResults: [{ status: "failed", assertionResults: [{ status: "failed", title: oracleTitle, fullName: oracleFullTitle, failureMessages: [G43_ORACLE_FACT_MARKERS.event[0]] }] }] }) }, "event"), false],
     ["zero tests", classifyOracleResult({ status: 1, report: syntheticReport({ numTotalTests: 0, numFailedTests: 0, testResults: [] }) }, "event"), false],
     ["infrastructure error", classifyOracleResult({ status: 1, report: undefined }, "event"), false],
   ];
