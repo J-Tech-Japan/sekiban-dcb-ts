@@ -156,15 +156,15 @@ export function assertLockfile(lockfile, mode, options = {}) {
     if (entry?.link === true) fail(`lockfile entry ${key} is a link`);
   }
 
-  const runtimeEntries = entries.filter(([key]) => key.endsWith(`node_modules/${runtimePackage}`));
-  assert(runtimeEntries.length === 1, `${runtimePackage} is installed more than once`);
-
   if (mode === "pack") {
-    const helperTarball = canonical(options.helperTarball);
+    const helperTarball = resolve(options.helperTarball);
     const rootSpecifier = lockfile.packages?.[""]?.dependencies?.[helperPackage] ?? "";
+    if (rootSpecifier !== `file:${helperTarball}`) {
+      fail(`generated root dependency ${helperPackage} is not the packed tarball specifier`);
+    }
     const helperEntry = lockfile.packages?.[`node_modules/${helperPackage}`];
     const resolved = helperEntry?.resolved ?? "";
-    if (!String(rootSpecifier).startsWith("file:") || !String(resolved).startsWith("file:")) {
+    if (!String(resolved).startsWith("file:")) {
       fail(`installed package ${helperPackage} did not resolve to the packed tarball`);
     }
     const resolvedTarball = canonical(resolve(options.lockfileDirectory, String(resolved).slice("file:".length)));
@@ -181,6 +181,9 @@ export function assertLockfile(lockfile, mode, options = {}) {
       fail(`installed package ${key.split("node_modules/").at(-1)} resolved outside the registry`);
     }
   }
+
+  const runtimeEntries = entries.filter(([key]) => key.endsWith(`node_modules/${runtimePackage}`));
+  assert(runtimeEntries.length === 1, `${runtimePackage} is installed more than once`);
 
   if (options.installedPackages) assertOutsideRepository(options.installedPackages);
   return {
@@ -333,8 +336,8 @@ function selfTest() {
     if ("NPM_CONFIG_USERCONFIG" in environmentRed) fail("child environment keeps NPM_CONFIG_USERCONFIG");
   }, "child environment keeps NPM_CONFIG_USERCONFIG");
 
-  expectFailure(() => assertViewOutput("npm error code E404", createPackage, "0.1.0"), `starter package ${createPackage}@0.1.0 is not on the registry`);
-  assertViewOutput("0.1.0", createPackage, "0.1.0");
+  expectFailure(() => assertViewOutput("npm error code E404", helperPackage, "0.1.0"), `starter package ${helperPackage}@0.1.0 is not on the registry`);
+  assertViewOutput("0.1.0", helperPackage, "0.1.0");
   expectFailure(() => assertHelperRange("^0.1.0", "0.2.0"), `generated dependency ${helperPackage} range ^0.1.0 is not satisfied by packed version 0.2.0`);
   assertHelperRange("^0.1.0", "0.1.0");
 
@@ -344,6 +347,9 @@ function selfTest() {
     { name: runtimePackage, path: "/tmp/node_modules/@sekiban/dcb-runtime" },
   ];
   assertLockfile(lock, "pack", { helperTarball: "/tmp/dcb-cloudflare.tgz", helperVersion: "0.1.0", lockfileDirectory: "/tmp", installedPackages: installed });
+  const rootNotPacked = structuredClone(lock);
+  rootNotPacked.packages[""].dependencies[helperPackage] = "file:/tmp/wrong-helper.tgz";
+  expectFailure(() => assertLockfile(rootNotPacked, "pack", { helperTarball: "/tmp/dcb-cloudflare.tgz", helperVersion: "0.1.0", lockfileDirectory: "/tmp", installedPackages: installed }), `generated root dependency ${helperPackage} is not the packed tarball specifier`);
   const runtimeOutsideRegistry = structuredClone(lock);
   runtimeOutsideRegistry.packages[`node_modules/${runtimePackage}`].resolved = "file:/tmp/runtime.tgz";
   expectFailure(() => assertLockfile(runtimeOutsideRegistry, "pack", { helperTarball: "/tmp/dcb-cloudflare.tgz", helperVersion: "0.1.0", lockfileDirectory: "/tmp", installedPackages: installed }), `installed package ${runtimePackage} resolved outside the registry`);
@@ -363,7 +369,7 @@ function selfTest() {
   expectFailure(() => assertTarballFiles(helperPackage, ["dist/cli.js", "dist/index.js", "src/index.ts"]), `tarball ${helperPackage} contains source path src/index.ts`);
   assertGeneratedFileSet(["package.json", "src/index.ts"], ["package.json", "src/index.ts"]);
   expectFailure(() => assertGeneratedFileSet(["package.json", "src/index.ts", "README.md"], ["package.json", "src/index.ts"]), "generated project files differ from the packed template");
-  console.log(JSON.stringify({ result: "starter-cold-install-self-test-passed", checks: 10 }));
+  console.log(JSON.stringify({ result: "starter-cold-install-self-test-passed", checks: 11 }));
 }
 
 function main() {

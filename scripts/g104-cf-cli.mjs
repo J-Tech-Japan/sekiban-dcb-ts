@@ -199,7 +199,6 @@ function assertTemplateAndStarter(project) {
   const replace = readFileSync(join(root, "packages/create-dcb/template/REPLACE.md"), "utf8");
   for (const phrase of ["`cloudflare.config.ts`", "`public/.assetsignore`", "`AGENTS.md`"]) check(replace.includes(phrase), `REPLACE.md omitted ${phrase}`);
   return {
-    guardByteIdentical: true,
     generatedGuard: true,
     noCloudflareDirectory: true,
     noGitignore: true,

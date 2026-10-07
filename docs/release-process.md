@@ -109,7 +109,7 @@ Before treating that run as trusted publishing, verify all of the following in
 the GitHub Actions log:
 
 - the run is the `Release matched DCB package set` workflow for the expected
-  `dcb-*` tag;
+  `dcb-v*` tag;
 - the selection step reports `authMode: trusted-publishing` with
   `tokenConfigured: false` after `NPM_TOKEN` has been removed, or the publish
   step reports `authentication branch: trusted-publishing (GitHub Actions
