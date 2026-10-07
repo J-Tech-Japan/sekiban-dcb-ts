@@ -54,6 +54,21 @@ permissions for trusted publishing. See the [npm trusted publishing
 documentation](https://docs.npmjs.com/trusted-publishers/) for the npm-side
 form and OIDC model.
 
+After all four matched-set registrations succeed, set the repository Actions
+variable `NPM_TRUSTED_PUBLISHING` to the exact string `true`:
+
+1. Open the repository on GitHub.
+2. Go to **Settings → Secrets and variables → Actions → Variables**.
+3. Add or edit repository variable `NPM_TRUSTED_PUBLISHING` with value `true`.
+4. Leave `NPM_TOKEN` in place only until the first maintainer-controlled release
+   has verified the trusted branch; then delete the `NPM_TOKEN` repository
+   secret from **Settings → Secrets and variables → Actions → Secrets**.
+
+This implementation does not register publishers, set variables, delete
+secrets, push tags, or publish packages.
+
+### Starter-package registration
+
 The starter packages use a separate trusted-publisher registration. Register
 each publisher on its package access page:
 
@@ -77,19 +92,6 @@ configuration to complete its first successful publish within two days or it
 expires, so register each starter package's publisher shortly before
 dispatching its first later version. If a configuration expires, delete it
 and recreate it before retrying.
-
-After all four registrations succeed, set the repository Actions variable
-`NPM_TRUSTED_PUBLISHING` to the exact string `true`:
-
-1. Open the repository on GitHub.
-2. Go to **Settings → Secrets and variables → Actions → Variables**.
-3. Add or edit repository variable `NPM_TRUSTED_PUBLISHING` with value `true`.
-4. Leave `NPM_TOKEN` in place only until the first maintainer-controlled release
-   has verified the trusted branch; then delete the `NPM_TOKEN` repository
-   secret from **Settings → Secrets and variables → Actions → Secrets**.
-
-This implementation does not register publishers, set variables, delete
-secrets, push tags, or publish packages.
 
 ## Starter packages
 
@@ -133,8 +135,8 @@ For a later starter release, use this procedure:
    npm run test:starter-cold-install -- --source registry
    ```
 
-The workflow's package input is dispatch-only; this document does not add a
-tag procedure for starter packages.
+Starter-package releases use manual workflow dispatch with the `packages`
+input; there is no starter-package tag procedure.
 
 ## Visibility-driven provenance policy
 
