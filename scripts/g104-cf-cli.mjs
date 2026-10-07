@@ -167,9 +167,6 @@ async function createProject(parent, label) {
 }
 
 function assertTemplateAndStarter(project) {
-  const starterGuard = readFileSync(join(root, "templates/cloudflare-starter/cloudflare.config.ts"));
-  const bundledGuard = readFileSync(join(root, "packages/create-dcb/template/cloudflare.config.ts"));
-  assert.deepEqual(starterGuard, bundledGuard, "starter and create-dcb guards differ");
   const guard = join(project, "cloudflare.config.ts");
   check(existsSync(guard), "generated project is missing cloudflare.config.ts");
   check(!existsSync(join(project, ".cloudflare")), "generated project contains .cloudflare");
@@ -179,15 +176,9 @@ function assertTemplateAndStarter(project) {
   for (const required of ["AGENTS.md", "REPLACE.md", "public/.assetsignore", "cloudflare.config.ts"]) {
     check(existsSync(join(project, required)), `generated project is missing ${required}`);
   }
-  const starterReadme = readFileSync(join(root, "templates/cloudflare-starter/README.md"), "utf8");
-  const bundledReadme = readFileSync(join(root, "packages/create-dcb/template/README.md"), "utf8");
-  assert.equal(starterReadme, bundledReadme, "starter and create-dcb README copies differ");
-  assert.equal(
-    readFileSync(join(root, "templates/cloudflare-starter/AGENTS.md"), "utf8"),
-    readFileSync(join(root, "packages/create-dcb/template/AGENTS.md"), "utf8"),
-    "starter and create-dcb AGENTS copies differ",
-  );
-  for (const rawText of [starterReadme, readFileSync(join(root, "templates/cloudflare-starter/AGENTS.md"), "utf8")]) {
+  const starterReadme = readFileSync(join(root, "packages/create-dcb/template/README.md"), "utf8");
+  const starterAgents = readFileSync(join(root, "packages/create-dcb/template/AGENTS.md"), "utf8");
+  for (const rawText of [starterReadme, starterAgents]) {
     const text = rawText.replace(/\s+/g, " ");
     for (const phrase of [
       "npm run migrate",
@@ -205,7 +196,7 @@ function assertTemplateAndStarter(project) {
       "18 months",
     ]) check(text.includes(phrase), `starter guidance omitted ${phrase}`);
   }
-  const replace = readFileSync(join(root, "templates/cloudflare-starter/REPLACE.md"), "utf8");
+  const replace = readFileSync(join(root, "packages/create-dcb/template/REPLACE.md"), "utf8");
   for (const phrase of ["`cloudflare.config.ts`", "`public/.assetsignore`", "`AGENTS.md`"]) check(replace.includes(phrase), `REPLACE.md omitted ${phrase}`);
   return {
     guardByteIdentical: true,
@@ -233,7 +224,7 @@ function pinnedDefaultPlans() {
 
 async function checkPlansAndSpawns() {
   const cli = await import(`${pathToFileURL(join(root, "packages/dcb-cloudflare/dist/cli.js")).href}?g104=${Date.now()}`);
-  const starterConfig = readFileSync(join(root, "templates/cloudflare-starter/wrangler.jsonc"), "utf8");
+  const starterConfig = readFileSync(join(root, "packages/create-dcb/template/wrangler.jsonc"), "utf8");
   const sampleConfig = readFileSync(join(root, "samples/meeting-room/wrangler.cloudflare-only.jsonc"), "utf8");
   const pinned = pinnedDefaultPlans();
   const starter = cli.planCloudflareCommands(["migrate", "--config", "wrangler.jsonc"], starterConfig);

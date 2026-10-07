@@ -38,6 +38,11 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      - name: Validate package selection
+        id: validate
+        env:
+          REQUESTED_PACKAGES: ${{ inputs.packages }}
+        run: node scripts/dcb-matched-set-publish-unpublished.mjs --validate-only
       - run: npm run build:packages
       - name: Detect repository visibility for npm provenance policy
         env:
@@ -49,11 +54,26 @@ jobs:
       - name: Resolve trusted publishing, token, or credential-free fallback
         id: publish-selection
         run: node scripts/g72-trusted-publishing-selection.mjs --github-output "${GITHUB_OUTPUT}"
-      - name: Prepare private provenance metadata when required
-        if: ${{ steps.publish-selection.outputs.provenance_enabled != 'true' && steps.publish-selection.outputs.private_repository == 'true' }}
+      - name: Cold-install starter packages before publishing
+        env:
+          VALIDATED_PACKAGES: ${{ steps.validate.outputs.packages }}
         run: |
           set -euo pipefail
-          for package in ${{ inputs.packages }}; do
+          read -r -a packages <<< "${VALIDATED_PACKAGES}"
+          for package in "${packages[@]}"; do
+            if [[ "${package}" == "dcb-cloudflare" || "${package}" == "create-dcb" ]]; then
+              npm run test:starter-cold-install
+              break
+            fi
+          done
+      - name: Prepare private provenance metadata when required
+        if: ${{ steps.publish-selection.outputs.provenance_enabled != 'true' && steps.publish-selection.outputs.private_repository == 'true' }}
+        env:
+          VALIDATED_PACKAGES: ${{ steps.validate.outputs.packages }}
+        run: |
+          set -euo pipefail
+          read -r -a packages <<< "${VALIDATED_PACKAGES}"
+          for package in "${packages[@]}"; do
             echo "private publish metadata: remove publishConfig.provenance from packages/${package}"
             (
               cd "packages/${package}"
@@ -66,8 +86,10 @@ jobs:
           AUTH_MODE: ${{ steps.publish-selection.outputs.auth_mode }}
           PRIVATE_REPOSITORY: ${{ steps.publish-selection.outputs.private_repository }}
           UNSET_NODE_AUTH_TOKEN: ${{ steps.publish-selection.outputs.unset_node_auth_token }}
+          VALIDATED_PACKAGES: ${{ steps.validate.outputs.packages }}
         run: |
           set -euo pipefail
+          read -r -a packages <<< "${VALIDATED_PACKAGES}"
           case "${AUTH_MODE}" in
             trusted-publishing)
               if [[ "${UNSET_NODE_AUTH_TOKEN}" != "true" ]]; then
@@ -76,20 +98,28 @@ jobs:
               fi
               echo "authentication branch: trusted-publishing (GitHub Actions OIDC; NPM_TOKEN omitted)"
               UNSET_NODE_AUTH_TOKEN=true PRIVATE_REPOSITORY="${PRIVATE_REPOSITORY}" \
-                node scripts/dcb-matched-set-publish-unpublished.mjs ${{ inputs.packages }}
+                node scripts/dcb-matched-set-publish-unpublished.mjs "${packages[@]}"
+              for package in "${packages[@]}"; do
+                version="$(node -p "require('./packages/${package}/package.json').version")"
+                npm view "@sekiban/${package}@${version}" version
+              done
               ;;
             token)
               echo "authentication branch: token (legacy fallback only; not the AC1 product path)"
               PRIVATE_REPOSITORY="${PRIVATE_REPOSITORY}" \
-                node scripts/dcb-matched-set-publish-unpublished.mjs ${{ inputs.packages }}
+                node scripts/dcb-matched-set-publish-unpublished.mjs "${packages[@]}"
+              for package in "${packages[@]}"; do
+                version="$(node -p "require('./packages/${package}/package.json').version")"
+                npm view "@sekiban/${package}@${version}" version
+              done
               ;;
             credential-free-dry-run)
               echo "authentication branch: credential-free-dry-run"
-              node scripts/dcb-matched-set-publish-unpublished.mjs --dry-run ${{ inputs.packages }}
+              node scripts/dcb-matched-set-publish-unpublished.mjs --dry-run "${packages[@]}"
+              echo "post-publish verification skipped: nothing was published"
               ;;
             *)
               echo "unknown publish authentication mode: ${AUTH_MODE}" >&2
               exit 1
               ;;
           esac
-          npm view @sekiban/dcb-runtime version

@@ -15,7 +15,7 @@ result handling, visibility rules, and component composition.
 `dcb-runtime` provides the Cloudflare Durable Object and HTTP runtime.
 `dcb-cloudflare` provides the optional composition helper that mounts Sekiban storage beside a caller's Worker.
 `create-dcb` provides the CLI for creating a named Cloudflare starter project.
-`templates/cloudflare-starter` is the booking-starter template used by `create-dcb` (not published to npm).
+`packages/create-dcb/template` is the booking-starter template bundled into `create-dcb`.
 
 ## Current scope
 

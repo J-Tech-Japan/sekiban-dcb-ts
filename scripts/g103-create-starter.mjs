@@ -262,14 +262,18 @@ function assertPackage(project) {
   for (const name of matchedSet) assert(dependencies[name] === "0.2.0", `${name} is not pinned to 0.2.0 in the starter`);
   assert(dependencies["@sekiban/dcb-cloudflare"] === "^0.1.0", "starter helper dependency is not ^0.1.0");
   assert(dependencies.wrangler === "4.125.0", "starter must pin wrangler for standalone migrate/deploy");
+  assert(manifest.devDependencies?.typescript === "5.9.3", "starter must pin TypeScript 5.9.3 for standalone typecheck");
+  assert(manifest.devDependencies?.["@cloudflare/workers-types"] === "5.20260820.1", "starter must pin Workers types 5.20260820.1 for standalone typecheck");
   assert(manifest.scripts?.migrate === "dcb-cloudflare migrate --config wrangler.jsonc", "migrate script is not helper-only");
   assert(manifest.scripts?.deploy === "dcb-cloudflare deploy --config wrangler.jsonc", "deploy script is not helper-only");
+  assert(manifest.scripts?.typecheck === "tsc --noEmit", "typecheck script is not standalone");
   assert(!JSON.stringify(manifest).includes("file:") && !JSON.stringify(manifest).includes("workspace:"), "starter package has a monorepo runtime dependency");
   return {
     name: manifest.name,
     matchedSetVersions: Object.fromEntries(matchedSet.map((name) => [name, dependencies[name]])),
     helper: dependencies["@sekiban/dcb-cloudflare"],
     wrangler: dependencies.wrangler,
+    devDependencies: manifest.devDependencies,
   };
 }
 

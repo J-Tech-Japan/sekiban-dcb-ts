@@ -6,7 +6,6 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const repositoryTemplate = resolve(packageRoot, "..", "..", "templates", "cloudflare-starter");
 const bundledTemplate = resolve(packageRoot, "template");
 
 function fail(message) {
@@ -25,7 +24,6 @@ function slugify(value) {
 }
 
 function sourceTemplate() {
-  if (existsSync(join(repositoryTemplate, "package.json"))) return repositoryTemplate;
   if (existsSync(join(bundledTemplate, "package.json"))) return bundledTemplate;
   fail("starter template is missing from this installation");
 }

@@ -1,4 +1,4 @@
-import { composeHandlers } from "@sekiban/dcb-cloudflare";
+import { composeHandlers, type FetchHandler, type QueueHandler, type ScheduledHandler } from "@sekiban/dcb-cloudflare";
 import { createCloudflareOnlyRuntimeWorker } from "@sekiban/dcb-runtime/cloudflare";
 import { applicationFetch, type StarterEnvironment, type StarterRuntime } from "./booking-routes";
 import { bookingDomain, bookingRuntimeConfig } from "./booking-domain";
@@ -27,21 +27,17 @@ const runtime = createCloudflareOnlyRuntimeWorker({
 
 const handlers = composeHandlers({
   application: {
-    fetch: (request, env, ctx) => applicationFetch(request, env as StarterEnvironment, ctx as ExecutionContext, runtime),
+    fetch: ((request: Request, env: unknown, ctx: unknown) => applicationFetch(request, env as StarterEnvironment, ctx as ExecutionContext, runtime)) as unknown as FetchHandler,
   },
   sekiban: {
     prefix: "/internal/sekiban",
-    fetch: runtime.fetch,
+    fetch: runtime.fetch as unknown as FetchHandler,
     authorize: () => true,
-    queue: runtime.queue,
-    scheduled: runtime.scheduled,
+    queue: runtime.queue as QueueHandler,
+    scheduled: runtime.scheduled as ScheduledHandler,
   },
 });
 
-const worker: ExportedHandler<StarterEnvironment> = {
-  fetch: handlers.fetch as ExportedHandler<StarterEnvironment>["fetch"],
-  queue: handlers.queue as ExportedHandler<StarterEnvironment>["queue"],
-  scheduled: handlers.scheduled as ExportedHandler<StarterEnvironment>["scheduled"],
-};
+const worker = handlers as unknown as ExportedHandler<StarterEnvironment>;
 
 export default worker;
