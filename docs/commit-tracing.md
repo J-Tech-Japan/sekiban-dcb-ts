@@ -1,6 +1,6 @@
 # Commit tracing and current verification
 
-SDT-G30 observes the existing serialized-commit path. It does not change a
+Commit tracing observes the existing serialized-commit path. It does not change a
 request body, response body, header, Journal transition, bootstrap admission,
 placement setting, or delivery behaviour. The commit-trace authority is
 owned and verified in this repository: the normative documents, curated
@@ -64,8 +64,8 @@ declaration, elapsed time alone, or an unjoined log is not evidence.
 
 ## Current verification
 
-The current sample configuration is the sole G30 configuration surface. Run
-`npm run test:g30` to check its observability settings, trace sampling,
+The current sample configuration is the sole commit-tracing configuration surface. Run
+`npm run test:commit-tracing` to check its observability settings, trace sampling,
 log persistence, and placement guard, together with the retained trace
 mutation checks. The check is current-only: it does not require a historical
 deployment, live endpoint, or external evidence bundle.

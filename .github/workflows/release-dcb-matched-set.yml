@@ -30,7 +30,7 @@ jobs:
       - name: Verify the dependency-ordered matched release tag
         run: node scripts/dcb-matched-set-release-check.mjs "${GITHUB_REF_NAME}"
       - name: Run the relevant domain suite before any publish step
-        run: npm run test:g28
+        run: npm run test:domain-package
       - name: Detect repository visibility for npm provenance policy
         env:
           GH_TOKEN: ${{ github.token }}
@@ -44,16 +44,16 @@ jobs:
           echo "REPO_IS_PRIVATE=${repository_private}" >> "${GITHUB_ENV}"
           echo "repository visibility: $([[ "${repository_private}" == "true" ]] && echo private || echo public)"
       - name: Run matched-set build, tarball and consumer gates
-        run: npm run test:g64
+        run: npm run test:release:matched-set
       - name: Run publish command-shape guards
-        run: npm run test:g64:publish-shape
+        run: npm run test:release:matched-set:publish-shape
       - name: Credential-free dry-run of every publish path
-        run: npm run test:g64:publish-dry-run
+        run: npm run test:release:matched-set:publish-dry-run
       - name: Resolve trusted publishing, token, or credential-free fallback
         id: publish-selection
         run: node scripts/g72-trusted-publishing-selection.mjs --github-output "${GITHUB_OUTPUT}"
       - name: Run trusted publishing selection and provenance guards
-        run: npm run test:g72:trusted-publishing
+        run: npm run test:release:trusted-publishing
       - name: Publish the matched set with the selected authentication path
         env:
           AUTH_MODE: ${{ steps.publish-selection.outputs.auth_mode }}

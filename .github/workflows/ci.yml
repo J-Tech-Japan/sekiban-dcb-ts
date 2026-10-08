@@ -17,7 +17,8 @@ env:
 
 jobs:
   # ci-foundation is deliberately retained as a hosted PR lane. Its command
-  # list is owned by ci/lanes.json and includes the G71/G73/G76 hosted proofs.
+  # list is owned by ci/lanes.json and includes the read-contract, determinism,
+  # and regression-matrix hosted proofs.
   ci-foundation:
     runs-on: ubuntu-latest
     env:
@@ -57,7 +58,7 @@ jobs:
         run: node scripts/ci-local.mjs --lane foundation --ci
 
   # The cheap lanes share one checkout/install/service so setup and minute
-  # rounding are paid once. This job also runs the tiered G40 guards.
+  # rounding are paid once. This job also runs the tiered CI coverage guards.
   ci-pr-cheap:
     runs-on: ubuntu-latest
     env:
@@ -93,11 +94,11 @@ jobs:
           key: node-modules-${{ runner.os }}-node-24-${{ hashFiles('package-lock.json', 'package.json') }}
       - run: npm ci
         if: steps.node-modules.outputs.cache-hit != 'true'
-      - name: Execute manifest PR cheap tier and G40 guards
+      - name: Execute manifest PR cheap tier and CI coverage guards
         run: node scripts/ci-local.mjs --lane cheap --ci
 
   # Keep the required aggregate context. always() makes skipped/failed PR
-  # jobs observable; g40-verify-needs converts either state to a red check.
+  # jobs observable; the verification guard converts either state to a red check.
   verify:
     if: ${{ always() }}
     needs: [ci-foundation, ci-pr-cheap]

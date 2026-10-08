@@ -1,9 +1,9 @@
 # Safe-lane scheduling
 
-SDT-G67 keeps the existing cron schedule as the safe-lane backstop and adds an
+The safe lane keeps the existing cron schedule as its backstop and adds an
 event-driven kick after a Queue `recordDelivery` result has been durably
-stored. The Queue wrapper invokes the kick hook even when the ordinary G44
-views are held by `BLOCK/UNSETTLED`; a record-delivery failure does not invoke
+stored. The Queue wrapper invokes the kick hook even when the ordinary
+global-completeness views are held by `BLOCK/UNSETTLED`; a record-delivery failure does not invoke
 it. The meeting-room Worker registers only the promise with the active
 `ExecutionContext.waitUntil`, so coverage and materialized-view D1 work never
 delays the Queue acknowledgement or retry decision.
@@ -24,7 +24,7 @@ The alarm re-enters the same single-flight pass with `fence-expiry`; it is a
 bounded delayed trigger, not a polling loop. A non-SETTLED coverage decision
 or another retryable catch-up stop schedules a bounded exponential
 `coverage-retry` alarm instead. Alarm state is observation/scheduling state
-only: G44 frontier proof, SafeWindow, Queue disposition, MV ordering, and the
+only: global-completeness frontier proof, SafeWindow, Queue disposition, MV ordering, and the
 cron backstop semantics are unchanged.
 
 The additive `serialized_dcb_safe_lane_passes` ledger records each delivery,
@@ -33,7 +33,7 @@ fence-expiry, coverage-retry, or cron request as `scheduled`, `running`,
 coverage decision/frontier, stop deadline/reason, and safe-head snapshots
 before and after the pass. Ledger writes and head snapshots are best-effort
 observations: a missing observer table cannot change Queue acknowledgement,
-G44 certification, or safe catch-up. The Queue callback is a
+global-completeness certification, or safe catch-up. The Queue callback is a
 notification-only hook and defers both the observer write and scheduler start
 through `waitUntil`; the commit and Queue disposition never await the safe
 pass.

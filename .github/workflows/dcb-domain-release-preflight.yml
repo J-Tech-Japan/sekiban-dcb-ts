@@ -1,4 +1,4 @@
-name: SDT-G59 domain release preflight
+name: DCB domain release preflight
 
 on:
   pull_request:
@@ -34,10 +34,10 @@ jobs:
           echo "head=$GITHUB_SHA"
           echo "run_id=$GITHUB_RUN_ID"
           echo "workflow=$GITHUB_WORKFLOW"
-          echo "command=npm run test:g28"
-          npm run test:g28
+          echo "command=npm run test:domain-package"
+          npm run test:domain-package
       - name: Run release package and consumer tests
-        run: npm run test:g59
+        run: npm run test:domain-release
       - run: node scripts/dcb-domain-pack-check.mjs
       - run: node scripts/dcb-domain-consumer-check.mjs
       - run: node scripts/dcb-domain-release-check.mjs dcb-domain-v0.2.0

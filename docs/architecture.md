@@ -67,7 +67,7 @@ a missing tag append true, and a projection cannot make a global receipt true.
 | Materialized views | Serve queryable read models. Safe catch-up advances only through a proven frontier; an explicitly selected unsafe lane is tentative and never advances the safe checkpoint. See [safe-lane scheduling](safe-lane.md). |
 | Queue | Owns durable outbox delivery, acknowledgement, retry, and dead-letter recovery. It does not own event order or tag truth. |
 | Doorbell | Provides a bounded delivery signal or fast hint. A misconfigured direct doorbell in fail-fast mode refuses the append; a failed or late signal otherwise leaves the outbox/Queue path responsible for recovery. |
-| Bootstrap coordinator | Owns import planning, fencing, leases, progress, verification, and the transition to ready operation. It does not become the long-term event authority. See [bootstrap import](SDT-G21-bootstrap-import.md). |
+| Bootstrap coordinator | Owns import planning, fencing, leases, progress, verification, and the transition to ready operation. It does not become the long-term event authority. See [bootstrap import](bootstrap-import.md). |
 | Repair worker | Executes an explicit, scoped repair using fresh Tag facts. It can roll forward an authorized missing append, audit an exclusion, and clear an eligible fence; it never rewrites the original outcome. |
 
 ## Acceptance, delivery, and visibility
@@ -160,7 +160,7 @@ that closure does not make provider-adapter PipelineStore admission part of the
 same route or state machine. After the transition, normal commands use the
 ordinary Tag and allocator authorities; downstream state is not used to
 rebuild those authorities. The detailed preflight and transition contract is
-in [bootstrap import](SDT-G21-bootstrap-import.md).
+in [bootstrap import](bootstrap-import.md).
 
 An empty dump does not manufacture an event or a sentinel head; the first
 normal allocation establishes the next authority fact.

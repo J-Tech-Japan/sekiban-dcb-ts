@@ -11,7 +11,7 @@ helper `@sekiban/dcb-cloudflare`, linked from the workspace while developing in
 this repository. The helper mounts storage beside
 a caller's own Worker; this sample is not that caller's only application.
 For tip Cloudflare speed/latency deploys use `./scripts/deploy/npm-consumer-deploy.sh`
-(it packs this worktree). The registry `0.2.0` dry-run is `npm run test:g102`.
+(it packs this worktree). The registry `0.2.0` dry-run is `npm run test:sample:registry-consumer`.
 Domain definitions live in `src/domain.ts`; the sample does not deep-import a
 package `src` directory.
 
@@ -22,8 +22,8 @@ command is authored with `@sekiban/dcb-domain` and reaches the runtime through
 `toRuntimeDomain()` and the internal `RUNTIME` service binding. The booking
 workflow is deliberately two commits: if the reservation step conflicts, the
 durable room creation is retained. `RoomProjector` and `ReservationProjector`
-are both immediate-preferred in the production sample, preserving the G26
-doorbell behavior while keeping the checked-in per-view delivery policy
+are both immediate-preferred in the production sample, preserving the delivery
+fan-out behavior while keeping the checked-in per-view delivery policy
 authoritative; deployment variables only provide the second opt-in and safety
 budget.
 
@@ -48,12 +48,12 @@ query caching is disabled before conformance and measurement runs.
 
 ## Cloudflare-only variant
 
-`wrangler.cloudflare-only.jsonc` is the named composition for the G20 slice.
+`wrangler.cloudflare-only.jsonc` is the named composition for the Cloudflare-only composition.
 It has two independent D1 bindings (`D1` for the PipelineStore and `D1_MV` for
 materialized-view rows/checkpoints), the same Journal/Allocator/Tag Durable
 Objects, and a Queue for durable outbox delivery. It deliberately has no
 Hyperdrive, Postgres, or Cosmos binding. The Queue consumer applies each
-*stored* outcome to G23's atomic unsafe port, so the reservation list and room
+*stored* outcome to the atomic unsafe port, so the reservation list and room
 query can show an immediate tentative winner from the composed `D1_MV` read.
 SafeWindow catch-up remains the definitive ordered fold; an unsafe failure is
 retried and is never silently acknowledged. Cron is only the recovery net for

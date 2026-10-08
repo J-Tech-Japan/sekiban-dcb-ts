@@ -1,9 +1,9 @@
 # Serialized write-path contract
 
-This document records the SDT-G65 local contract for a successful serialized
+This document records the local write-admission contract for a successful serialized
 commit. It describes the response boundary and the two derived delivery lanes;
 it does not change the V1 JSON envelope, the Tag event format, the Queue
-contract, or the G44 safe-lane fence.
+contract, or the global-completeness safe-lane fence.
 
 For caller-facing result meanings and repair actions, see the [result and
 repair matrix](architecture.md#result-and-repair-matrix).
@@ -12,7 +12,7 @@ repair matrix](architecture.md#result-and-repair-matrix).
 
 For an accepted append, the Tag Durable Object commits the event, its outbox
 obligation, and the local receipt in the same durable mutation. A composition
-without a configured G44 completeness store keeps the pre-G65 local-append
+without a configured global-completeness store keeps the earlier local-append
 path: no registration probe, wait, or refusal is introduced. The only
 pre-append exception for a composition that does configure that store is the
 new-partition registration described below; once that bounded authority check
@@ -37,15 +37,15 @@ failure. The Queue continues to own durable global admission, ordering,
 retries, and DLQ recovery, and later Queue delivery is a no-op for an already
 applied identity.
 
-The G65 APPLY ledger is intentionally narrower than the shared delivery
+The write-admission APPLY ledger is intentionally narrower than the shared delivery
 disposition. `processDownstreamDoorbell` runs independent-unsafe views before
-the G44 completeness gate; a later `BLOCK`/`UNSETTLED` coverage result,
+the global-completeness gate; a later `BLOCK`/`UNSETTLED` coverage result,
 detector result, or other full-core failure remains fail-closed for the
 ordinary/safe lane and remains visible in `DeliveryCoreResult.failures`, but
 does not turn an already `applied` or `duplicate-race` unsafe view into a
 failed direct APPLY. The receiver records selected unsafe-view statuses in the
 RING/APPLY ledger and records each full-core failure with its phase, class,
-view identity, and error text. This preserves the Queue fallback and G44
+view identity, and error text. This preserves the Queue fallback and global-completeness
 fence while making direct-writer evidence truthful.
 
 The same source envelope is also admitted through the shared
@@ -65,17 +65,17 @@ response or a partial downstream fan-out is recovered by the existing Queue
 path and existing idempotent delivery logic.
 
 Source-partition discoverability has one explicit first-write carve-out. Only
-when a composition has a configured G44 completeness store, and only before
+when a composition has a configured global-completeness store, and only before
 the first durable append on a brand-new `(serviceId, tag)` partition, the Tag
 Durable Object runs `registerSourcePartition` under the same documented 300 ms
 derived-write budget. This is the only derived write allowed to gate a commit
-response, because the G44 completeness domain cannot safely certify a source it
+response, because the global-completeness domain cannot safely certify a source it
 has never been told about. If that configured-store registration fails, throws,
 or hangs, the append returns HTTP 503 with code
 `partition_registration_unavailable` and `retryable: true`; no Tag event,
 outbox obligation, or local receipt is written, and the caller must retry. It
 is never represented as the 504 `unknown_outcome` admission result. A missing
-D1 binding or a D1 binding without the G44 global-array schema is explicitly
+D1 binding or a D1 binding without the global-array schema is explicitly
 unconfigured and therefore does not enter this refusal path.
 
 After the local durable registration marker is established, every later append
@@ -86,7 +86,7 @@ the unchanged V1 body and reports `x-sdt-global-admission: not-admitted` when
 the bounded shared admission attempt cannot run. The existing outbox obligation
 and Queue remain the recovery path, and Queue delivery later advances the
 registered partition's obligation sequence through the shared
-`recordDelivery` transaction. G44 still requires the global source registry,
+`recordDelivery` transaction. Global completeness still requires the global source registry,
 membership, receipt, and completeness proof; this carve-out does not weaken or
 substitute that fence.
 
@@ -94,7 +94,7 @@ substitute that fence.
 
 The required order is:
 
-1. for a configured G44 completeness store and a brand-new partition only,
+1. for a configured global-completeness store and a brand-new partition only,
    bounded source registration before the first durable append; refusal writes
    no local event; an unconfigured composition follows the ordinary local
    append path;
@@ -107,7 +107,7 @@ The required order is:
 5. commit response;
 6. later Queue acknowledgement/retry remains the recovery path.
 
-The direct unsafe lane never advances a safe checkpoint. G44 completeness
+The direct unsafe lane never advances a safe checkpoint. Global-completeness
 coverage and the SAFE fence remain unchanged: a missing or unproven source
 partition cannot be certified merely because a direct unsafe view was applied.
 `lastSuid`/upsert idempotence means a duplicate direct/Queue delivery is a
@@ -123,7 +123,7 @@ propagated by the V1 adapter from the runtime response, so healthy and
 runtime-D1-unavailable cohorts can record the outcome without inventing it from
 an authored event timestamp.
 
-The G35 write-path boundary is explicit: the shared serialized runtime owns
+The Durable Object scope write-path boundary is explicit: the shared serialized runtime owns
 the durable Tag event, local outbox/receipt, bounded derived attempts, Queue
 handoff, and V1-compatible status/header; the meeting-room sample owns only
 the public command facade, header propagation, and its domain/UI mapping.
@@ -151,13 +151,13 @@ The local guard and focused test cover these classes:
 - attempting derived work before durable event/outbox/receipt is red;
 - direct-first and Queue-first delivery admit one identity once, while a
   conflicting replay is rejected;
-- the existing six SDT-G60 mutants remain separate, unchanged, and green.
+- the existing six durable-hop mutants remain separate, unchanged, and green.
 
 The response-independence decision is a durable-acceptance contract chosen by
-SDT-G65. It is not a claim that D1, the receiver, or the platform will always
+this contract. It is not a claim that D1, the receiver, or the platform will always
 finish within the budget. Crash, duplicate, partial-fanout, D1-outage, and
 sustained-write cases must retain the durable outbox/Queue recovery path and
-must not weaken ordering, reservation/fence, or G44 proof obligations.
+must not weaken ordering, reservation/fence, or global-completeness proof obligations.
 
 ## Duplicate activation guarantee and rolling updates
 

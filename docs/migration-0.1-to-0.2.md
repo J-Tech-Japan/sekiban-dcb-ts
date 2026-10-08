@@ -1,4 +1,4 @@
-# SDT-G71 0.2.0 migration contract
+# 0.2.0 migration contract
 
 `@sekiban/dcb-core`, `@sekiban/dcb-domain`, and `@sekiban/dcb-client` move as
 one matched set from the working `0.1.x` line to `0.2.0`. The packages keep the
@@ -41,11 +41,11 @@ SUID reflected by that particular unsafe page.
 5. Use `readHead` only on list-query responses and do not derive a head for a
    generic query result.
 
-SDT-G78 moves the runtime `createSekibanCloudTransport` factory out of
+The cloud-transport factory move takes the runtime `createSekibanCloudTransport` factory out of
 `@sekiban/dcb-client@0.2.0`. The replacement identity is the named export from
 `@sekiban/cloud-client@0.2.0`; that package is a separately gated contract
 target and this repository does not claim its runtime implementation,
-publication, or fetch-wrapper behavior. Consumers adopting the G71 read
+publication, or fetch-wrapper behavior. Consumers adopting the authority-backed read
 contract can migrate the generic HTTP/in-process executor surface
 independently, while cloud-client runtime adoption remains a downstream
 deliverable.
@@ -60,9 +60,9 @@ snapshot once, pass it as the command's snapshot input with
 `readMode: "snapshot-only"`, and treat any read method invoked by that path as
 a defect. The W223 packed consumer proves this with a throwing/counting
 transport and also compiles safe/unsafe consistency only on `listQuery`; it
-does not claim a cloud implementation. G78 owns the staged factory move and
-the scoped cloud contract; its packed consumer is compile-only evidence for
-the designated downstream identity.
+does not claim a cloud implementation. The staged factory move and scoped
+cloud contract remain downstream work; its packed consumer is compile-only
+evidence for the designated downstream identity.
 
 The release workflow remains credential-free unless the operator explicitly
 selects a publish path. This change does not publish packages, create tags,

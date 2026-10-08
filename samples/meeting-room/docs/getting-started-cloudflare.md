@@ -16,7 +16,7 @@ Worker module graph.
 |---|---|---|
 | Workspace | this repo's `packages/` via npm workspaces | developing in this repository |
 | Packed tip | `./scripts/deploy/npm-consumer-deploy.sh` (`npm pack` of the current commit) | tip Cloudflare speed/latency deploys |
-| Registry | `@sekiban/dcb-{core,domain,client,runtime}@0.2.0` from registry.npmjs.org | `npm run test:g102` dry-run. This does not deploy the live sample worker |
+| Registry | `@sekiban/dcb-{core,domain,client,runtime}@0.2.0` from registry.npmjs.org | `npm run test:sample:registry-consumer` dry-run. This does not deploy the live sample worker |
 
 In-repo `npm ci` workspace-links the sample. Do not treat that as a registry install.
 
@@ -113,14 +113,14 @@ Always migrate **both** `D1` (pipeline) and `D1_MV` before trusting a new tip.
 Symptom of skip: missing columns such as `FirstAdmissionAttemptId`, flaky
 multi-tag reserves.
 
-### G65 `partial_write` (first-touch registration)
+### `partial_write` (first-touch registration)
 
 Cold multi-tag reserve historically returned `kind: partial` /
 `code: partial_write` with `writtenTags=[room:…]` and
 `missingTags=[reservation:…]` when source-partition registration competed for
 the shared 300 ms doorbell/admission budget.
 
-SDT-G98 gives first-append registration its own
+First-append registration has its own
 `G65_SOURCE_REGISTRATION_BUDGET_MS` (1500 ms) while doorbell/admission stay at
 `G65_DERIVED_WRITE_BUDGET_MS = 300`. Sample mitigations remain useful under
 load:
@@ -137,7 +137,7 @@ To reuse short demo IDs after verify seed / conflicts:
    and redeploy with `--keep-vars` only if you intentionally preserve other vars;
    otherwise set the new service id in the dashboard / vars and deploy.
 3. **Hard-reload** the browser tab (or close it). In-memory `portableSnapshots`
-   survive a server wipe until reload; SDT-G97 reconciles occupied snapshots
+   survive a server wipe until reload; the browser reconciles occupied snapshots
    against `/api/read` before create/reserve so a stale tab should not invent
    `reservation_exists`, but reload remains the safest reset.
 

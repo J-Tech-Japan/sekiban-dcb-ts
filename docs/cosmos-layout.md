@@ -1,4 +1,4 @@
-# SDT-G12 Cosmos layout decision
+# Cosmos layout decision
 
 ## Decision
 

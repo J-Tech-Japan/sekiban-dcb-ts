@@ -1,4 +1,4 @@
-# SDT-G19 D1 materialized-view core
+# D1 materialized-view core
 
 The MV core is an additive read-side backing. The existing memory projection
 backing and all Serialized DCB V1 HTTP shapes remain unchanged.
@@ -33,7 +33,7 @@ generation.
 `MaterializedViewCatchUpRuntime` reads the source in opaque bytewise SUID order,
 stops at the first event outside the published SafeWindow, and returns an
 indeterminate result when the lag estimate exceeds the published ceiling. A
-source order violation is recorded through the existing G17 delivery-incident
+source order violation is recorded through the existing delivery-incident
 port before catch-up fails closed. Composition chooses either the existing
 memory projection or the explicit D1 MV port with `selectQueryBacking`; that
 choice is deployment composition, never request data. `createRuntimeWorker`

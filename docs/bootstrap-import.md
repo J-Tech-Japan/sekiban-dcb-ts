@@ -1,8 +1,9 @@
-# SDT-G21 bootstrap-import core
+# Bootstrap-import core
 
 The bootstrap core is provider-neutral. A provider adapter must first export a
 complete `sekiban-dcb-bootstrap` version 1 dump and establish the fresh-target
-evidence; those adapter and operator surfaces belong to SDT-G22.
+evidence; those adapter and operator surfaces are described in the
+[bootstrap operations guide](bootstrap-operations.md).
 
 Bootstrap-related command results use the [result and repair
 matrix](architecture.md#result-and-repair-matrix); this document defines the
@@ -69,7 +70,7 @@ export. Only the operator `/abort` route writes `FAILED` with
 The normal write path remains the Tag authority path described in the
 [architecture guide](architecture.md#two-authoritative-scopes).
 
-The G21 CI lane is `npm run test:g21`. The deterministic routing proof is
-`npm run test:g21:forced-red`; it intentionally exits non-zero only when the
+The bootstrap-import CI lane is `npm run test:bootstrap:import`. The deterministic routing proof is
+`npm run test:bootstrap:import:forced-red`; it intentionally exits non-zero only when the
 explicit environment flag is set, demonstrating that the new lane reaches the
 workflow test source without changing normal CI behavior.

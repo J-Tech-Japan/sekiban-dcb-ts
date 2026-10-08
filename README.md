@@ -61,18 +61,18 @@ Choose a guide by the task you need to do.
 
 | Guide | Description |
 | --- | --- |
-| [Cosmos layout](docs/SDT-G12-cosmos-layout.md) | Records the separate Cosmos mapping and its provider-specific contract. |
-| [Versioning contract](docs/SDT-G13-versioning.md) | Separates package, protocol, event, and read-side compatibility decisions. |
-| [D1 PipelineStore](docs/SDT-G18-d1.md) | Describes the opt-in D1 provider, schema, limits, and guarded writes. |
-| [D1 materialized views](docs/SDT-G19-d1-mv.md) | Describes the separate D1_MV backing, materializer, migrations, and catch-up. |
-| [0.2.0 migration](docs/SDT-G71-migration.md) | Explains the matched package release and its client read contract. |
+| [Cosmos layout](docs/cosmos-layout.md) | Records the separate Cosmos mapping and its provider-specific contract. |
+| [Versioning contract](docs/versioning-contract.md) | Separates package, protocol, event, and read-side compatibility decisions. |
+| [D1 PipelineStore](docs/d1-pipeline-store.md) | Describes the opt-in D1 provider, schema, limits, and guarded writes. |
+| [D1 materialized views](docs/d1-materialized-views.md) | Describes the separate D1_MV backing, materializer, migrations, and catch-up. |
+| [0.2.0 migration](docs/migration-0.1-to-0.2.md) | Explains the matched package release and its client read contract. |
 
 ### Operations and release
 
 | Guide | Description |
 | --- | --- |
-| [Bootstrap import](docs/SDT-G21-bootstrap-import.md) | Defines the provider-neutral dump validation, planning, and import authority transition. |
-| [Bootstrap operator](docs/SDT-G22-bootstrap-operator.md) | Documents the protected bootstrap operator routes and their actions. |
+| [Bootstrap import](docs/bootstrap-import.md) | Defines the provider-neutral dump validation, planning, and import authority transition. |
+| [Bootstrap operator](docs/bootstrap-operations.md) | Documents the protected bootstrap operator routes and their actions. |
 | [Release process](docs/release-process.md) | Describes the matched package release workflow and its authentication modes. |
 
 ## Meeting-room sample
@@ -138,9 +138,9 @@ The [CI workflow](.github/workflows/ci.yml) runs the foundation and cheap manife
 The Cloudflare-only composition checks are:
 
 ```sh
-npm run test:g20
-npm run test:g20:gate
-npm run build:g20
+npm run test:cloudflare:composition
+npm run test:cloudflare:composition:gate
+npm run build:cloudflare:composition
 ```
 
 ## License
