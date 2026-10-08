@@ -1,6 +1,6 @@
 {
   "name": "@sekiban/dcb-cloudflare",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "description": "Optional Cloudflare composition helper. Mounts Sekiban storage beside the caller's own Worker. Not an application and not part of the matched set.",
   "license": "Elastic-2.0",
