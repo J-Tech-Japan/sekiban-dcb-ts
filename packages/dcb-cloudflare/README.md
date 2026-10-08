@@ -42,7 +42,7 @@ export default worker;
 
 The declarations reference Workers types, so TypeScript consumers install `@cloudflare/workers-types`, include `"@cloudflare/workers-types"` in `compilerOptions.types`, and pass the environment type explicitly at the Worker boundary. The generated starter already does both. `requireHandlers()` bridges `createCloudflareOnlyRuntimeWorker()`'s result, whose handler members are optional in the Workers types.
 
-If `npm view @sekiban/dcb-cloudflare` reports E404, the package has not been published yet; use the repository-checkout alternative. The helper requires `@sekiban/dcb-runtime` 0.2.x, and the generated starter pins 0.2.0.
+The helper requires `@sekiban/dcb-runtime` 0.2.x, and the generated starter pins 0.2.0.
 
 ## License
 
