@@ -107,7 +107,7 @@ npm run e2e:sample -- --base-url <deployed-url> --report <path>
 
 ## Runtime surface and operations
 
-The runtime exposes five public V1 HTTP endpoints: commit, query, list-query, tag-latest-sortable, and tag-state. It also exposes the authenticated `POST /operator/repair` surface.
+The runtime exposes five public V1 HTTP endpoints: commit, query, list-query, tag-latest-sortable, and tag-state. It also exposes `POST /operator/repair`, an authenticated, operator-only repair surface.
 
 Its durable components provide:
 
