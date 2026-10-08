@@ -8,15 +8,13 @@ application gets its own domain.
 
 ## Create and run locally
 
-After `@sekiban/create-dcb` is published:
-
 ```sh
 npx @sekiban/create-dcb {{PROJECT_NAME}}
 cd {{PROJECT_NAME}}
 npm install
 ```
 
-While developing this repository before publish, use:
+From a checkout of the sekiban-dcb-ts repository, the same starter can be generated with:
 
 ```sh
 node packages/create-dcb/bin/create-dcb.mjs {{PROJECT_NAME}}

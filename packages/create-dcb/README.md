@@ -8,7 +8,7 @@ cd my-booking-app
 npm install
 ```
 
-If `npm view @sekiban/create-dcb` reports E404, the package has not been published yet; use the repository-checkout alternative:
+From a checkout of this repository, run the generator directly:
 
 ```sh
 node packages/create-dcb/bin/create-dcb.mjs my-booking-app
