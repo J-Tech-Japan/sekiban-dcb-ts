@@ -175,12 +175,12 @@ export function assertG46TagStateContract(value) {
     "intermediate source-row spike",
   ]) requireContains(test, token, "G46 fixture inventory");
 
-  requireContains(packageJson, '"test:g46"', "package scripts");
+  requireContains(packageJson, '"test:tag-state:incremental"', "package scripts");
   const legacyWorkflowWiring = ci.includes("ci-g46:") && ci.includes("ci-g46");
-  const lane = value.laneManifest?.lanes?.find((entry) => entry?.name === "g46");
+  const lane = value.laneManifest?.lanes?.find((entry) => entry?.name === "tag-state-and-bindings");
   const normal = lane?.commands?.find((entry) => entry?.id === "g46");
   const forcedRed = lane?.commands?.find((entry) => entry?.id === "g46-red");
-  const manifestWiring = normal?.command === "npm run test:g46" && forcedRed?.command === "npm run test:g46:forced-red" && forcedRed?.env?.SDT_G46_FORCE_FAILURE === "1" && forcedRed?.expect === "red";
+  const manifestWiring = normal?.command === "npm run test:tag-state:incremental" && forcedRed?.command === "npm run test:tag-state:incremental:forced-red" && forcedRed?.env?.SDT_G46_FORCE_FAILURE === "1" && forcedRed?.expect === "red";
   if (!legacyWorkflowWiring && !manifestWiring) fail("G46 lane and forced-red proof are absent from both the legacy workflow and the manifest");
 }
 

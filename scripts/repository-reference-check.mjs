@@ -7,6 +7,21 @@ import { dirname, join, normalize, resolve } from "node:path";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const schema = "sdt-g105-reference-check/v1";
+const COMPATIBILITY_ALIASES = Object.freeze({
+  "test:g20:gate": "npm run test:cloudflare:composition:gate",
+  "test:g20": "npm run test:cloudflare:composition",
+  "test:g21": "npm run test:bootstrap:import",
+  "test:g28": "npm run test:domain-package",
+  "test:g59": "npm run test:domain-release",
+  "test:g64:publish-shape": "npm run test:release:matched-set:publish-shape",
+  "test:g64:publish-dry-run": "npm run test:release:matched-set:publish-dry-run",
+  "test:g64": "npm run test:release:matched-set",
+  "test:g72:trusted-publishing": "npm run test:release:trusted-publishing",
+  "test:g30": "npm run test:commit-tracing",
+  "test:g102": "npm run test:sample:registry-consumer",
+  "test:g21:forced-red": "npm run test:bootstrap:import:forced-red",
+  "build:g20": "npm run build:cloudflare:composition",
+});
 
 function fail(kind, message) {
   const error = new Error(`reference-check:${kind}:${message}`);
@@ -479,6 +494,37 @@ function assertLaneManifest(repoRoot, files, rootManifest, manifests, configured
   return { lanes: manifest.lanes.length, commands: commandCount, laneSelectors: selectorCount };
 }
 
+function assertNamingRules(rootManifest, laneManifest) {
+  for (const [alias, expectedBody] of Object.entries(COMPATIBILITY_ALIASES)) {
+    if (rootManifest.scripts[alias] !== expectedBody) fail("compatibility-alias", `${alias} must keep its exact compatibility body`);
+  }
+  const numberedScriptKey = (name) => /(?:^|:)g\d+(?=:|$)/.test(name) || /^g\d+/.test(name);
+  for (const [name, command] of Object.entries(rootManifest.scripts)) {
+    if (!Object.hasOwn(COMPATIBILITY_ALIASES, name) && numberedScriptKey(name)) fail("numbered-script-key", `root script ${name} is numbered`);
+    if (Object.hasOwn(COMPATIBILITY_ALIASES, name)) continue;
+    for (const invocation of npmInvocations(command)) {
+      if (Object.hasOwn(COMPATIBILITY_ALIASES, invocation.script)) fail("alias-internal-call", `root script ${name} invokes compatibility alias ${invocation.script}`);
+    }
+  }
+  if (!Array.isArray(laneManifest.requiredLanes) || !Array.isArray(laneManifest.lanes)) fail("manifest-shape", "lane manifest naming fields are not arrays");
+  for (const name of laneManifest.requiredLanes) {
+    if (typeof name === "string" && /^g\d+(?:-|$)/.test(name)) fail("numbered-lane-id", `required lane ${name} is numbered`);
+  }
+  for (const lane of laneManifest.lanes) {
+    if (typeof lane?.name === "string" && /^g\d+(?:-|$)/.test(lane.name)) fail("numbered-lane-id", `lane ${lane.name} is numbered`);
+    for (const command of lane?.commands ?? []) {
+      for (const invocation of npmInvocations(command.command)) {
+        if (Object.hasOwn(COMPATIBILITY_ALIASES, invocation.script)) fail("alias-internal-call", `lane ${lane.name}/${command.id} invokes compatibility alias ${invocation.script}`);
+      }
+    }
+  }
+  return {
+    compatibilityAliases: Object.keys(COMPATIBILITY_ALIASES).length,
+    numberedScriptKeys: 0,
+    numberedLaneIds: 0,
+  };
+}
+
 function assertWorkflows(repoRoot, files, rootManifest, manifests, configured) {
   const workflowFiles = files.filter((file) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(file));
   let commandCount = 0;
@@ -506,6 +552,7 @@ function checkRepository(repoRoot) {
   const tracked = trackedFiles(repoRoot);
   const { manifests, rootManifest } = packageManifests(repoRoot, tracked);
   const configured = configuredWorkspaces(rootManifest, manifests);
+  const laneManifest = parseJson(repoRoot, "ci/lanes.json", "lane manifest");
   let npmScripts = 0;
   for (const manifest of manifests) {
     for (const [name, command] of Object.entries(manifest.scripts)) {
@@ -515,12 +562,15 @@ function checkRepository(repoRoot) {
       assertLocalPaths(tracked, command, `npm script ${name} in ${manifest.relativePath}`, manifest.directory);
     }
   }
+  const laneResult = assertLaneManifest(repoRoot, tracked, rootManifest, manifests, configured);
+  const workflowResult = assertWorkflows(repoRoot, tracked, rootManifest, manifests, configured);
   return {
     schema,
     packageManifests: manifests.length,
     npmScripts,
-    ...assertLaneManifest(repoRoot, tracked, rootManifest, manifests, configured),
-    ...assertWorkflows(repoRoot, tracked, rootManifest, manifests, configured),
+    ...laneResult,
+    ...workflowResult,
+    ...assertNamingRules(rootManifest, laneManifest),
   };
 }
 
@@ -532,23 +582,41 @@ function writeSelfTestFixture(repoRoot, { workspaceScript = "node test/existing.
     scripts: {
       ok: "node scripts/existing.mjs",
       rootOnly: "node scripts/existing.mjs",
+      functional: "node scripts/existing.mjs",
+      "test:g130-extra": "SDT_G130_X=1 node scripts/g130-guard.mjs",
+      "test:cloudflare:composition:gate": "node scripts/existing.mjs",
+      "test:cloudflare:composition": "node scripts/existing.mjs",
+      "test:bootstrap:import": "node scripts/existing.mjs",
+      "test:domain-package": "node scripts/existing.mjs",
+      "test:domain-release": "node scripts/existing.mjs",
+      "test:release:matched-set:publish-shape": "node scripts/existing.mjs",
+      "test:release:matched-set:publish-dry-run": "node scripts/existing.mjs",
+      "test:release:matched-set": "node scripts/existing.mjs",
+      "test:release:trusted-publishing": "node scripts/existing.mjs",
+      "test:commit-tracing": "node scripts/existing.mjs",
+      "test:sample:registry-consumer": "node scripts/existing.mjs",
+      "test:bootstrap:import:forced-red": "node scripts/existing.mjs",
+      "build:cloudflare:composition": "node scripts/existing.mjs",
       delegated: "npm run workspace-only --workspace @fixture/workspace",
       delegatedShort: "npm run -w @fixture/workspace workspace-only",
+      ...COMPATIBILITY_ALIASES,
     },
   }, null, 2));
   writeFileSync(join(repoRoot, "packages/fixture/package.json"), JSON.stringify({
     name: "@fixture/workspace",
     private: true,
     scripts: {
+      "build:g42-probe": "node test/existing.mjs",
       "workspace-only": workspaceScript,
       "calls-local": "npm run workspace-only",
     },
   }, null, 2));
   writeFileSync(join(repoRoot, "ci/lanes.json"), JSON.stringify({
+    requiredLanes: ["cheap"],
     lanes: [{
       name: "cheap",
       affectedPaths: [laneSelector],
-      commands: [{ id: "ok", command: "npm run delegated && npm run delegatedShort" }],
+      commands: [{ id: "g130-red", command: "npm run delegated && npm run delegatedShort" }],
     }],
   }));
   writeFileSync(join(repoRoot, ".github/workflows/ci.yml"), [
@@ -582,9 +650,10 @@ function runSelfTest() {
     mkdirSync(join(repoRoot, ".github/workflows"), { recursive: true });
     mkdirSync(join(repoRoot, "ci"), { recursive: true });
     writeFileSync(join(repoRoot, "scripts/existing.mjs"), "process.exit(0);\n");
+    writeFileSync(join(repoRoot, "scripts/g130-guard.mjs"), "process.exit(0);\n");
     writeFileSync(join(repoRoot, "packages/fixture/test/existing.mjs"), "process.exit(0);\n");
     writeSelfTestFixture(repoRoot);
-    execFileSync("git", ["add", "package.json", "ci/lanes.json", ".github/workflows/ci.yml", "scripts/existing.mjs", "packages/fixture/package.json", "packages/fixture/test/existing.mjs"], { cwd: repoRoot, stdio: "ignore" });
+    execFileSync("git", ["add", "package.json", "ci/lanes.json", ".github/workflows/ci.yml", "scripts/existing.mjs", "scripts/g130-guard.mjs", "packages/fixture/package.json", "packages/fixture/test/existing.mjs"], { cwd: repoRoot, stdio: "ignore" });
     checkRepository(repoRoot);
 
     const beforeSelector = npmInvocations("FOO=bar npm --workspace @fixture/workspace run workspace-only");
@@ -638,6 +707,24 @@ function runSelfTest() {
     }, null, 2));
     expectSelfTestFailure(() => checkRepository(repoRoot), "missing-script", "workspace namespace mutant");
 
+    const expectNamingFailure = (mutate, kind, label) => {
+      writeSelfTestFixture(repoRoot);
+      const fixturePackage = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"));
+      const fixtureLanes = JSON.parse(readFileSync(join(repoRoot, "ci/lanes.json"), "utf8"));
+      mutate(fixturePackage, fixtureLanes);
+      writeFileSync(join(repoRoot, "package.json"), JSON.stringify(fixturePackage, null, 2));
+      writeFileSync(join(repoRoot, "ci/lanes.json"), JSON.stringify(fixtureLanes));
+      expectSelfTestFailure(() => checkRepository(repoRoot), kind, label);
+    };
+    expectNamingFailure((fixturePackage) => { fixturePackage.scripts["test:g130"] = "node scripts/existing.mjs"; }, "numbered-script-key", "numbered script key mutant");
+    expectNamingFailure((fixturePackage) => { fixturePackage.scripts["g130:legacy"] = "node scripts/existing.mjs"; }, "numbered-script-key", "numbered script prefix mutant");
+    expectNamingFailure((fixturePackage) => { fixturePackage.scripts["test:g20:extra"] = "node scripts/existing.mjs"; }, "numbered-script-key", "numbered script segment mutant");
+    expectNamingFailure((fixturePackage) => { fixturePackage.scripts["test:g20"] = "npm run test:cloudflare:composition:gate"; }, "compatibility-alias", "compatibility alias body mutant");
+    expectNamingFailure((fixturePackage) => { delete fixturePackage.scripts["test:g20"]; }, "compatibility-alias", "compatibility alias missing mutant");
+    expectNamingFailure((_fixturePackage, fixtureLanes) => { fixtureLanes.requiredLanes.push("g130"); fixtureLanes.lanes.push({ name: "g130", affectedPaths: ["packages/fixture/test/existing.mjs"], commands: [] }); }, "numbered-lane-id", "numbered lane id mutant");
+    expectNamingFailure((_fixturePackage, fixtureLanes) => { fixtureLanes.lanes[0].commands[0].command = "npm run test:g20"; }, "alias-internal-call", "lane alias internal call mutant");
+    expectNamingFailure((fixturePackage) => { fixturePackage.scripts.functional = "node scripts/existing.mjs\nnpm run test:g28"; }, "alias-internal-call", "script alias internal call mutant");
+
     return {
       schema: "sdt-g105-reference-self-test/v1",
       passed: [
@@ -647,6 +734,15 @@ function runSelfTest() {
         "workspace-short-selector",
         "non-root-manifest-missing-path-mutant",
         "lane-selector-missing-path-mutant",
+        "naming-rule-green",
+        "numbered-script-key-mutant",
+        "numbered-script-prefix-mutant",
+        "numbered-script-segment-mutant",
+        "compatibility-alias-body-mutant",
+        "compatibility-alias-missing-mutant",
+        "numbered-lane-id-mutant",
+        "lane-alias-internal-call-mutant",
+        "script-alias-internal-call-mutant",
       ],
     };
   } finally {

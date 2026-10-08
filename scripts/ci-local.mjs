@@ -393,7 +393,7 @@ function prepareDetachedDependencies(executionRoot, options, manifest, lane) {
   const cachePath = mkdtempSync(join(tmpdir(), "sdt-g84-npm-cache-"));
   let nugetIsolation = null;
   try {
-    nugetIsolation = lane.name === "g32-parity" ? createNugetIsolation(executionRoot) : null;
+    nugetIsolation = lane.name === "sekiban-parity" ? createNugetIsolation(executionRoot) : null;
     const bootstrapEnv = {
       ...process.env,
       INIT_CWD: executionRoot,

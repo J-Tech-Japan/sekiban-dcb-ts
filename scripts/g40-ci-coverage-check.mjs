@@ -382,8 +382,8 @@ function addSealRootChecks(graph, issues) {
   const roots = ["contracts/commit-trace-bundle.json", "contracts/commit-trace-pin.json", ...authorityFiles.map((entry) => entry?.path)]
     .filter((path) => typeof path === "string" && path.length > 0);
   const lanes = asArray(manifest?.lanes);
-  const g30 = lanes.find((lane) => lane?.name === "g30");
-  const local = lanes.filter((lane) => lane?.tier === "local" && lane?.name !== "g30");
+  const g30 = lanes.find((lane) => lane?.name === "commit-tracing");
+  const local = lanes.filter((lane) => lane?.tier === "local" && lane?.name !== "commit-tracing");
   for (const path of roots) {
     const g30Matches = asArray(g30?.affectedPaths).some((pattern) => typeof pattern === "string" && matchesCiGlob(path, pattern));
     const otherMatches = local.some((lane) => asArray(lane?.affectedPaths).some((pattern) => typeof pattern === "string" && matchesCiGlob(path, pattern)));

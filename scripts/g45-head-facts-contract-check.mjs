@@ -71,12 +71,12 @@ export function assertG45HeadFactsContract(value) {
     "intermediateOnlySpike",
   ]) requireContains(test, token, "G45 runtime fixture inventory");
 
-  requireContains(packageJson, '"test:g45"', "package scripts");
+  requireContains(packageJson, '"test:tag:head-facts"', "package scripts");
   const legacyWorkflowWiring = ci.includes("ci-g45:") && ci.includes("ci-g45");
   const lane = value.laneManifest?.lanes?.find((entry) => entry?.name === "cheap");
   const normal = lane?.commands?.find((entry) => entry?.id === "g45");
   const forcedRed = lane?.commands?.find((entry) => entry?.id === "g45-red");
-  const manifestWiring = normal?.command === "npm run test:g45" && forcedRed?.command === "npm run test:g45:forced-red" && forcedRed?.env?.SDT_G45_FORCE_FAILURE === "1" && forcedRed?.expect === "red";
+  const manifestWiring = normal?.command === "npm run test:tag:head-facts" && forcedRed?.command === "npm run test:tag:head-facts:forced-red" && forcedRed?.env?.SDT_G45_FORCE_FAILURE === "1" && forcedRed?.expect === "red";
   if (!legacyWorkflowWiring && !manifestWiring) fail("G45 lane and forced-red proof are absent from both the legacy workflow and the manifest");
 }
 

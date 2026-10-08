@@ -146,11 +146,11 @@ export function assertG35DoScopeContract(value) {
     "rejects control-route path serviceId that is not caller authority",
   ]) requireContains(value.test, token, "G35 confused-deputy fixtures");
 
-  requireContains(value.packageJson, '"test:g35"', "G35 package lane");
+  requireContains(value.packageJson, '"test:durable-object:scope"', "G35 package lane");
   const lane = manifestCommand(value.laneManifest, "cheap", "g35");
   const red = manifestCommand(value.laneManifest, "cheap", "g35-red");
-  const wiring = lane?.command === "npm run test:g35"
-    && red?.command === "npm run test:g35:forced-red"
+  const wiring = lane?.command === "npm run test:durable-object:scope"
+    && red?.command === "npm run test:durable-object:scope:forced-red"
     && red?.env?.SDT_G35_FORCE_FAILURE === "1"
     && red?.expect === "red";
   if (!wiring) fail("G35 lane and forced-red proof are absent from the authoritative lane manifest");

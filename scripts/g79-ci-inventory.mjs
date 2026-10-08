@@ -224,7 +224,7 @@ function selfTest() {
   ];
   const missingJobs = requiredJobs.filter((job) => !result.jobs.includes(job));
   if (missingJobs.length > 0) throw new Error(`SDT-G79 CI inventory missing jobs: ${missingJobs.join(", ")}`);
-  if (!result.invocations.some((row) => row.hostedJob === "local:g43" && row.executionTier === "local" && row.command.includes("npm run test:g43"))) {
+  if (!result.invocations.some((row) => row.hostedJob === "local:tag-sql-measurement" && row.executionTier === "local" && row.command.includes("npm run test:tag-sql:measurement"))) {
     throw new Error("SDT-G79 CI inventory did not find the G43 local-manifest invocation");
   }
   if (!result.invocations.some((row) => row.hostedJob === "ci-foundation" && row.executionTier === "pr" && row.command.includes("npm test"))) {

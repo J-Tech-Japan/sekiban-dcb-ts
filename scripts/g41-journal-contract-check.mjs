@@ -117,9 +117,9 @@ export function assertG41JournalRemovalContract(value) {
   requireContains(value.probe, "runG42JournalProbeTrial", "G42 probe caller");
   requireContains(value.g42Worker, "runG42JournalProbeTrial(journalBinding(env)", "G42 primary route");
   for (const token of ["AC2: performs zero JOURNAL namespace calls while the Tag positive control is live", "AC3: prepare failure cancels every already-reserved tag", "AC3: commit failure cancels every tag", "AC4 genuine interruption boundary 1:", "AC4 genuine interruption boundary 2:", "AC4 genuine interruption boundary 3:", "AC4 boundary 4:", "no CommitWorker cleanup", "without CommitWorker compensation", "superseded attempt epoch"]) requireContains(value.test, token, "G41 focused fixture inventory");
-  requireContains(value.packageJson, '"test:g41"', "package scripts");
+  requireContains(value.packageJson, '"test:journal:removal"', "package scripts");
   const lane = value.laneManifest.lanes.find((entry) => entry.name === "cheap"); const normal = lane?.commands.find((entry) => entry.id === "g41"); const forcedRed = lane?.commands.find((entry) => entry.id === "g41-red");
-  if (normal?.command !== "npm run test:g41" || forcedRed?.command !== "npm run test:g41:forced-red" || forcedRed?.env?.SDT_G41_FORCE_FAILURE !== "1" || forcedRed?.expect !== "red") fail("G41 lane and forced-red proof are absent");
+  if (normal?.command !== "npm run test:journal:removal" || forcedRed?.command !== "npm run test:journal:removal:forced-red" || forcedRed?.env?.SDT_G41_FORCE_FAILURE !== "1" || forcedRed?.expect !== "red") fail("G41 lane and forced-red proof are absent");
 }
 
 function mutateInventory(text, callback) { const inventory = parseInventory(text); callback(inventory); return JSON.stringify(inventory, null, 2) + "\n"; }
