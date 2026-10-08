@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const registry = "https://registry.npmjs.org";
+const expectedHelperVersion = packageJson(join(root, "packages/dcb-cloudflare/package.json")).version;
 const liveWorker = "sekiban-dcb-meeting-room-cloudflare-only";
 // Keep the forbidden-resource check independent of the literal IDs. The
 // values are intentionally represented only by digests so the guard cannot
@@ -321,7 +322,7 @@ async function registryAndHelperInstall(project, helperPack) {
   const helper = helperTree.dependencies?.["@sekiban/dcb-cloudflare"];
   assert(helper !== undefined, "packed helper was not installed");
   const helperInfo = installedPackage(project, "@sekiban/dcb-cloudflare");
-  assert(helperInfo.version === "0.1.1", `packed helper resolved to ${helperInfo.version}`);
+  assert(helperInfo.version === expectedHelperVersion, `packed helper resolved to ${helperInfo.version}; expected ${expectedHelperVersion}`);
   assert(existsSync(join(project, "node_modules", ".bin", "dcb-cloudflare")), "packed helper did not install its CLI bin");
   assert(existsSync(join(project, "node_modules", "wrangler", "bin", "wrangler.js")), "project-local wrangler was not installed");
   assert(existsSync(join(project, "node_modules", ".bin", "wrangler")), "project-local wrangler bin is missing");

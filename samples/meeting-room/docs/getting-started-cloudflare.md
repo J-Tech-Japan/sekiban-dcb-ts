@@ -149,7 +149,7 @@ To reuse short demo IDs after verify seed / conflicts:
 | `@sekiban/dcb-domain` | `0.2.0` | via domain authoring / client |
 | `@sekiban/dcb-client` | `0.2.0` | workspace link while developing in this repo |
 | `@sekiban/dcb-runtime` | `0.2.0` | workspace link while developing in this repo |
-| `@sekiban/dcb-cloudflare` | `0.1.1` | workspace link while developing in this repo; composition helper, not the application |
+| `@sekiban/dcb-cloudflare` | `0.1.2` | workspace link while developing in this repo; composition helper, not the application |
 
 The sample must not copy package `src` trees. Sample-local files are domain,
 Worker composition, and UI only.

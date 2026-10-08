@@ -19,6 +19,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const registry = "https://registry.npmjs.org";
 const helperPackage = "@sekiban/dcb-cloudflare";
+const expectedHelperVersion = packageJson(join(root, "packages/dcb-cloudflare/package.json")).version;
 const matchedSet = [
   "@sekiban/dcb-core",
   "@sekiban/dcb-domain",
@@ -137,6 +138,23 @@ function changedPaths(before, after) {
 
 function packageJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function assertHelperVersion(installedVersion, expectedVersion = expectedHelperVersion) {
+  check(installedVersion === expectedVersion, `packed helper version mismatch: installed ${installedVersion}, expected ${expectedVersion}`);
+}
+
+function helperVersionProof() {
+  assertHelperVersion(expectedHelperVersion);
+  const installedVersion = "0.0.0";
+  let mismatchMessage;
+  try {
+    assertHelperVersion(installedVersion);
+  } catch (error) {
+    mismatchMessage = error instanceof Error ? error.message : String(error);
+  }
+  check(mismatchMessage?.includes(`installed ${installedVersion}`) && mismatchMessage.includes(`expected ${expectedHelperVersion}`), "packed helper mismatch proof omitted installed and expected versions");
+  return { expectedVersion: expectedHelperVersion, matchingVersion: expectedHelperVersion, mismatch: { installedVersion, message: mismatchMessage } };
 }
 
 function assertGuardChild(guardPath, marker) {
@@ -418,6 +436,7 @@ async function runCheck() {
       result: "g104-cf-cli-check-passed",
       project: "g104-cf-cli-project",
       create: { cleanTempDirectory: true, output: created },
+      helperVersion: helperVersionProof(),
       starter,
       guard,
       plans,
@@ -467,7 +486,8 @@ async function registryAndHelperInstall(project, helperPack) {
   run("npm", ["install", "--no-package-lock", "--ignore-scripts", "--no-audit", "--no-fund", "--registry", registry, helperPack], { cwd: project });
   const helperTree = npmTree(project);
   check(helperTree.dependencies?.[helperPackage] !== undefined, "packed helper was not installed");
-  check(installedPackage(project, helperPackage).version === "0.1.1", "packed helper version changed");
+  const installedHelperVersion = installedPackage(project, helperPackage).version;
+  assertHelperVersion(installedHelperVersion);
   check(existsSync(join(project, "node_modules/.bin/dcb-cloudflare")), "helper bin was not installed");
   check(existsSync(join(project, "node_modules/wrangler/bin/wrangler.js")), "project wrangler was not installed");
   return {

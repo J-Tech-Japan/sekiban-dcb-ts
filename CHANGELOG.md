@@ -1,5 +1,10 @@
 # Changelog
 
+## @sekiban/create-dcb and @sekiban/dcb-cloudflare 0.1.2
+
+- Update the package READMEs and the generated project's README; no code or
+  template dependency change.
+
 ## @sekiban/dcb-domain 0.2.0 (matched with dcb-core and dcb-client)
 
 - Publish the matched client/domain/core set with the G71 authority-backed read
