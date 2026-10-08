@@ -467,7 +467,7 @@ async function registryAndHelperInstall(project, helperPack) {
   run("npm", ["install", "--no-package-lock", "--ignore-scripts", "--no-audit", "--no-fund", "--registry", registry, helperPack], { cwd: project });
   const helperTree = npmTree(project);
   check(helperTree.dependencies?.[helperPackage] !== undefined, "packed helper was not installed");
-  check(installedPackage(project, helperPackage).version === "0.1.0", "packed helper version changed");
+  check(installedPackage(project, helperPackage).version === "0.1.1", "packed helper version changed");
   check(existsSync(join(project, "node_modules/.bin/dcb-cloudflare")), "helper bin was not installed");
   check(existsSync(join(project, "node_modules/wrangler/bin/wrangler.js")), "project wrangler was not installed");
   return {

@@ -3,7 +3,8 @@
 This sample shows one way to consume **sekiban-dcb-ts**. It is not the only
 application. Callers who already have a Worker mount Sekiban storage beside
 their own routes with `@sekiban/dcb-cloudflare`, passing their own wrangler
-config. That helper is a workspace package here and is not published yet.
+config. That helper is published on npm as `@sekiban/dcb-cloudflare`, and this
+sample links the workspace copy while developing in this repository.
 
 Domain authoring lives in `src/domain.ts`. Durable Object classes are
 re-exported from the Worker entry because Cloudflare requires them in the
@@ -148,7 +149,7 @@ To reuse short demo IDs after verify seed / conflicts:
 | `@sekiban/dcb-domain` | `0.2.0` | via domain authoring / client |
 | `@sekiban/dcb-client` | `0.2.0` | workspace link while developing in this repo |
 | `@sekiban/dcb-runtime` | `0.2.0` | workspace link while developing in this repo |
-| `@sekiban/dcb-cloudflare` | not published | workspace `0.1.0`; composition helper, not the application |
+| `@sekiban/dcb-cloudflare` | `0.1.1` | workspace link while developing in this repo; composition helper, not the application |
 
 The sample must not copy package `src` trees. Sample-local files are domain,
 Worker composition, and UI only.
