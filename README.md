@@ -18,13 +18,13 @@ The starter packages require Node.js 20 or newer. The generated project's README
 
 ## Packages
 
-The four `@sekiban/dcb-*` packages are released together as the core TypeScript runtime set. `@sekiban/create-dcb` generates a starter project, and `@sekiban/dcb-cloudflare` is an optional composition helper for an existing Worker. The starter template lives in `packages/create-dcb/template`.
+The core, domain, client, and runtime packages (`@sekiban/dcb-core`, `@sekiban/dcb-domain`, `@sekiban/dcb-client`, and `@sekiban/dcb-runtime`) are released together as one matched set. `@sekiban/create-dcb` generates a starter project, and `@sekiban/dcb-cloudflare` is an optional composition helper for an existing Worker. The starter template lives in `packages/create-dcb/template`.
 
 | Package | What it is for | When to use it |
 | --- | --- | --- |
 | [@sekiban/dcb-core](packages/dcb-core/README.md) | Cloudflare-independent event, tag, query, and read-model definitions. | Use it for shared contracts and domain primitives. |
 | [@sekiban/dcb-domain](packages/dcb-domain/README.md) | Runtime-free, schema-first domain authoring. | Use it to define events, projectors, queries, and commands. |
-| [@sekiban/dcb-client](packages/dcb-client/README.md) | Typed application executor and transport client. | Use it when application code sends commands and reads state. |
+| [@sekiban/dcb-client](packages/dcb-client/README.md) | Typed Serialized DCB V1 client and claim-ledger executor. | Use it when application code sends commands and reads state. |
 | [@sekiban/dcb-runtime](packages/dcb-runtime/README.md) | Cloudflare Durable Object, Queue, storage, and HTTP runtime. | Use it to run the serialized event runtime. |
 | [@sekiban/create-dcb](packages/create-dcb/README.md) | CLI that creates a named Cloudflare starter with a booking demo. | Use it for a new project created from npm. |
 | [@sekiban/dcb-cloudflare](packages/dcb-cloudflare/README.md) | Optional helper that mounts Sekiban storage beside an existing Worker. | Use it when the application already owns its Worker routes and configuration. |
@@ -54,7 +54,7 @@ Choose a guide by the task you need to do.
 | Guide | Description |
 | --- | --- |
 | [Domain authoring](docs/domain-authoring.md) | Maps event, projector, state, and command authoring between C# and TypeScript. |
-| [Executor facade](docs/executor-facade.md) | Shows the application executor and its in-process, HTTP, and snapshot transports. |
+| [Executor facade](docs/executor-facade.md) | Shows the application executor, its in-process and HTTP transports, and the portable snapshot workflow. |
 | [Sekiban.Dcb logical-event migration](docs/migration-sekiban-dcb.md) | Defines the logical event record for offline export, import, and rebuild. |
 
 ### Storage, providers, and migration
@@ -77,7 +77,7 @@ Choose a guide by the task you need to do.
 
 ## Meeting-room sample
 
-The `samples/meeting-room` project is a consumer sample. It authors its domain with the public `@sekiban/dcb-domain` event, state, projector, and command surface and bridges it with `toRuntimeDomain()`; the runtime's projector and query registries stay private. A consumer composes its domain into the runtime with `createRuntimeWorker({ domain, config })`. The sample exposes its application command API and keeps the raw V1 protocol routes behind the authenticated `/conformance/v1` lane. Its framework-free `public/` frontend calls only the application command and read API and uses the V1 sortable-id head to report pending, visible, conflict, rejected, and partial outcomes honestly. Follow the [sample getting-started guide](samples/meeting-room/docs/getting-started-cloudflare.md) for the full setup.
+The `samples/meeting-room` project is the canonical Cloudflare getting-started sample and a consumer of the public packages. It authors its domain with the public `@sekiban/dcb-domain` event, state, projector, and command surface and bridges it with `toRuntimeDomain()`; the runtime's projector and query registries stay private. A consumer composes its domain into the runtime with `createRuntimeWorker({ domain, config })`. The sample exposes its application command API and keeps the raw V1 protocol routes behind the authenticated `/conformance/v1` lane. Its framework-free `public/` frontend calls only the application command and read API and uses the V1 sortable-id head to report pending, visible, conflict, rejected, and partial outcomes honestly. Follow the [sample getting-started guide](samples/meeting-room/docs/getting-started-cloudflare.md) for the full setup.
 
 The Cloudflare-only sample uses one D1 database for the PipelineStore and a separate D1 database for materialized-view rows and checkpoints. Durable Objects and the outbox Queue remain part of the composition. This variant has no Hyperdrive, Postgres, or Cosmos binding. Its reservation and room query UI reads the materialized-view D1 database after the SafeWindow-aware catch-up worker runs.
 
@@ -98,7 +98,7 @@ npx wrangler hyperdrive create sekiban-dcb-meeting-room --connection-string "<yo
 
 Set the non-secret `SDT_SERVICE_ID` Wrangler variable for each deployment. A new Durable Object namespace needs a fresh service identity. The authenticated conformance lane and the application UI and end-to-end harness use that configured identity; the sample never forwards internal test headers. The deployment script disables Hyperdrive caching.
 
-For the application deployment and its end-to-end evidence, run:
+`npm run deploy:sample` deploys the Worker and its static assets; `npm run e2e:sample` then records redacted command-to-visible evidence against the deployed URL:
 
 ```sh
 npm run deploy:sample
@@ -107,7 +107,7 @@ npm run e2e:sample -- --base-url <deployed-url> --report <path>
 
 ## Runtime surface and operations
 
-The runtime exposes five public HTTP endpoints: commit, query, list-query, tag-latest-sortable, and tag-state. It also exposes the authenticated `POST /operator/repair` surface.
+The runtime exposes five public V1 HTTP endpoints: commit, query, list-query, tag-latest-sortable, and tag-state. It also exposes the authenticated `POST /operator/repair` surface.
 
 Its durable components provide:
 
