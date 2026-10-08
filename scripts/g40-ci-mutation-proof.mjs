@@ -81,13 +81,13 @@ export const MUTATIONS = [
     command(lane(snapshot, "foundation"), "foundation-lint").id = "commit-trace-seal";
   }),
   mutation("duplicate-lane-name", "manifest-shape", (snapshot) => {
-    const original = lane(snapshot, "g43");
+    const original = lane(snapshot, "tag-sql-measurement");
     const duplicate = structuredClone(original);
     duplicate.commands = duplicate.commands.map((entry, index) => ({ ...entry, id: `${entry.id}-duplicate-${index}` }));
     snapshot.manifest.lanes.push(duplicate);
   }),
   mutation("empty-lane", "empty-lane", (snapshot) => {
-    lane(snapshot, "g43").commands = [];
+    lane(snapshot, "tag-sql-measurement").commands = [];
   }),
   mutation("invalid-expect", "invalid-expect", (snapshot) => {
     command(lane(snapshot, "foundation"), "foundation-lint").expect = "unexpected";
@@ -136,17 +136,17 @@ export const MUTATIONS = [
     command(lane(snapshot, "cheap"), "g40-coverage").command = "npm --workspace @sekiban/dcb-core run g108-missing";
   }),
   mutation("required-lanes-differ", "required-lanes-mismatch", (snapshot) => {
-    snapshot.manifest.requiredLanes = snapshot.manifest.requiredLanes.filter((name) => name !== "g46");
+    snapshot.manifest.requiredLanes = snapshot.manifest.requiredLanes.filter((name) => name !== "tag-state-and-bindings");
   }),
   mutation("affected-path-matches-nothing", "affected-path-unmatched", (snapshot) => {
-    lane(snapshot, "g43").affectedPaths.push("scripts/g108-no-match.mjs");
+    lane(snapshot, "tag-sql-measurement").affectedPaths.push("scripts/g108-no-match.mjs");
   }),
   mutation("g30-commit-trace-patterns-removed", "local-path-uncovered", (snapshot) => {
-    lane(snapshot, "g30").affectedPaths = lane(snapshot, "g30").affectedPaths.filter((pattern) => pattern !== "scripts/commit-trace-*.mjs");
+    lane(snapshot, "commit-tracing").affectedPaths = lane(snapshot, "commit-tracing").affectedPaths.filter((pattern) => pattern !== "scripts/commit-trace-*.mjs");
   }),
   mutation("seal-root-epoch-pattern-moved", "seal-roots-uncovered", (snapshot) => {
-    lane(snapshot, "g30").affectedPaths = lane(snapshot, "g30").affectedPaths.filter((pattern) => pattern !== "contracts/epoch-*.json");
-    lane(snapshot, "g43").affectedPaths.push("contracts/epoch-*.json");
+    lane(snapshot, "commit-tracing").affectedPaths = lane(snapshot, "commit-tracing").affectedPaths.filter((pattern) => pattern !== "contracts/epoch-*.json");
+    lane(snapshot, "tag-sql-measurement").affectedPaths.push("contracts/epoch-*.json");
   }),
   mutation("seal-command-removed", "seal-command", (snapshot) => {
     const cheap = lane(snapshot, "cheap");

@@ -9,7 +9,7 @@
 #   cd /path/to/repo
 #   ./scripts/dcb-runtime-bootstrap-publish.sh --dry-run
 #   ./scripts/dcb-runtime-bootstrap-publish.sh
-#   npm run publish:g99:runtime-bootstrap
+#   npm run publish:runtime-bootstrap
 #
 # Absolute paths (this worktree):
 #   root:    /path/to/repo

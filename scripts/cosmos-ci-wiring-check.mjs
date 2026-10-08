@@ -24,7 +24,7 @@ function findCosmosLane(manifest) {
 function assertManifest(manifest) {
   const lane = findCosmosLane(manifest);
   assert.ok(lane.commands.some((entry) => entry?.id === "cosmos" && entry.command === "npm run test:cosmos"), "the Cosmos lane must execute the real Cosmos contract");
-  assert.ok(lane.commands.some((entry) => entry?.id === "g22-cosmos" && entry.command === "npm run test:g22:cosmos"), "the Cosmos lane must execute the G22 Cosmos contract");
+  assert.ok(lane.commands.some((entry) => entry?.id === "g22-cosmos" && entry.command === "npm run test:bootstrap:providers:cosmos"), "the Cosmos lane must execute the G22 Cosmos contract");
   assert.ok(lane.commands.some((entry) => entry?.id === "cosmos-wiring" && entry.command === "npm run test:cosmos-wiring"), "the Cosmos lane must execute its wiring guard");
   const image = manifest.services?.cosmos?.image;
   assert.match(
