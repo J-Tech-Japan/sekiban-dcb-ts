@@ -1,4 +1,4 @@
-# SDT-G18 D1 PipelineStore
+# D1 PipelineStore
 
 The D1 adapter is an explicit opt-in `@sekiban/dcb-runtime/d1` provider. The
 default runtime composition remains Postgres and does not require a D1 binding.

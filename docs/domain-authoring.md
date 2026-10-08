@@ -1,9 +1,9 @@
 # Meeting-room domain authoring: C# ⇄ TypeScript
 
-SDT-G29 uses the same domain boundary in the C# and TypeScript examples: an
+This guide uses the same domain boundary in the C# and TypeScript examples: an
 event declares its schema and tags, a projector owns one tag family and a
 discriminated state, and a command declares its read set before it can append.
-Under SDT-G32, the registered event payload name is also the durable C#
+Under the Sekiban compatibility contract, the registered event payload name is also the durable C#
 `EventType`; authors never select a version at a call site.
 The TypeScript sample is the executable reference for the wire-compatible
 meeting-room example.
@@ -217,7 +217,7 @@ room and reservation tags from one validated payload. `reserve-room` declares
 both projector cells, reads both before deciding, and appends one event. A
 new payload carries neither a type discriminator nor a caller-selected event
 version. Identity-less or versioned stored/Queue input is rejected at ingress;
-the G32 wipe cutover has no legacy reader or payload-sniffing fallback.
+the wipe cutover has no legacy reader or payload-sniffing fallback.
 
 The HTTP command adapter reads the remote V1 tag-state rows into a portable
 snapshot, runs the authored command through `executeCommand`, and translates
@@ -242,7 +242,7 @@ clock as business time, and no client may supply an event version, eventId, or
 SUID. The mapping and compatibility fixtures exercise these ownership
 boundaries directly.
 
-## G32 C# logical-event rules
+## C# logical-event rules
 
 Event schema property names must be camelCase. At admission the original UTF-8
 JSON text is checked for syntax and exact member casing, then stored without

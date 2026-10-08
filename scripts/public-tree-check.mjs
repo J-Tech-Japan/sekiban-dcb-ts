@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const schema = "sdt-g105-public-tree/v1";
@@ -71,6 +71,11 @@ const candidateTokenPatterns = [
 ];
 const personalPathPattern = new RegExp(`/(?:${["home", "Users"].join("|")})/(?!path\\b)[^/\\s"']+`, "i");
 const workerHostPattern = new RegExp(`\\b(?:[a-z0-9-]+\\.)+${workersDev.replace(".", "\\.")}\\b`, "gi");
+const internalUnitPatterns = [
+  /SDT-G\d+/,
+  /(?<![A-Za-z0-9_])G\d{2,3}(?![A-Za-z0-9_])/,
+];
+const npmRunPattern = /npm run\s+([^\s`'"<>)]+)/g;
 
 function fail(kind, message) {
   const error = new Error(`public-tree:${kind}:${message}`);
@@ -184,6 +189,51 @@ function checkWrangler(relativePath, text) {
   checkWranglerBindings(relativePath, parseJsonc(text, relativePath), "");
 }
 
+function isPublicMarkdownPath(relativePath) {
+  const segments = relativePath.split("/");
+  return relativePath === "README.md"
+    || (!relativePath.includes("/") && relativePath.startsWith("CONTRIBUTING"))
+    || (segments[0] === "docs" && relativePath.endsWith(".md"))
+    || (segments[0] === "samples" && segments.length === 3 && segments[2] === "README.md")
+    || (segments[0] === "samples" && segments[2] === "docs" && relativePath.endsWith(".md"))
+    || (segments[0] === "packages" && segments.length === 3 && segments[2] === "README.md")
+    || (segments[0] === "packages" && segments[2] === "template" && segments[3] === "README.md");
+}
+
+function checkInternalUnitText(relativePath, text) {
+  for (const pattern of internalUnitPatterns) {
+    const match = text.match(pattern);
+    if (match) fail("internal-unit-vocabulary", `${relativePath} contains ${match[0]}`);
+  }
+  for (const match of text.matchAll(npmRunPattern)) {
+    if (/(?:^|:)g\d{2,3}(?::|$)/.test(match[1])) {
+      fail("internal-unit-vocabulary", `${relativePath} contains npm run ${match[1]}`);
+    }
+  }
+}
+
+function checkInternalUnitVocabulary(relativePath, text) {
+  if (relativePath.startsWith("docs/") && /^SDT-G\d+[-_]/.test(basename(relativePath))) {
+    fail("internal-unit-vocabulary", `${relativePath} carries an internal unit prefix`);
+  }
+  if (isPublicMarkdownPath(relativePath)) {
+    checkInternalUnitText(relativePath, text);
+    return;
+  }
+  if (!/^\.github\/workflows\/[^/]+\.yml$/.test(relativePath)) return;
+  for (const line of text.split("\n")) {
+    const commentIndex = line.indexOf("#");
+    if (commentIndex >= 0) checkInternalUnitText(relativePath, line.slice(commentIndex + 1));
+    const nameMatch = /^\s*name:\s*(.*?)\s*$/.exec(line);
+    if (nameMatch) checkInternalUnitText(relativePath, nameMatch[1]);
+    for (const match of line.matchAll(npmRunPattern)) {
+      if (/(?:^|:)g\d{2,3}(?::|$)/.test(match[1])) {
+        fail("internal-unit-vocabulary", `${relativePath} contains npm run ${match[1]}`);
+      }
+    }
+  }
+}
+
 function scanTree(repoRoot, options = {}) {
   const digests = options.forbiddenTokenDigests ?? forbiddenTokenDigests;
   const commits = options.forbiddenCommitDigests ?? legacyCommitDigests;
@@ -204,6 +254,7 @@ function scanTree(repoRoot, options = {}) {
     }
     const text = readFileSync(absolutePath, "utf8");
     checkText(relativePath, text, digests, commits);
+    checkInternalUnitVocabulary(relativePath, text);
     if (/^(.+\/)?wrangler[^/]*\.jsonc$/i.test(relativePath)) checkWrangler(relativePath, text);
   }
   return {
@@ -357,6 +408,37 @@ function runSelfTest() {
     })]]);
     repos.push(invalidPreviewPlaceholderRepo);
     expectFailure(invalidPreviewPlaceholderRepo, "wrangler-resource", selfTestOptions);
+    const internalUnitVocabularyAllowedRepo = makeSelfTestRepo([
+      ["README.md", [
+        "G7 and G1234 are outside the standalone boundary.",
+        "G65_SOURCE_REGISTRATION_BUDGET_MS is an environment-style identifier.",
+        "npm run test:g103-extra is outside the script-name boundary.",
+        "scripts/g72-trusted-publishing-guard.mjs and SDT_G28_FORCE_FAILURE are allowed forms.",
+        "The lowercase stored value g32 is also allowed.",
+      ].join("\\n")],
+      [".github/workflows/allowed.yml", [
+        "name: safe workflow",
+        "# G7 G1234 G65_SOURCE_REGISTRATION_BUDGET_MS",
+        "run: node scripts/g72-trusted-publishing-guard.mjs",
+        "run: npm run test:g103-extra",
+      ].join("\\n")],
+    ]);
+    repos.push(internalUnitVocabularyAllowedRepo);
+    scanTree(internalUnitVocabularyAllowedRepo, selfTestOptions);
+    const internalUnitVocabularyMutants = [
+      ["README.md", "npm run test:g103"],
+      ["README.md", "# SDT-G74"],
+      ["README.md", "G44"],
+      [".github/workflows/test.yml", "name: SDT-G59"],
+      [".github/workflows/test.yml", "# G40"],
+      [".github/workflows/test.yml", "run: npm run test:g64"],
+      ["docs/SDT-G12-example.md", "safe"],
+    ];
+    for (const [relativePath, contents] of internalUnitVocabularyMutants) {
+      const vocabularyRepo = makeSelfTestRepo([[relativePath, contents]]);
+      repos.push(vocabularyRepo);
+      expectFailure(vocabularyRepo, "internal-unit-vocabulary", selfTestOptions);
+    }
     const privateHostPathRepo = makeSelfTestRepo([["path.txt", internalHostPath]]);
     repos.push(privateHostPathRepo);
     expectFailure(privateHostPathRepo, "private-host-path", selfTestOptions);
@@ -433,6 +515,14 @@ function runSelfTest() {
         "replace-with-forbidden-resource-digest",
         "strict-placeholder-resource-value",
         "strict-preview-placeholder-resource-value",
+        "internal-unit-vocabulary-allowed",
+        "internal-unit-vocabulary-markdown-command",
+        "internal-unit-vocabulary-markdown-heading",
+        "internal-unit-vocabulary-markdown-prose",
+        "internal-unit-vocabulary-workflow-name",
+        "internal-unit-vocabulary-workflow-comment",
+        "internal-unit-vocabulary-workflow-command",
+        "internal-unit-vocabulary-doc-path",
         "private-host-path",
         "mixed-case-private-host-path",
         "legacy-pin-path",

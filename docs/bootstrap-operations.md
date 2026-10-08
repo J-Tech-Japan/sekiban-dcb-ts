@@ -1,4 +1,4 @@
-# SDT-G22 bootstrap operator lane
+# Bootstrap operator lane
 
 The operator endpoint is `/operator/bootstrap/{serviceId}/{plan|import|status|abort}`.
 It is bearer-protected with the deployment's existing operator secret; the raw

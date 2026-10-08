@@ -1,6 +1,6 @@
-# Publish only unpublished matched-set packages (SDT-G99)
+# Publish only unpublished matched-set packages
 
-# Steady-state auth is G72 trusted publishing (OIDC), same selection module as
+# Steady-state auth is trusted publishing through OIDC, using the same selection module as
 # release-dcb-matched-set.yml. When NPM_TRUSTED_PUBLISHING=true the publish step
 # unsets NODE_AUTH_TOKEN so npm CLI uses OIDC.
 #

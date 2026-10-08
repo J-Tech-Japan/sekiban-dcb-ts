@@ -1,4 +1,4 @@
-# SDT-G13 versioning contract
+# Package, protocol, and data versioning contract
 
 Consumers must treat these as four independent compatibility axes:
 

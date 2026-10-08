@@ -1,6 +1,6 @@
 # Sekiban.Dcb logical-event migration guide
 
-SDT-G32 makes the TypeScript runtime's stored event shape interoperable with
+The Sekiban compatibility migration makes the TypeScript runtime's stored event shape interoperable with
 Sekiban.Dcb. This guide covers offline export/import and rebuild work; it does
 not authorize a mixed old/new production service. Old `suid-` values sort after
 the new 30-digit form, so the meeting-room production change is a full wipe
@@ -77,7 +77,7 @@ new binding IDs, raw 5-endpoint conformance, raw V1 404, old-SUID rejection,
 and ten command-to-single-list-redraw samples.
 
 The **not applicable** preservation exception applies only to that completed
-one-time cutover. A later forward-only redeploy of the new G32 service must
+one-time cutover. A later forward-only redeploy of the new service must
 capture a pre-deploy witness set and prove that every captured row, head, and
 list entry remains present and semantically unchanged after deployment. It
 must retain the existing serviceId/D1/Queue/DO namespace and must not repeat

@@ -4,7 +4,7 @@
 
 - Publish the matched client/domain/core set with the G71 authority-backed read
   contract, list-only consistency lanes, and operation-specific read heads.
-- Migration from 0.1.x is documented in `docs/SDT-G71-migration.md`.
+- Migration from 0.1.x is documented in `docs/migration-0.1-to-0.2.md`.
 
 ## @sekiban/dcb-domain 0.1.1
 
