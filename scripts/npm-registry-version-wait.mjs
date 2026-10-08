@@ -23,7 +23,7 @@ function parseAttempts(value) {
 
 function parseIntervalSeconds(value) {
   const intervalSeconds = Number(value);
-  if (value === "" || !Number.isFinite(intervalSeconds) || intervalSeconds < 0) {
+  if (!/^\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(intervalSeconds)) {
     fail(`--interval-seconds requires a finite non-negative number: ${value}`);
   }
   return intervalSeconds;
@@ -188,23 +188,27 @@ async function selfTest() {
   const visible = (version) => result({ stdout: JSON.stringify(version) });
   const e404 = result({ status: 1, stderr: "npm error code E404" });
   const manifests = { first: { version: "1.2.3" }, second: { version: "4.5.6" } };
-  const runScenario = (sequence, options = {}) => {
-    let calls = 0;
-    const sleeps = [];
-    const logs = [];
-    return waitForVersions({
-      packages: options.packages ?? ["first"],
-      attempts: options.attempts,
-      intervalSeconds: options.intervalSeconds,
-      runNpmView: (spec) => {
-        calls += 1;
-        if (options.specs) options.specs.push(spec);
-        return sequence[Math.min(calls - 1, sequence.length - 1)];
-      },
-      sleep: async (milliseconds) => sleeps.push(milliseconds),
-      log: (message) => logs.push(message),
-      readManifest: manifestReader(manifests),
-    }).then((value) => ({ value, calls, sleeps, logs }));
+  const runScenario = async (sequence, options = {}) => {
+    const observed = { value: null, error: null, calls: 0, sleeps: [], logs: [] };
+    try {
+      observed.value = await waitForVersions({
+        packages: options.packages ?? ["first"],
+        attempts: options.attempts,
+        intervalSeconds: options.intervalSeconds,
+        runNpmView: (spec) => {
+          observed.calls += 1;
+          if (options.specs) options.specs.push(spec);
+          return sequence[Math.min(observed.calls - 1, sequence.length - 1)];
+        },
+        sleep: async (milliseconds) => observed.sleeps.push(milliseconds),
+        log: (message) => observed.logs.push(message),
+        readManifest: manifestReader(manifests),
+      });
+    } catch (error) {
+      observed.error = error;
+    }
+    if (!options.expectFailure && observed.error) throw observed.error;
+    return observed;
   };
 
   const first = await runScenario([visible("1.2.3")]);
@@ -217,21 +221,30 @@ async function selfTest() {
   assert.deepEqual(delayed.sleeps, [15000, 15000, 15000]);
   proofs.e404ThenVisible = { attempts: delayed.calls, sleeps: delayed.sleeps };
 
-  const exhausted = [];
-  await assert.rejects(
-    () => runScenario(Array.from({ length: 12 }, () => e404)),
-    (error) => {
-      exhausted.push(error.message);
-      return error instanceof Error
-        && error.message.includes("@sekiban/first@1.2.3")
-        && error.message.includes("12 attempts")
-        && error.message.includes("status=1")
-        && error.message.includes("npm error code E404")
-        && error.message.includes("publish step had already completed");
-    },
-  );
-  assert.equal(exhausted.length, 1);
-  proofs.exhausted = { attempts: 12, sleeps: 11, message: exhausted[0] };
+  const terminal = result({
+    status: null,
+    signal: "SIGTERM",
+    error: new Error("spawn npm ETIMEDOUT"),
+    stdout: "partial",
+    stderr: "npm error code E404",
+  });
+  const exhausted = await runScenario([...Array.from({ length: 11 }, () => e404), terminal], { expectFailure: true });
+  assert.ok(exhausted.error instanceof Error, "exhausted attempts must fail");
+  assert.equal(exhausted.calls, 12);
+  assert.deepEqual(exhausted.sleeps, Array.from({ length: 11 }, () => 15000));
+  for (const expected of [
+    "@sekiban/first@1.2.3",
+    "after 12 attempts",
+    "status=null",
+    "signal=SIGTERM",
+    "spawn error=spawn npm ETIMEDOUT",
+    'stdout="partial"',
+    'stderr="npm error code E404"',
+    "publish step had already completed",
+  ]) {
+    assert.ok(exhausted.error.message.includes(expected), `exhaustion message lacks ${expected}`);
+  }
+  proofs.exhausted = { attempts: exhausted.calls, sleeps: exhausted.sleeps.length, message: exhausted.error.message };
 
   const spawnThenVisible = await runScenario([result({ status: null, error: new Error("network down") }), visible("1.2.3")]);
   assert.equal(spawnThenVisible.calls, 2);
@@ -267,6 +280,9 @@ async function selfTest() {
     ["--interval-seconds", "-1"],
     ["--interval-seconds", "abc"],
     ["--interval-seconds", "Infinity"],
+    ["--interval-seconds", " "],
+    ["--interval-seconds", "\t"],
+    ["--interval-seconds", "0x10"],
     ["--attempts", "2", "--attempts", "3"],
     ["--interval-seconds", "1", "--interval-seconds", "2"],
     ["--unknown"],
@@ -279,9 +295,9 @@ async function selfTest() {
   proofs.workflowShape = { publishingBranches: 2, dryRunCalls: 0, npmViewCalls: 0 };
 
   const waitCall = 'node scripts/npm-registry-version-wait.mjs "${packages[@]}"';
-  const mutant = workflow.replaceAll(waitCall, 'for package in "${packages[@]}"; do npm view "@sekiban/${package}" version; done');
+  const mutant = workflow.replace(waitCall, `${waitCall}\n              for package in "\${packages[@]}"; do npm view "@sekiban/\${package}" version; done`);
   assert.notEqual(mutant, workflow);
-  assert.throws(() => assertWorkflowShape(mutant), /workflow/);
+  assert.throws(() => assertWorkflowShape(mutant), /workflow still contains npm view/);
   proofs.workflowMutantRejected = true;
 
   console.log(JSON.stringify({ result: "npm-registry-version-wait-self-test-passed", proofs }, null, 2));
