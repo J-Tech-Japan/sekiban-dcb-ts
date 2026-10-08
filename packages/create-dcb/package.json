@@ -12,7 +12,7 @@
   "homepage": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/tree/main/packages/create-dcb#readme",
   "type": "module",
   "engines": { "node": ">=20" },
-  "bin": { "create-dcb": "./bin/create-dcb.mjs" },
+  "bin": { "create-dcb": "bin/create-dcb.mjs" },
   "files": ["bin", "template", "README.md", "LICENSE"],
   "scripts": {},
   "publishConfig": { "access": "public", "provenance": true }

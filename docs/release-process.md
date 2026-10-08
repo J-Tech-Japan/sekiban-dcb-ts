@@ -54,8 +54,8 @@ permissions for trusted publishing. See the [npm trusted publishing
 documentation](https://docs.npmjs.com/trusted-publishers/) for the npm-side
 form and OIDC model.
 
-After all four registrations succeed, set the repository Actions variable
-`NPM_TRUSTED_PUBLISHING` to the exact string `true`:
+After all four matched-set registrations succeed, set the repository Actions
+variable `NPM_TRUSTED_PUBLISHING` to the exact string `true`:
 
 1. Open the repository on GitHub.
 2. Go to **Settings → Secrets and variables → Actions → Variables**.
@@ -67,6 +67,32 @@ After all four registrations succeed, set the repository Actions variable
 This implementation does not register publishers, set variables, delete
 secrets, push tags, or publish packages.
 
+### Starter-package registration
+
+The starter packages use a separate trusted-publisher registration. Register
+each publisher on its package access page:
+
+- [`@sekiban/dcb-cloudflare` access settings](https://www.npmjs.com/package/@sekiban/dcb-cloudflare/access)
+- [`@sekiban/create-dcb` access settings](https://www.npmjs.com/package/@sekiban/create-dcb/access)
+
+On each page, open **Trusted publishing**, choose **GitHub Actions**, and enter
+these exact values:
+
+| npm field | Value |
+| --- | --- |
+| Organization or user | `J-Tech-Japan` |
+| Repository | `sekiban-dcb-ts` |
+| Workflow filename | `publish-dcb-unpublished.yml` |
+| Environment name | leave empty |
+| Allowed action | allow direct `npm publish` for this workflow |
+
+The starter packages are registered with `publish-dcb-unpublished.yml`, not
+`release-dcb-matched-set.yml`. npm requires a newly created trusted-publisher
+configuration to complete its first successful publish within two days or it
+expires, so register each starter package's publisher shortly before
+dispatching its first later version. If a configuration expires, delete it
+and recreate it before retrying.
+
 ## Starter packages
 
 `@sekiban/dcb-cloudflare` and `@sekiban/create-dcb` are published through
@@ -75,15 +101,42 @@ is selected, the workflow runs `npm run test:starter-cold-install` before any
 publish command. The gate proves creation, installation, typechecking, and a
 Wrangler dry-run from packed artifacts outside the repository.
 
-Trusted publishing requires an existing npm package, so the first publish of
-each starter package is a maintainer-controlled action. This document does
-not prescribe the method for that first publish.
+Both starter packages exist on npm. Their first versions, `0.1.0`, were
+published by a maintainer from a local checkout, carry no provenance, and stay
+unchanged because published versions are immutable. The normalized bin paths
+and provenance therefore first reach npm in a later version. Trusted
+publishing requires an existing npm package, so the first publish of any new
+package remains a maintainer-controlled action.
 
-After a starter package is published, run:
+For a later starter release, use this procedure:
 
-```sh
-npm run test:starter-cold-install -- --source registry
-```
+1. In a reviewed pull request, bump the version of each starter package being
+   released and update `package-lock.json`. If the new
+   `@sekiban/dcb-cloudflare` version is outside the range declared for it in
+   `packages/create-dcb/template/package.json`, update that range, bump
+   `@sekiban/create-dcb`, and release both packages. The pre-publish check
+   rejects a generated dependency range that the packed helper version does
+   not satisfy.
+2. After the pull request is merged, dispatch
+   `.github/workflows/publish-dcb-unpublished.yml` with the `packages` input
+   naming the package directories to release, for example
+   `dcb-cloudflare create-dcb`.
+3. Verify that the workflow builds, runs the pack-mode starter cold-install
+   check before any publish command, and publishes in allowlist order:
+   `dcb-cloudflare` before `create-dcb`. A version already on npm is skipped
+   rather than republished, so a dispatch without a version bump publishes
+   nothing.
+4. Verify that the log contains
+   `authentication branch: trusted-publishing (GitHub Actions OIDC; NPM_TOKEN omitted)`
+   and that each newly published version, not `0.1.0`, shows provenance on its
+   npm page. Then run:
+
+   ```sh
+   npm run test:starter-cold-install -- --source registry
+   ```
+
+Starter-package releases use manual workflow dispatch with the `packages`
+input; there is no starter-package tag procedure.
 
 ## Visibility-driven provenance policy
 
