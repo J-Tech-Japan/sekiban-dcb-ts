@@ -125,7 +125,12 @@ For a later starter release, use this procedure:
    check before any publish command, and publishes in allowlist order:
    `dcb-cloudflare` before `create-dcb`. A version already on npm is skipped
    rather than republished, so a dispatch without a version bump publishes
-   nothing.
+   nothing. After publishing, the workflow waits up to about three minutes for
+   each new version to be readable from the npm registry. A failure there comes
+   after the publish step completed: the version may still be propagating or
+   the registry read may have failed, so check
+   `npm view <package>@<version> version` and re-dispatch only if the version is
+   absent.
 4. Verify that the log contains
    `authentication branch: trusted-publishing (GitHub Actions OIDC; NPM_TOKEN omitted)`
    and that each newly published version, not `0.1.0`, shows provenance on its
