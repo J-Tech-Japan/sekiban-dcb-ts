@@ -99,19 +99,13 @@ jobs:
               echo "authentication branch: trusted-publishing (GitHub Actions OIDC; NPM_TOKEN omitted)"
               UNSET_NODE_AUTH_TOKEN=true PRIVATE_REPOSITORY="${PRIVATE_REPOSITORY}" \
                 node scripts/dcb-matched-set-publish-unpublished.mjs "${packages[@]}"
-              for package in "${packages[@]}"; do
-                version="$(node -p "require('./packages/${package}/package.json').version")"
-                npm view "@sekiban/${package}@${version}" version
-              done
+              node scripts/npm-registry-version-wait.mjs "${packages[@]}"
               ;;
             token)
               echo "authentication branch: token (legacy fallback only; not the AC1 product path)"
               PRIVATE_REPOSITORY="${PRIVATE_REPOSITORY}" \
                 node scripts/dcb-matched-set-publish-unpublished.mjs "${packages[@]}"
-              for package in "${packages[@]}"; do
-                version="$(node -p "require('./packages/${package}/package.json').version")"
-                npm view "@sekiban/${package}@${version}" version
-              done
+              node scripts/npm-registry-version-wait.mjs "${packages[@]}"
               ;;
             credential-free-dry-run)
               echo "authentication branch: credential-free-dry-run"
