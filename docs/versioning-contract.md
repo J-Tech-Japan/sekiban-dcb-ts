@@ -1,4 +1,4 @@
-# Package, protocol, and data versioning contract
+# Versioning contract
 
 Consumers must treat these as four independent compatibility axes:
 

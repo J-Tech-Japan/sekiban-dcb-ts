@@ -221,11 +221,22 @@ function checkInternalUnitVocabulary(relativePath, text) {
     return;
   }
   if (!/^\.github\/workflows\/[^/]+\.yml$/.test(relativePath)) return;
+  // A `name:` value may continue on more-indented lines (block or plain multi-line scalars).
+  let nameKeyColumn = -1;
   for (const line of text.split("\n")) {
+    const indent = line.length - line.trimStart().length;
+    if (nameKeyColumn >= 0 && (line.trim() === "" || indent > nameKeyColumn)) {
+      checkInternalUnitText(relativePath, line);
+    } else {
+      nameKeyColumn = -1;
+    }
     const commentIndex = line.indexOf("#");
     if (commentIndex >= 0) checkInternalUnitText(relativePath, line.slice(commentIndex + 1));
-    const nameMatch = /^\s*name:\s*(.*?)\s*$/.exec(line);
-    if (nameMatch) checkInternalUnitText(relativePath, nameMatch[1]);
+    const nameMatch = /^(\s*(?:-\s+)?)name:\s*(.*?)\s*$/.exec(line);
+    if (nameMatch) {
+      checkInternalUnitText(relativePath, nameMatch[2]);
+      nameKeyColumn = nameMatch[1].length;
+    }
     for (const match of line.matchAll(npmRunPattern)) {
       if (/(?:^|:)g\d{2,3}(?::|$)/.test(match[1])) {
         fail("internal-unit-vocabulary", `${relativePath} contains npm run ${match[1]}`);
@@ -415,13 +426,22 @@ function runSelfTest() {
         "npm run test:g103-extra is outside the script-name boundary.",
         "scripts/g72-trusted-publishing-guard.mjs and SDT_G28_FORCE_FAILURE are allowed forms.",
         "The lowercase stored value g32 is also allowed.",
-      ].join("\\n")],
+      ].join("\n")],
       [".github/workflows/allowed.yml", [
         "name: safe workflow",
+        "on: push",
+        "jobs:",
+        "  build:",
+        "    name: >-",
+        "      Build the safe workflow",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Run checks",
+        "        run: echo G7",
         "# G7 G1234 G65_SOURCE_REGISTRATION_BUDGET_MS",
         "run: node scripts/g72-trusted-publishing-guard.mjs",
         "run: npm run test:g103-extra",
-      ].join("\\n")],
+      ].join("\n")],
     ]);
     repos.push(internalUnitVocabularyAllowedRepo);
     scanTree(internalUnitVocabularyAllowedRepo, selfTestOptions);
@@ -430,6 +450,8 @@ function runSelfTest() {
       ["README.md", "# SDT-G74"],
       ["README.md", "G44"],
       [".github/workflows/test.yml", "name: SDT-G59"],
+      [".github/workflows/test.yml", "name: >-\n  SDT-G59 folded workflow"],
+      [".github/workflows/test.yml", "jobs:\n  build:\n    steps:\n      - name: Run the\n          G59 checks"],
       [".github/workflows/test.yml", "# G40"],
       [".github/workflows/test.yml", "run: npm run test:g64"],
       ["docs/SDT-G12-example.md", "safe"],
@@ -520,6 +542,8 @@ function runSelfTest() {
         "internal-unit-vocabulary-markdown-heading",
         "internal-unit-vocabulary-markdown-prose",
         "internal-unit-vocabulary-workflow-name",
+        "internal-unit-vocabulary-workflow-block-name",
+        "internal-unit-vocabulary-workflow-continued-name",
         "internal-unit-vocabulary-workflow-comment",
         "internal-unit-vocabulary-workflow-command",
         "internal-unit-vocabulary-doc-path",
