@@ -212,7 +212,7 @@ async function registryProof() {
   const fixtureDir = join(root, "scripts/fixtures/g102-registry-consumer");
   const workerSource = await readFile(join(fixtureDir, "worker.ts"), "utf8");
   const wranglerText = await readFile(join(fixtureDir, "wrangler.jsonc"), "utf8");
-  if (workerSource.includes("@sekiban/dcb-cloudflare")) fail("fixture must not import the unpublished helper");
+  if (workerSource.includes("@sekiban/dcb-cloudflare")) fail("fixture is matched-set only and must not import the optional helper");
   if (wranglerText.includes(liveWorker)) fail("fixture must not name the live worker");
   if (!workerSource.includes('pathname === "/app"')) fail("fixture is missing its own /app route");
   const dir = await mkdtemp(join(tmpdir(), "sdt-g102-"));

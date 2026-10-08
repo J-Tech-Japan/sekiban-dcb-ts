@@ -321,7 +321,7 @@ async function registryAndHelperInstall(project, helperPack) {
   const helper = helperTree.dependencies?.["@sekiban/dcb-cloudflare"];
   assert(helper !== undefined, "packed helper was not installed");
   const helperInfo = installedPackage(project, "@sekiban/dcb-cloudflare");
-  assert(helperInfo.version === "0.1.0", `packed helper resolved to ${helperInfo.version}`);
+  assert(helperInfo.version === "0.1.1", `packed helper resolved to ${helperInfo.version}`);
   assert(existsSync(join(project, "node_modules", ".bin", "dcb-cloudflare")), "packed helper did not install its CLI bin");
   assert(existsSync(join(project, "node_modules", "wrangler", "bin", "wrangler.js")), "project-local wrangler was not installed");
   assert(existsSync(join(project, "node_modules", ".bin", "wrangler")), "project-local wrangler bin is missing");
