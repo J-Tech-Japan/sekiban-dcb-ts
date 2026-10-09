@@ -412,38 +412,103 @@ function parseLastJson(output, label) {
   }
 }
 
-function assertDeployCheckReceipt(receipt) {
-  assert(receipt.bundle?.projectLocalWrangler === true, "deploy:check did not report project-local Wrangler");
-  assert(receipt.bundle?.dryRun === true, "deploy:check did not report dry-run");
-  assert(receipt.bundle?.createRoom === true && receipt.bundle?.reserveRoom === true, "deploy:check receipt omitted booking markers");
-  assert(receipt.placeholders?.status === "fresh-template", "deploy:check did not report fresh placeholder mode");
-  const locations = receipt.placeholders.locations ?? [];
-  assert(locations.length === 2, "deploy:check did not report both D1 placeholders");
-  for (const location of locations) {
-    assert(location.path.includes("d1_databases[binding=") && location.databaseName && location.creationCommand && location.replacement, "deploy:check placeholder report is incomplete");
-  }
-  assert(Array.isArray(receipt.migrationFileCounts) && receipt.migrationFileCounts.every((entry) => entry.files > 0), "deploy:check migration counts are not measured");
-  assert(Array.isArray(receipt.topology), "deploy:check receipt omitted topology");
-  const topologyKinds = receipt.topology.reduce((counts, entry) => {
-    counts[entry.kind] = (counts[entry.kind] ?? 0) + 1;
-    return counts;
-  }, {});
-  const expectedTopologyKinds = {
-    d1: 2,
-    "queue-producer": 1,
-    "queue-consumer": 1,
-    "durable-object": 5,
-    "durable-migration": 3,
-    assets: 1,
-    cron: 1,
-    var: 2,
+function canonical(value) {
+  return JSON.stringify(value);
+}
+
+function receiptTopology(authority) {
+  return [
+    ...authority.d1.map((entry) => ({
+      kind: "d1", binding: entry.binding, databaseName: entry.databaseName, migrationsDir: entry.migrationsDir,
+    })),
+    ...authority.queues.producers.map((entry) => ({
+      kind: "queue-producer", binding: entry.binding, queue: entry.queue,
+    })),
+    ...authority.queues.consumers.map((entry) => ({
+      kind: "queue-consumer",
+      queue: entry.queue,
+      maxBatchTimeout: entry.maxBatchTimeout,
+      maxRetries: entry.maxRetries,
+      deadLetterQueue: entry.deadLetterQueue,
+    })),
+    ...authority.durableObjects.bindings.map((entry) => ({
+      kind: "durable-object", name: entry.name, className: entry.className,
+    })),
+    ...authority.durableObjects.migrations.map((entry) => ({
+      kind: "durable-migration", tag: entry.tag, newSqliteClasses: entry.newSqliteClasses,
+    })),
+    { kind: "assets", directory: authority.assets.directory },
+    ...authority.triggers.crons.map((cron) => ({ kind: "cron", cron })),
+    ...Object.entries(authority.vars).map(([name, value]) => ({ kind: "var", name, value })),
+  ].sort((left, right) => canonical(left).localeCompare(canonical(right)));
+}
+
+export function validateDeployCheckReceipt(receipt, authority) {
+  const receiptAssert = (condition, message) => {
+    if (!condition) throw new Error(message);
   };
-  assert(
-    JSON.stringify(Object.entries(topologyKinds).sort()) === JSON.stringify(Object.entries(expectedTopologyKinds).sort()),
-    "deploy:check topology receipt is incomplete",
+  receiptAssert(receipt.bundle?.projectLocalWrangler === true, "project-local Wrangler proof is missing");
+  receiptAssert(receipt.bundle?.dryRun === true, "dry-run proof is missing");
+  receiptAssert(
+    receipt.bundle?.createRoom === true && receipt.bundle?.reserveRoom === true,
+    "booking markers are missing",
   );
-  assert(!JSON.stringify(receipt).match(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i), "deploy:check receipt exposed a configured resource ID");
-  return { status: "passed", placeholders: locations.map((entry) => entry.binding), markers: ["create-room", "reserve-room"] };
+  receiptAssert(receipt.placeholders?.status === "fresh-template", "fresh-template placeholder proof is missing");
+  const locations = receipt.placeholders.locations;
+  const expectedLocations = authority.d1.map((entry) => ({
+    binding: entry.binding,
+    path: entry.placeholderPath,
+    databaseName: entry.databaseName,
+    creationCommand: entry.creationCommand,
+    replacement: entry.replacement,
+  })).sort((left, right) => left.binding.localeCompare(right.binding));
+  receiptAssert(
+    canonical(locations) === canonical(expectedLocations),
+    "placeholder records do not match generated authority",
+  );
+  receiptAssert(
+    canonical(receipt.topology) === canonical(receiptTopology(authority)),
+    "receipt topology does not match generated authority",
+  );
+  receiptAssert(
+    Array.isArray(receipt.migrationFileCounts) && receipt.migrationFileCounts.every((entry) => entry.files > 0),
+    "migration counts are not measured",
+  );
+  receiptAssert(
+    !JSON.stringify(receipt).match(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i),
+    "receipt exposed a configured resource ID",
+  );
+}
+
+function assertDeployCheckReceipt(receipt, authority) {
+  try {
+    validateDeployCheckReceipt(receipt, authority);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+  const locations = receipt.placeholders.locations;
+  return {
+    status: "passed",
+    placeholders: locations.map((entry) => entry.binding),
+    markers: ["create-room", "reserve-room"],
+  };
+}
+
+function assertReceiptBindingMutationFails(receipt, authority) {
+  const mutant = structuredClone(receipt);
+  const d1 = mutant.topology.find((entry) => entry.kind === "d1");
+  assert(d1 !== undefined, "receipt mutation fixture is missing a D1 row");
+  d1.binding = "RECEIPT_DRIFT";
+  const location = mutant.placeholders.locations.find((entry) => entry.binding === "D1");
+  assert(location !== undefined, "receipt mutation fixture is missing the D1 placeholder");
+  location.binding = "RECEIPT_DRIFT";
+  let failed = false;
+  try {
+    validateDeployCheckReceipt(mutant, authority);
+  } catch {
+    failed = true;
+  }
+  assert(failed, "receipt binding mutant unexpectedly passed");
 }
 
 function applyLocalPipelineMigration(project, proofRoot, pipelineName) {
@@ -496,7 +561,10 @@ async function main() {
     const selfTest = run("npm", ["run", "deploy:check", "--", "--self-test"], { cwd: project, env: cloudflareSafeEnvironment() });
     assert(selfTest.stdout.includes("deploy-check-self-test-passed"), "generated deploy-check self-test did not pass");
     const deployCheckOutput = run("npm", ["run", "deploy:check"], { cwd: project, env: cloudflareSafeEnvironment() });
-    const deployCheck = assertDeployCheckReceipt(parseLastJson(deployCheckOutput.stdout, "deploy:check"));
+    const deployReceipt = parseLastJson(deployCheckOutput.stdout, "deploy:check");
+    const authority = packageJson(join(project, "deployment-topology.json"));
+    const deployCheck = assertDeployCheckReceipt(deployReceipt, authority);
+    assertReceiptBindingMutationFails(deployReceipt, authority);
 
     process.stdout.write(`${JSON.stringify({
       result: "g103-create-starter-check-passed",
@@ -524,7 +592,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  main().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}

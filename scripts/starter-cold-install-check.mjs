@@ -6,6 +6,7 @@ import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateDeployCheckReceipt } from "./g103-create-starter.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const registry = "https://registry.npmjs.org/";
@@ -320,9 +321,26 @@ function finishInstall(work, env, mode, artifact, receipt) {
   if (gate === "node scripts/deploy-check.mjs") {
     const result = run("npm", ["run", "deploy:check"], { cwd: project, env });
     const gateReceipt = parseLastJson(result.stdout, "deploy:check");
-    assert(gateReceipt.bundle?.projectLocalWrangler === true && gateReceipt.bundle?.dryRun === true, "deploy:check receipt omitted dry-run proof");
-    assert(gateReceipt.bundle?.createRoom === true && gateReceipt.bundle?.reserveRoom === true, "deploy:check receipt omitted booking markers");
-    assert((gateReceipt.placeholders?.locations ?? []).length === 2, "deploy:check receipt omitted placeholder reports");
+    const authority = packageJson(join(project, "deployment-topology.json"));
+    try {
+      validateDeployCheckReceipt(gateReceipt, authority);
+    } catch (error) {
+      fail(`deploy:check receipt is invalid: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const receiptMutant = structuredClone(gateReceipt);
+    const d1 = receiptMutant.topology.find((entry) => entry.kind === "d1");
+    assert(d1 !== undefined, "deploy:check receipt mutation fixture is missing a D1 row");
+    d1.binding = "RECEIPT_DRIFT";
+    const location = receiptMutant.placeholders.locations.find((entry) => entry.binding === "D1");
+    assert(location !== undefined, "deploy:check receipt mutation fixture is missing the D1 placeholder");
+    location.binding = "RECEIPT_DRIFT";
+    let mutantRejected = false;
+    try {
+      validateDeployCheckReceipt(receiptMutant, authority);
+    } catch {
+      mutantRejected = true;
+    }
+    assert(mutantRejected, "deploy:check receipt accepted a D1 binding mutant");
     receipt.gate = "public-deploy-check";
   } else {
     const outdir = join(work, "legacy-dry-run");

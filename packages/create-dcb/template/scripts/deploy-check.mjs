@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global process, structuredClone */
+/* global process, structuredClone, URL */
 
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
@@ -534,8 +534,9 @@ function workerStructure(authority, source, label) {
     inspect(node);
     return found;
   }
-  function runtimeProperty(node, names) {
-    return ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && names.has(node.expression.text);
+  function runtimeProperty(node, names, member) {
+    return ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) &&
+      names.has(node.expression.text) && node.name.text === member;
   }
   function visit(node) {
     if (ts.isExportDeclaration(node) && node.moduleSpecifier?.text === "@sekiban/dcb-cloudflare" && ts.isNamedExports(node.exportClause)) {
@@ -569,9 +570,11 @@ function workerStructure(authority, source, label) {
     if (property.name.text === "sekiban" && ts.isObjectLiteralExpression(property.initializer)) {
       for (const entry of property.initializer.properties) {
         if (!ts.isPropertyAssignment(entry) || !ts.isIdentifier(entry.name)) continue;
-        if (entry.name.text === "fetch") handlers.fetch = runtimeProperty(entry.initializer, runtimeNames);
-        if (entry.name.text === "queue") handlers.queue = runtimeProperty(entry.initializer, runtimeNames);
-        if (entry.name.text === "scheduled") handlers.scheduled = runtimeProperty(entry.initializer, runtimeNames);
+        if (entry.name.text === "fetch") handlers.fetch = runtimeProperty(entry.initializer, runtimeNames, "fetch");
+        if (entry.name.text === "queue") handlers.queue = runtimeProperty(entry.initializer, runtimeNames, "queue");
+        if (entry.name.text === "scheduled") {
+          handlers.scheduled = runtimeProperty(entry.initializer, runtimeNames, "scheduled");
+        }
       }
     }
   }
@@ -680,6 +683,39 @@ function parseRunbookRows(text) {
   return rows;
 }
 
+function parseSmokeCurlCommands(text) {
+  const commands = [];
+  let pending = "";
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("curl ")) pending = trimmed;
+    else if (pending.length > 0) pending += ` ${trimmed}`;
+    else continue;
+    if (!pending.endsWith("\\")) {
+      commands.push(pending);
+      pending = "";
+    }
+  }
+  assert(pending.length === 0, "smoke-route-parity");
+  return commands.map((command) => {
+    const url = command.match(/"\$BASE_URL([^"]+)"/);
+    assert(url !== null, "smoke-route-parity");
+    const parsed = new URL(`https://smoke.invalid${url[1]}`);
+    const bodyMatch = command.match(/\s-d\s+'([^']+)'/);
+    let bodyKeys = [];
+    if (bodyMatch !== null) {
+      try {
+        const body = JSON.parse(bodyMatch[1]);
+        assert(body !== null && typeof body === "object" && !Array.isArray(body), "smoke-body-parity");
+        bodyKeys = Object.keys(body).sort();
+      } catch {
+        fail("smoke-body-parity");
+      }
+    }
+    return { path: parsed.pathname, queryKeys: [...parsed.searchParams.keys()].sort(), bodyKeys };
+  });
+}
+
 function compareSmokeContract(text) {
   const routesSource = readFileSync(join(project, "src/booking-routes.ts"), "utf8");
   const transportSource = readFileSync(join(project, "src/booking-transport.ts"), "utf8");
@@ -701,18 +737,41 @@ function compareSmokeContract(text) {
     /const reservationInput\s*=\s*z\.object\(\{[\s\S]*roomId[\s\S]*reservationId/.test(domainSource),
     "smoke-source-body",
   );
-  assert(text.includes("$BASE_URL/api/commands/create-room"), "smoke-route-parity");
-  assert(text.includes("$BASE_URL/api/commands/reserve-room"), "smoke-route-parity");
-  assert(text.includes("$BASE_URL/api/read/room?roomId="), "smoke-route-parity");
-  assert(text.includes("$BASE_URL/api/read/reservation?reservationId="), "smoke-route-parity");
-  assert(text.includes(`-d '{"roomId":"room-smoke-<fresh>","name":"Smoke room"}'`), "smoke-body-parity");
+  const documented = parseSmokeCurlCommands(text);
+  const commandIds = [...transportSource.matchAll(/case\s+"([^"]+)":\s+return/g)].map((match) => match[1]);
+  const generatedCommandPaths = new Set(commandIds.map((id) => `/api/commands/${id}`));
+  const generatedReadRoutes = new Map([
+    ["/api/read/room", ["roomId"]],
+    ["/api/read/reservation", ["reservationId"]],
+  ]);
+  const generatedBodyKeys = new Map([
+    ["create-room", ["name", "roomId"]],
+    ["reserve-room", ["reservationId", "roomId"]],
+  ]);
+  assert(documented.length === 4, "smoke-route-parity");
   assert(
-    text.includes(`-d '{"roomId":"room-smoke-<fresh>","reservationId":"reservation-smoke-<fresh>"}'`),
-    "smoke-body-parity",
+    canonical(documented.map((request) => request.path).sort()) === canonical([
+      "/api/commands/create-room",
+      "/api/commands/reserve-room",
+      "/api/read/room",
+      "/api/read/reservation",
+    ].sort()),
+    "smoke-route-parity",
   );
-  assert(!text.includes("$BASE_URL/api/command\""), "smoke-route-parity");
+  for (const request of documented) {
+    if (generatedCommandPaths.has(request.path)) {
+      const commandId = request.path.slice("/api/commands/".length);
+      assert(request.queryKeys.length === 0, "smoke-route-parity");
+      assert(canonical(request.bodyKeys) === canonical(generatedBodyKeys.get(commandId)), "smoke-body-parity");
+      continue;
+    }
+    const queryKeys = generatedReadRoutes.get(request.path);
+    assert(queryKeys !== undefined, "smoke-route-parity");
+    assert(canonical(request.queryKeys) === canonical(queryKeys), "smoke-route-parity");
+    assert(request.bodyKeys.length === 0, "smoke-body-parity");
+  }
   return {
-    routes: ["/api/commands/create-room", "/api/commands/reserve-room", "/api/read/room", "/api/read/reservation"],
+    routes: documented.map((request) => request.path),
     bodyKeys: ["roomId", "name", "reservationId"],
   };
 }
@@ -851,6 +910,9 @@ function selfTest() {
       structuredClone(candidate.config.queues.producers[0]),
     )),
   )));
+  checks.push(expectFailure("queue-producer-parity", () => validate(
+    mutate((candidate) => candidate.config.queues.producers.push({ binding: "EXTRA_QUEUE", queue: "extra-queue" })),
+  )));
   checks.push(expectFailure("durable-object-parity", () => validate(
     mutate((candidate) => { candidate.config.durable_objects.bindings[0].class_name = "Changed"; }),
   )));
@@ -898,7 +960,18 @@ function selfTest() {
   checks.push(expectFailure("worker-handler-registration", () => {
     const mutant = workerText.replace("    scheduled: runtime.scheduled,\n", "");
     const structure = workerStructure(baseline.authority, mutant, "missing-handler-mutant.ts");
-    assert(structure.handlers.application && structure.handlers.fetch && structure.handlers.queue && structure.handlers.scheduled, "worker-handler-registration");
+    assert(
+      structure.handlers.application && structure.handlers.fetch && structure.handlers.queue && structure.handlers.scheduled,
+      "worker-handler-registration",
+    );
+  }));
+  checks.push(expectFailure("worker-handler-registration", () => {
+    const mutant = workerText.replace("    scheduled: runtime.scheduled,\n", "    scheduled: runtime.fetch,\n");
+    const structure = workerStructure(baseline.authority, mutant, "wrong-handler-mutant.ts");
+    assert(
+      structure.handlers.application && structure.handlers.fetch && structure.handlers.queue && structure.handlers.scheduled,
+      "worker-handler-registration",
+    );
   }));
   checks.push(expectFailure("durable-migration-parity", () => validate(mutate((candidate) => {
     candidate.config.migrations[0].new_sqlite_classes[0] = "ChangedDurableObject";
@@ -932,6 +1005,10 @@ function selfTest() {
   checks.push(expectFailure("migration-path-escape", () => migrationCounts(mutate((candidate) => { candidate.authority.d1[0].migrationsDir = "../outside"; }).authority)));
   checks.push(expectFailure("runbook-topology-parity", () => compareRunbook(baseline.authority, baseline.runbook.replace("| worker |", "| changed |"))));
   checks.push(expectFailure("runbook-topology-parity", () => compareRunbook(baseline.authority, baseline.runbook.replace("| var | SDT_SERVICE_ID", "| var | removed-SDT_SERVICE_ID"))));
+  checks.push(expectFailure("smoke-route-parity", () => compareRunbook(
+    baseline.authority,
+    baseline.runbook.replace("/api/commands/create-room", "/api/commands/create-room-drift"),
+  )));
   checks.push(expectFailure("unknown-placeholder", () => {
     const config = structuredClone(baseline.config);
     config.d1_databases[0].database_id = "REPLACE_WITH_UNKNOWN";
