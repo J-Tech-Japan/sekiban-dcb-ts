@@ -1,0 +1,35 @@
+{
+  "contract": "sekiban-dcb-postgres-tag-rebuild",
+  "version": 1,
+  "schemas": {
+    "input": {
+      "format": "sekiban-dcb-postgres-tag-rebuild-input",
+      "keys": ["format", "version", "serviceId", "seal", "health", "summary", "events"],
+      "sealKeys": ["state", "canonicalization", "contentDigest", "sealedAtMs"],
+      "healthKeys": ["status", "scannerVersion", "lastFullScanAtMs", "staleAfterMs", "openFindingCount", "lastSettledFrontierSuid", "coveredEventCount", "coveredMembershipCount"],
+      "summaryKeys": ["eventCount", "declaredMembershipCount", "committedMembershipCount"],
+      "eventKeys": ["record", "digest", "declaredTagSet", "committedMembership"],
+      "recordKeys": ["serviceId", "id", "sortableUniqueId", "eventType", "payload", "tags", "timestamp", "causationId", "correlationId", "executedUser"],
+      "digestKeys": ["contract", "attemptId", "canonicalBytesBase64", "eventDigest", "allocatorLineageId"]
+    },
+    "correction": {
+      "format": "sekiban-dcb-postgres-tag-correction",
+      "keys": ["format", "version", "correctionId", "serviceId", "inputContentDigest", "reason", "addMembership"],
+      "additionKeys": ["eventId", "eventDigest", "tag"]
+    },
+    "dryRunReport": {
+      "format": "sekiban-dcb-postgres-tag-rebuild-dry-run",
+      "version": 1,
+      "keys": ["format", "version", "serviceId", "input", "correction", "target", "proposedMembership"]
+    },
+    "receipt": {
+      "format": "sekiban-dcb-postgres-tag-rebuild-receipt",
+      "version": 1,
+      "keys": ["format", "version", "rebuildId", "serviceId", "contractVersion", "appliedAt", "input", "correction", "target", "verification"]
+    },
+    "provenance": {
+      "columns": ["rebuild_id", "service_id", "contract_version", "input_file_sha256", "input_content_digest", "correction_manifest_sha256", "correction_manifest_json", "applied_at", "receipt_sha256", "receipt_json"]
+    }
+  },
+  "provenanceDdl": "CREATE TABLE IF NOT EXISTS dcb_tag_rebuild_provenance (rebuild_id TEXT PRIMARY KEY, service_id VARCHAR(64) NOT NULL UNIQUE, contract_version INTEGER NOT NULL CHECK (contract_version = 1), input_file_sha256 TEXT NOT NULL CHECK (input_file_sha256 ~ '^sha256:[0-9a-f]{64}$'), input_content_digest TEXT NOT NULL CHECK (input_content_digest ~ '^sha256:[0-9a-f]{64}$'), correction_manifest_sha256 TEXT NULL CHECK (correction_manifest_sha256 IS NULL OR correction_manifest_sha256 ~ '^sha256:[0-9a-f]{64}$'), correction_manifest_json TEXT NULL, applied_at TIMESTAMPTZ NOT NULL, receipt_sha256 TEXT NOT NULL CHECK (receipt_sha256 ~ '^sha256:[0-9a-f]{64}$'), receipt_json TEXT NOT NULL, CHECK ((correction_manifest_sha256 IS NULL) = (correction_manifest_json IS NULL)))"
+}

@@ -1,0 +1,14 @@
+{
+  "format": "sekiban-dcb-postgres-tag-rebuild-input",
+  "version": 1,
+  "serviceId": "sdt-g121-partial",
+  "seal": {"state":"SEALED","canonicalization":"utf8-json-sorted-keys-v1","contentDigest":"sha256:6fb2fb4923a61f7a90e1e84e1a91ff8750064de2f0c01a05b23c894d660b9952","sealedAtMs":1790000000000},
+  "health": {"status":"HEALTHY","scannerVersion":"fixture-1","lastFullScanAtMs":1790000000000,"staleAfterMs":300000,"openFindingCount":0,"lastSettledFrontierSuid":"063923011636102000000000000001","coveredEventCount":1,"coveredMembershipCount":1},
+  "summary": {"eventCount":1,"declaredMembershipCount":2,"committedMembershipCount":1},
+  "events": [{
+    "record": {"serviceId":"sdt-g121-partial","id":"018f9c51-6b74-7f5e-8ca1-0123456789ab","sortableUniqueId":"063923011636102000000000000001","eventType":"RoomReserved","payload":"{\"roomId\":\"room-1\"}","tags":["room:room-1","reservation:res-1"],"timestamp":"2026-08-22T17:00:00.1230000Z","causationId":null,"correlationId":null,"executedUser":null},
+    "digest": {"contract":"sekiban-dcb-ts/eventDigest/v2","attemptId":"attempt-partial-1","canonicalBytesBase64":"c2VraWJhbi1kY2ItdHMvZXZlbnREaWdlc3QvdjIAAQAAAAlzZXJ2aWNlSWQAAAAQc2R0LWcxMjEtcGFydGlhbAEAAAAHZXZlbnRJZAAAACQwMThmOWM1MS02Yjc0LTdmNWUtOGNhMS0wMTIzNDU2Nzg5YWIBAAAAEHNvcnRhYmxlVW5pcXVlSWQAAAAeMDYzOTIzMDExNjM2MTAyMDAwMDAwMDAwMDAwMDAxAQAAAAlldmVudFR5cGUAAAAMUm9vbVJlc2VydmVkAQAAAAl0aW1lc3RhbXAAAAAcMjAyNi0wOC0yMlQxNzowMDowMC4xMjMwMDAwWgEAAAASYWxsb2NhdG9yTGluZWFnZUlkAAAAEWxpbmVhZ2UtcGFydGlhbC0xAQAAAAlhdHRlbXB0SWQAAAARYXR0ZW1wdC1wYXJ0aWFsLTEBAAAADmRlY2xhcmVkVGFnU2V0AAAAJAAAABFyZXNlcnZhdGlvbjpyZXMtMQAAAAtyb29tOnJvb20tMQEAAAAHcGF5bG9hZAAAABN7InJvb21JZCI6InJvb20tMSJ9","eventDigest":"1fe4a4ca6cd336175a9da2b6d4bb2e82a8dd0744f540e1fda4ce2c2a2486286b","allocatorLineageId":"lineage-partial-1"},
+    "declaredTagSet": ["reservation:res-1","room:room-1"],
+    "committedMembership": ["room:room-1"]
+  }]
+}

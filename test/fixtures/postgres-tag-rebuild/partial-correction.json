@@ -1,0 +1,9 @@
+{
+  "format": "sekiban-dcb-postgres-tag-correction",
+  "version": 1,
+  "correctionId": "correction-partial-add-reservation",
+  "serviceId": "sdt-g121-partial",
+  "inputContentDigest": "sha256:6fb2fb4923a61f7a90e1e84e1a91ff8750064de2f0c01a05b23c894d660b9952",
+  "reason": "Restore the explicitly committed reservation membership.",
+  "addMembership": [{"eventId":"018f9c51-6b74-7f5e-8ca1-0123456789ab","eventDigest":"1fe4a4ca6cd336175a9da2b6d4bb2e82a8dd0744f540e1fda4ce2c2a2486286b","tag":"reservation:res-1"}]
+}

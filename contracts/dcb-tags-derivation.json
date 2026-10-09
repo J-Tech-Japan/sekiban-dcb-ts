@@ -1,6 +1,8 @@
 {
   "schemaVersion": 1,
   "authority": "Sekiban.Dcb rebuild-row derivation",
+  "usage": "compatibility-fixture-only",
+  "liveRebuild": "not-supported; use the sealed PostgreSQL tag rebuild command",
   "input": "dcb_events logical records sorted by (sortableUniqueId, tag)",
   "duplicates": "collapse one equal tag per event before assigning rebuild sequence",
   "tagGroup": "text before first ':'; otherwise whole tag",

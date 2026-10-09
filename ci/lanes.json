@@ -175,7 +175,7 @@
         "MSBUILDDISABLENODEREUSE": "1",
         "DOTNET_CLI_USE_MSBUILD_SERVER": "0"
       },
-      "affectedPaths": ["test/g32-*.ts", "scripts/g32-*.mjs", "tools/sekiban-parity/**", "scripts/g22-bootstrap-cosmos-contract.mjs", "scripts/store-contract.mjs"],
+      "affectedPaths": ["test/g32-*.ts", "scripts/g32-*.mjs", "tools/sekiban-parity/**", "scripts/g22-bootstrap-cosmos-contract.mjs", "scripts/store-contract.mjs", "tools/derive-dcb-tags/index.mjs", "contracts/dcb-tags-derivation.json"],
       "commands": [
         {"id": "g32-source", "command": "git clone --filter=blob:none https://github.com/J-Tech-Japan/Sekiban.git .artifacts/g40-sekiban-source && git -C .artifacts/g40-sekiban-source checkout --detach 855feaa93564fef54defec76e9ccff969d4ee01a"},
         {"id": "g32", "command": "npm run test:sekiban:parity"},
@@ -191,10 +191,11 @@
         "MSBUILDDISABLENODEREUSE": "1",
         "DOTNET_CLI_USE_MSBUILD_SERVER": "0"
       },
-      "affectedPaths": ["scripts/g33-live-cross.mjs", "tools/sekiban-live/**", "packages/dcb-runtime/src/store/PostgresEventStore.ts"],
+      "affectedPaths": ["scripts/g33-live-cross.mjs", "tools/sekiban-live/**", "packages/dcb-runtime/src/store/PostgresEventStore.ts", "tools/derive-dcb-tags/postgres-rebuild.mjs", "tools/derive-dcb-tags/postgres-rebuild.d.mts", "contracts/postgres-tag-rebuild.json", "test/postgres-tag-rebuild.spec.ts", "test/fixtures/postgres-tag-rebuild/**", "docs/migration-sekiban-dcb.md", "docs/domain-authoring.md", "package.json"],
       "commands": [
         {"id": "g33-source", "command": "git clone --filter=blob:none https://github.com/J-Tech-Japan/Sekiban.git .artifacts/g33-sekiban-source && git -C .artifacts/g33-sekiban-source checkout --detach 855feaa93564fef54defec76e9ccff969d4ee01a"},
-        {"id": "g33", "command": "npm run test:sekiban:live-cross"}
+        {"id": "g33", "command": "npm run test:sekiban:live-cross"},
+        {"id": "postgres-tag-rebuild", "command": "npm run test:postgres:tag-rebuild"}
       ]
     },
     {
