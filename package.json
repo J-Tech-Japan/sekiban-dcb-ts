@@ -35,7 +35,7 @@
     "test:local-pg": "docker compose up --wait postgres && npm test",
     "test:consumer": "npm run build:packages && node scripts/g13-consumer-fixture.mjs",
     "postgres:tags:rebuild": "node tools/derive-dcb-tags/postgres-rebuild.mjs",
-    "test:postgres:tag-rebuild": "npm run build:packages && vitest run --config vitest.config.ts test/postgres-tag-rebuild.spec.ts",
+    "test:postgres:tag-rebuild": "npm run build:packages && vitest run --config vitest.config.ts test/postgres-tag-rebuild.spec.ts && node --input-type=module -e \"import { spawnSync } from 'node:child_process'; const result = spawnSync(process.execPath, ['tools/derive-dcb-tags/index.mjs', 'service'], { encoding: 'utf8' }); if (result.status === 0 || !result.stderr.includes('npm run postgres:tags:rebuild')) process.exit(1);\"",
     "test:boundaries": "node scripts/g13-boundary-check.mjs",
     "test:allocator:lineage": "npm run build:packages && vitest run --config vitest.config.ts test/g17-lineage.spec.ts",
     "test:cloudflare:composition:gate": "node scripts/g20-cloudflare-gate.mjs",

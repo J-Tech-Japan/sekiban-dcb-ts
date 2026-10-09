@@ -70,13 +70,14 @@ metadata.
 
 1. Stop all writers and export the exact logical records.
 2. Import the records into a fresh TypeScript service target.
-3. Do not construct committed membership from declared tags, bootstrap counts,
-   or an events-only file. This repository has no producer for the sealed
-   global file. Stop when committed membership or healthy sealed evidence is
-   unavailable.
-4. Use the projection/list query only after the sealed PostgreSQL rebuild and
-   its retained receipt have been verified. SQLite and Cosmos live rebuilds are
-   not supported here.
+3. This repository has no C#→TypeScript live tag-state rebuild path. Do not
+   construct committed membership from declared tags, bootstrap counts, or an
+   events-only file. Stop when committed membership or healthy sealed evidence
+   is unavailable.
+4. Recreate or verify TypeScript tag state through the application's supported
+   import and projection procedures. The PostgreSQL rebuild command documented
+   above is only the TypeScript→C# procedure; it does not populate Durable
+   Object tag storage. SQLite and Cosmos live rebuilds are not supported here.
 
 ## Production cutover safety
 

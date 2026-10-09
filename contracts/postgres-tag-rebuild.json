@@ -4,31 +4,73 @@
   "schemas": {
     "input": {
       "format": "sekiban-dcb-postgres-tag-rebuild-input",
-      "keys": ["format", "version", "serviceId", "seal", "health", "summary", "events"],
-      "sealKeys": ["state", "canonicalization", "contentDigest", "sealedAtMs"],
-      "healthKeys": ["status", "scannerVersion", "lastFullScanAtMs", "staleAfterMs", "openFindingCount", "lastSettledFrontierSuid", "coveredEventCount", "coveredMembershipCount"],
-      "summaryKeys": ["eventCount", "declaredMembershipCount", "committedMembershipCount"],
-      "eventKeys": ["record", "digest", "declaredTagSet", "committedMembership"],
-      "recordKeys": ["serviceId", "id", "sortableUniqueId", "eventType", "payload", "tags", "timestamp", "causationId", "correlationId", "executedUser"],
-      "digestKeys": ["contract", "attemptId", "canonicalBytesBase64", "eventDigest", "allocatorLineageId"]
+      "version": 1,
+      "requiredKeys": ["format", "version", "serviceId", "seal", "health", "summary", "events"],
+      "optionalKeys": [],
+      "nullable": false,
+      "nested": {
+        "seal": {"requiredKeys": ["state", "canonicalization", "contentDigest", "sealedAtMs"], "optionalKeys": [], "nullable": false},
+        "health": {"requiredKeys": ["status", "scannerVersion", "lastFullScanAtMs", "staleAfterMs", "openFindingCount", "lastSettledFrontierSuid", "coveredEventCount", "coveredMembershipCount"], "optionalKeys": [], "nullable": false},
+        "summary": {"requiredKeys": ["eventCount", "declaredMembershipCount", "committedMembershipCount"], "optionalKeys": [], "nullable": false},
+        "events[]": {"requiredKeys": ["record", "digest", "declaredTagSet", "committedMembership"], "optionalKeys": [], "nullable": false},
+        "events[].record": {"requiredKeys": ["serviceId", "id", "sortableUniqueId", "eventType", "payload", "tags", "timestamp", "causationId", "correlationId", "executedUser"], "optionalKeys": [], "nullable": false},
+        "events[].digest": {"requiredKeys": ["contract", "attemptId", "canonicalBytesBase64", "eventDigest"], "optionalKeys": ["allocatorLineageId"], "nullable": false}
+      }
     },
     "correction": {
       "format": "sekiban-dcb-postgres-tag-correction",
-      "keys": ["format", "version", "correctionId", "serviceId", "inputContentDigest", "reason", "addMembership"],
-      "additionKeys": ["eventId", "eventDigest", "tag"]
+      "version": 1,
+      "requiredKeys": ["format", "version", "correctionId", "serviceId", "inputContentDigest", "reason", "addMembership"],
+      "optionalKeys": [],
+      "nullable": false,
+      "nested": {"addMembership[]": {"requiredKeys": ["eventId", "eventDigest", "tag"], "optionalKeys": [], "nullable": false}}
     },
     "dryRunReport": {
       "format": "sekiban-dcb-postgres-tag-rebuild-dry-run",
       "version": 1,
-      "keys": ["format", "version", "serviceId", "input", "correction", "target", "proposedMembership"]
+      "requiredKeys": ["format", "version", "serviceId", "input", "correction", "target", "proposedMembership"],
+      "optionalKeys": [],
+      "nullable": false,
+      "nested": {
+        "input": {"requiredKeys": ["fileSha256", "contentDigest"], "optionalKeys": [], "nullable": false},
+        "correction": {"requiredKeys": ["manifestSha256", "correctionId", "additionCount"], "optionalKeys": [], "nullable": true},
+        "target": {"requiredKeys": ["eventCount", "membershipCount"], "optionalKeys": [], "nullable": false},
+        "proposedMembership[]": {"requiredKeys": ["eventId", "tag"], "optionalKeys": [], "nullable": false}
+      }
     },
     "receipt": {
       "format": "sekiban-dcb-postgres-tag-rebuild-receipt",
       "version": 1,
-      "keys": ["format", "version", "rebuildId", "serviceId", "contractVersion", "appliedAt", "input", "correction", "target", "verification"]
+      "requiredKeys": ["format", "version", "rebuildId", "serviceId", "contractVersion", "appliedAt", "input", "correction", "target", "verification"],
+      "optionalKeys": [],
+      "nullable": false,
+      "nested": {
+        "input": {"requiredKeys": ["fileSha256", "contentDigest", "sealedAtMs", "health", "eventCount", "declaredMembershipCount", "committedMembershipCount"], "optionalKeys": [], "nullable": false},
+        "input.health": {"requiredKeys": ["status", "scannerVersion", "lastFullScanAtMs", "staleAfterMs", "openFindingCount", "lastSettledFrontierSuid", "coveredEventCount", "coveredMembershipCount"], "optionalKeys": [], "nullable": false},
+        "correction": {"requiredKeys": ["correctionId", "reason", "manifestSha256", "addedMembershipCount"], "optionalKeys": [], "nullable": true},
+        "target": {"requiredKeys": ["eventCount", "membershipCount", "eventSetDigest", "membershipSetDigest"], "optionalKeys": [], "nullable": false},
+        "verification": {"requiredKeys": ["globalToTagToGlobal", "payloadBytes", "sealedEventDigestBinding", "membershipCount", "membershipSet"], "optionalKeys": [], "nullable": false}
+      }
     },
     "provenance": {
-      "columns": ["rebuild_id", "service_id", "contract_version", "input_file_sha256", "input_content_digest", "correction_manifest_sha256", "correction_manifest_json", "applied_at", "receipt_sha256", "receipt_json"]
+      "nullable": false,
+      "requiredColumns": ["rebuild_id", "service_id", "contract_version", "input_file_sha256", "input_content_digest", "correction_manifest_sha256", "correction_manifest_json", "applied_at", "receipt_sha256", "receipt_json"],
+      "optionalColumns": [],
+      "requiredNotNullColumns": ["rebuild_id", "service_id", "contract_version", "input_file_sha256", "input_content_digest", "applied_at", "receipt_sha256", "receipt_json"],
+      "nullableColumns": ["correction_manifest_sha256", "correction_manifest_json"],
+      "columnTypes": {
+        "rebuild_id": ["text", null],
+        "service_id": ["character varying", 64],
+        "contract_version": ["integer", null],
+        "input_file_sha256": ["text", null],
+        "input_content_digest": ["text", null],
+        "correction_manifest_sha256": ["text", null],
+        "correction_manifest_json": ["text", null],
+        "applied_at": ["timestamp with time zone", null],
+        "receipt_sha256": ["text", null],
+        "receipt_json": ["text", null]
+      },
+      "requiredConstraints": ["primary key (rebuild_id)", "unique (service_id)", "contract_version = 1", "input_file_sha256 sha256", "input_content_digest sha256", "correction_manifest_sha256 sha256", "correction null pair"]
     }
   },
   "provenanceDdl": "CREATE TABLE IF NOT EXISTS dcb_tag_rebuild_provenance (rebuild_id TEXT PRIMARY KEY, service_id VARCHAR(64) NOT NULL UNIQUE, contract_version INTEGER NOT NULL CHECK (contract_version = 1), input_file_sha256 TEXT NOT NULL CHECK (input_file_sha256 ~ '^sha256:[0-9a-f]{64}$'), input_content_digest TEXT NOT NULL CHECK (input_content_digest ~ '^sha256:[0-9a-f]{64}$'), correction_manifest_sha256 TEXT NULL CHECK (correction_manifest_sha256 IS NULL OR correction_manifest_sha256 ~ '^sha256:[0-9a-f]{64}$'), correction_manifest_json TEXT NULL, applied_at TIMESTAMPTZ NOT NULL, receipt_sha256 TEXT NOT NULL CHECK (receipt_sha256 ~ '^sha256:[0-9a-f]{64}$'), receipt_json TEXT NOT NULL, CHECK ((correction_manifest_sha256 IS NULL) = (correction_manifest_json IS NULL)))"
