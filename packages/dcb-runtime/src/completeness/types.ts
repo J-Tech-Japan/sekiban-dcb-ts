@@ -60,6 +60,87 @@ export type GlobalCompletenessScanResult =
   | Readonly<{ kind: "UNKNOWN"; reason: string }>
   | Readonly<{ kind: "FAILED"; error: string }>;
 
+export type IncidentLifecycleState =
+  | "OPEN"
+  | "ACKNOWLEDGED"
+  | "CORRECTION_RECORDED"
+  | "CLOSED"
+  | "REOPENED";
+
+export type IncidentCorrection = Readonly<{
+  kind: "event" | "receipt";
+  reference: string;
+  digest: `sha256:${string}`;
+}>;
+
+export type IncidentCloseResolution =
+  | Readonly<{ kind: "CORRECTED" }>
+  | Readonly<{ kind: "ACCEPTED_AS_IS"; explanation: string }>;
+
+export interface IncidentTransitionBase {
+  readonly incidentIdentity: string;
+  readonly transitionKey: string;
+  readonly expectedVersion: number;
+  readonly reason: string;
+}
+
+export type IncidentTransitionRequest =
+  | (IncidentTransitionBase & Readonly<{
+    action: "ACKNOWLEDGE";
+    ownerId: string;
+    deadlineAt: number;
+  }>)
+  | (IncidentTransitionBase & Readonly<{
+    action: "UPDATE_ASSIGNMENT";
+    ownerId: string;
+    deadlineAt: number;
+  }>)
+  | (IncidentTransitionBase & Readonly<{
+    action: "RECORD_CORRECTION";
+    correction: IncidentCorrection;
+  }>)
+  | (IncidentTransitionBase & Readonly<{
+    action: "CLOSE";
+    resolution: IncidentCloseResolution;
+  }>)
+  | (IncidentTransitionBase & Readonly<{
+    action: "REOPEN";
+    ownerId: string;
+    deadlineAt: number;
+  }>);
+
+export interface IncidentLifecycleProjection {
+  readonly serviceId: string;
+  readonly incidentIdentity: string;
+  readonly lifecycleState: IncidentLifecycleState;
+  readonly ownerId: string | null;
+  readonly deadlineAt: number | null;
+  readonly correction: IncidentCorrection | null;
+  readonly closeResolution: "CORRECTED" | "ACCEPTED_AS_IS" | null;
+  readonly closeReason: string | null;
+  readonly version: number;
+  readonly lastTransitionKey: string;
+  readonly updatedAt: number;
+}
+
+export interface IncidentTransitionRecord {
+  readonly transitionId: number;
+  readonly serviceId: string;
+  readonly incidentIdentity: string;
+  readonly transitionKey: string;
+  readonly requestDigest: string;
+  readonly action: IncidentTransitionRequest["action"];
+  readonly fromState: IncidentLifecycleState;
+  readonly toState: IncidentLifecycleState;
+  readonly fromVersion: number;
+  readonly toVersion: number;
+  readonly actorId: string;
+  readonly before: IncidentLifecycleProjection;
+  readonly after: IncidentLifecycleProjection;
+  readonly reason: string;
+  readonly occurredAt: number;
+}
+
 /** The sole temporary operational disposition; policy decisions remain open. */
 export const GLOBAL_COMPLETENESS_INTERIM_DISPOSITION = "BLOCK/UNSETTLED" as const;
 

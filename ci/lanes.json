@@ -224,7 +224,7 @@
       "name": "completeness-and-safe-lane",
       "tier": "local",
       "services": ["postgres"],
-      "affectedPaths": ["test/g44-*.ts", "test/g58-*.ts", "test/g62-*.ts", "test/g67-*.ts", "scripts/g44-*.mjs", "scripts/g58-*.mjs", "scripts/g62-*.mjs", "scripts/g67-*.mjs", "scripts/g61-retained-frontier-guard.mjs", "scripts/g75-certificate-scope-guard.mjs", "scripts/g75-certificate-scope-mutation-runner.mjs", "test/g75-certificate-scope.spec.ts"],
+      "affectedPaths": ["test/g44-*.ts", "test/g58-*.ts", "test/g62-*.ts", "test/g67-*.ts", "scripts/g44-*.mjs", "scripts/g58-*.mjs", "scripts/g62-*.mjs", "scripts/g67-*.mjs", "scripts/g61-retained-frontier-guard.mjs", "scripts/g75-certificate-scope-guard.mjs", "scripts/g75-certificate-scope-mutation-runner.mjs", "test/g75-certificate-scope.spec.ts", "packages/dcb-runtime/src/completeness/IncidentLifecycle.ts", "packages/dcb-runtime/src/completeness/types.ts", "packages/dcb-runtime/src/http/IncidentMaintenance.ts", "packages/dcb-runtime/src/index.ts", "packages/dcb-runtime/src/cloudflare.ts", "packages/dcb-cloudflare/src/compose.ts", "packages/create-dcb/template/migrations/d1/g32/0021_incident_lifecycle.sql", "packages/create-dcb/template/src/worker.ts", "packages/create-dcb/template/README.md", "scripts/g103-create-starter.mjs", "test/incident-lifecycle.spec.ts", "docs/incident-lifecycle.md", "docs/architecture.md", "package.json", "ci/lanes.json", "migrations/d1/g32/0021_incident_lifecycle.sql"],
       "commands": [
         {"id": "g44", "command": "npm run test:global-completeness"},
         {"id": "g75", "command": "npm run test:read:certificate-scope"},
@@ -236,7 +236,8 @@
         {"id": "g67", "command": "npm run test:safe-lane:event-driven"},
         {"id": "g67-red", "command": "npm run test:safe-lane:event-driven:forced-red", "env": {"SDT_G67_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g61", "command": "npm run test:global-completeness:retained-frontier"},
-        {"id": "g61-red", "command": "npm run test:global-completeness:retained-frontier:forced-red", "env": {"SDT_G61_FORCE_FAILURE": "1"}, "expect": "red"}
+        {"id": "g61-red", "command": "npm run test:global-completeness:retained-frontier:forced-red", "env": {"SDT_G61_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "incident-lifecycle", "command": "npm run test:incident:lifecycle"}
       ]
     },
     {

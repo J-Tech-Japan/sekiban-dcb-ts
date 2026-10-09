@@ -49,6 +49,15 @@ generated config) and the normal Cloudflare Queue/D1/ Durable Object bindings.
 Set any operator-only secrets with Wrangler secrets rather than committing
 them to this file.
 
+For incident maintenance, configure the bearer secret with:
+
+```sh
+npx wrangler secret put INCIDENT_MAINTAINER_TOKEN
+```
+
+Never place the value of `INCIDENT_MAINTAINER_TOKEN` in `wrangler.jsonc`
+`vars`. The runtime redacts bearer values and does not return or persist them.
+
 ## cf CLI (beta)
 
 Use `npm run migrate` for D1 migrations and `npm run deploy` for the Worker.

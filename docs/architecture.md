@@ -102,6 +102,9 @@ The local ordering and derived-delivery details remain in the [write-path
 contract](write-path.md). The public result and repair actions are centralized
 in the [result and repair matrix](#result-and-repair-matrix).
 
+Completeness incident ownership, evidence, closure, reopening, and audit
+retention are described in the [incident lifecycle guide](incident-lifecycle.md).
+
 ## TagState rebuilds
 
 TagState is identified by service, tag, and projector. Its only rebuild source

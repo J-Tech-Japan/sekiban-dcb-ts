@@ -13,6 +13,7 @@ import { composeRuntime, registeredEventParsers, type RuntimeDomainLike, type Ru
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
+import { handleIncidentMaintenance, isIncidentMaintenancePath } from "./http/IncidentMaintenance";
 import { TagDurableObject } from "./tag/TagDurableObject";
 import { TagStateDurableObject, configureTagStateProjectorRegistry } from "./tagstate/TagStateDurableObject";
 import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "./store/provider";
@@ -157,6 +158,26 @@ export {
   G44_SCANNER_VERSION,
   GLOBAL_COMPLETENESS_INTERIM_DISPOSITION,
 } from "./completeness/types";
+export {
+  IncidentLifecycle,
+  IncidentLifecycleError,
+} from "./completeness/IncidentLifecycle";
+export type {
+  IncidentDetailResult,
+  IncidentFinding,
+  IncidentListFilters,
+  IncidentListItem,
+  IncidentListResult,
+  IncidentTransitionResult,
+} from "./completeness/IncidentLifecycle";
+export type {
+  IncidentCloseResolution,
+  IncidentCorrection,
+  IncidentLifecycleProjection,
+  IncidentLifecycleState,
+  IncidentTransitionRecord,
+  IncidentTransitionRequest,
+} from "./completeness/types";
 export type {
   GlobalCompletenessHealth,
   GlobalCompletenessHealthRecord,
@@ -299,6 +320,7 @@ export interface Env {
   TAG_STATE: DurableObjectNamespace;
   /** Secret binding; deployment must configure this rather than a public var. */
   REPAIR_OPERATOR_TOKEN: string;
+  INCIDENT_MAINTAINER_TOKEN?: string;
   /** Queue producer/consumer for durable Tag outbox rows. */
   DOWNSTREAM_QUEUE: Queue<DownstreamOutboxMessage>;
   DOWNSTREAM_DOORBELL?: DownstreamDoorbellBinding;
@@ -350,6 +372,10 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
   const storeProvider = options.storeProvider ?? POSTGRES_STORE_PROVIDER;
   return {
     async fetch(request, env, ctx): Promise<Response> {
+      const url = new URL(request.url);
+      if (isIncidentMaintenancePath(url.pathname)) {
+        return handleIncidentMaintenance(request, env, options.serviceIdentityProvider ?? envServiceIdentity(env));
+      }
       const serviceIdentity = options.serviceIdentityProvider ?? envServiceIdentity(env);
       const requestIdentityOptions = { allowG11Verification: env.G11_VERIFICATION_ENABLED === "true" };
       let requestServiceId: string;
@@ -358,7 +384,6 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
       } catch {
         return scopeIdentityMissingResponse();
       }
-      const url = new URL(request.url);
       if (url.pathname === "/api/sekiban/serialized/commit") {
         return handleSerializedCommit(request, env, {
           domainDeliveryClass: options.config?.deliveryClass,

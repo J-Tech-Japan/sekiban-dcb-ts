@@ -42,6 +42,7 @@ export interface SekibanMount<
   fetch: FetchHandler<Env, Ctx, Request>;
   authorize: Authorize<RequestType>;
   extraPaths?: readonly string[];
+  extraPrefixes?: readonly string[];
   queue?: QueueHandler<Env, Ctx, Batch>;
   scheduled?: ScheduledHandler<Env, Ctx, Controller>;
 }
@@ -96,7 +97,7 @@ function assertPrefix(prefix: string): void {
   if (prefix === "" || prefix === "/") {
     throw new Error("prefix must not be empty or /");
   }
-  if (!prefix.startsWith("/") || prefix.endsWith("/")) {
+  if (!prefix.startsWith("/") || prefix.endsWith("/") || prefix.includes("//") || prefix.includes("?") || prefix.includes("#")) {
     throw new Error("prefix must be an absolute path without a trailing slash");
   }
 }
@@ -116,8 +117,9 @@ function rewriteRequest(request: Request, pathname: string): Request {
   return new Request(url, request);
 }
 
-function allowlist(mount: Pick<SekibanMount, "extraPaths">): ReadonlySet<string> {
-  return new Set<string>([...SERIALIZED_PATHS, ...(mount.extraPaths ?? [])]);
+function validateExtraPrefixes(prefixes: readonly string[] | undefined): readonly string[] {
+  for (const prefix of prefixes ?? []) assertPrefix(prefix);
+  return prefixes ?? [];
 }
 
 export function composeFetch<
@@ -134,14 +136,17 @@ export function composeFetch<
       throw new Error("authorize is required to mount runtime routes");
     }
     assertPrefix(mount.prefix);
+    validateExtraPrefixes(mount.extraPrefixes);
   }
-  const allowed = mount === undefined ? new Set<string>() : allowlist(mount);
+  const allowed = mount === undefined ? new Set<string>() : new Set<string>([...SERIALIZED_PATHS, ...(mount.extraPaths ?? [])]);
+  const extraPrefixes = mount === undefined ? [] : validateExtraPrefixes(mount.extraPrefixes);
   return async (request, env, ctx) => {
     if (mount === undefined) return input.application(request, env, ctx);
     const url = new URL(request.url);
     if (!segmentPrefix(url.pathname, mount.prefix)) return input.application(request, env, ctx);
     const stripped = stripPrefix(url.pathname, mount.prefix);
-    if (!allowed.has(stripped)) return new Response("runtime route is not forwarded", { status: 404 });
+    const prefixAllowed = extraPrefixes.some((prefix) => segmentPrefix(stripped, prefix));
+    if (!allowed.has(stripped) && !prefixAllowed) return new Response("runtime route is not forwarded", { status: 404 });
     const decision = await mount.authorize(request);
     if (decision instanceof Response) return decision;
     if (decision !== true) return new Response("runtime route denied", { status: 403 });
