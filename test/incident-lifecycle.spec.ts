@@ -1,5 +1,5 @@
-import { env } from "cloudflare:test";
-import { beforeAll, describe, expect, it } from "vitest";
+import { env, runInDurableObject } from "cloudflare:test";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 // @ts-expect-error Vite raw asset import.
 import g32Migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 // @ts-expect-error Vite raw asset import.
@@ -15,6 +15,8 @@ import { GlobalCompletenessReconciler } from "../packages/dcb-runtime/src/comple
 import { createRuntimeWorker } from "../packages/dcb-runtime/src/index";
 import { createCloudflareOnlyRuntimeWorker } from "../packages/dcb-runtime/src/cloudflare";
 import { injectableServiceIdentity, TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
+import { PARTIAL_WRITE_FENCE_REASON } from "../packages/dcb-runtime/src/tag/types";
+import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 import { composeFetch } from "../packages/dcb-cloudflare/src/compose";
 import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 
@@ -62,6 +64,10 @@ function action(identity: string, key: string, expectedVersion: number, extra: R
     deadlineAt: NOW + 10_000,
     ...extra,
   };
+}
+
+function transitionBase(identity: string, transitionKey: string, expectedVersion: number): Record<string, unknown> {
+  return { incidentIdentity: identity, transitionKey, expectedVersion, reason: "take ownership" };
 }
 
 async function installMigration(): Promise<void> {
@@ -410,6 +416,11 @@ describe("SDT-G124 review matrices", () => {
       const serviceId = `g124-audit-shape-${crypto.randomUUID()}`;
       const identity = `audit-${crypto.randomUUID()}`;
       await seedFinding(serviceId, identity);
+      const lifecycle = new IncidentLifecycle(database(), () => 0);
+      const before = await lifecycle.detail(serviceId, identity);
+      const beforeAudit = await database().prepare(
+        "SELECT COUNT(*) AS count FROM serialized_dcb_incident_transitions WHERE service_id = ? AND incident_identity = ?",
+      ).bind(serviceId, identity).first<{ count: number }>();
       const columns = [
         "service_id", "incident_identity", "transition_key", "request_digest", "action",
         "from_state", "to_state", "from_version", "to_version", "actor_id", "before_owner_id",
@@ -432,6 +443,13 @@ describe("SDT-G124 review matrices", () => {
       await expect(database().prepare(
         `INSERT INTO serialized_dcb_incident_transitions (${columns.join(", ")}) VALUES (${placeholders})`,
       ).bind(...row).run()).rejects.toThrow(/CHECK constraint/);
+      const after = await lifecycle.detail(serviceId, identity);
+      const afterAudit = await database().prepare(
+        "SELECT COUNT(*) AS count FROM serialized_dcb_incident_transitions WHERE service_id = ? AND incident_identity = ?",
+      ).bind(serviceId, identity).first<{ count: number }>();
+      expect(after.lifecycle, `${entry.label} changed lifecycle`).toEqual(before.lifecycle);
+      expect(after.transitions, `${entry.label} changed audit`).toEqual(before.transitions);
+      expect(afterAudit?.count, `${entry.label} changed audit count`).toBe(beforeAudit?.count);
     }
   });
 
@@ -497,24 +515,27 @@ describe("SDT-G124 review matrices", () => {
       { label: "empty reason", value: { ...base, reason: " " }, code: "incident_invalid_request" },
       { label: "oversized reason", value: { ...base, reason: "x".repeat(2_049) }, code: "incident_invalid_request" },
       { label: "oversized identity", value: { ...base, incidentIdentity: "x".repeat(257) }, code: "incident_invalid_request" },
+      { label: "empty identity", value: { ...base, incidentIdentity: " " }, code: "incident_invalid_request" },
       { label: "empty transition key", value: { ...base, transitionKey: " " }, code: "incident_invalid_request" },
+      { label: "oversized transition key", value: { ...base, transitionKey: "x".repeat(257) }, code: "incident_invalid_request" },
       { label: "negative version", value: { ...base, expectedVersion: -1 }, code: "incident_invalid_request" },
+      { label: "unsafe version", value: { ...base, expectedVersion: Number.MAX_SAFE_INTEGER + 1 }, code: "incident_invalid_request" },
       { label: "unknown action key", value: { ...base, extra: true }, code: "incident_invalid_request" },
       { label: "past deadline", value: { ...base, deadlineAt: 0 }, code: "incident_invalid_deadline" },
       { label: "invalid actor", value: base, actor: " ", code: "incident_invalid_actor" },
-      { label: "event evidence key", value: { ...base, action: "RECORD_CORRECTION", ownerId: undefined, deadlineAt: undefined,
+      { label: "event evidence key", value: { ...transitionBase("shape-identity", "shape-key", 0), action: "RECORD_CORRECTION",
         correction: { ...correction(), evidence: "event" } }, code: "incident_invalid_request" },
-      { label: "bad correction object", value: { ...base, action: "RECORD_CORRECTION", ownerId: undefined, deadlineAt: undefined,
+      { label: "bad correction object", value: { ...transitionBase("shape-identity", "shape-key", 0), action: "RECORD_CORRECTION",
         correction: null }, code: "incident_invalid_request" },
-      { label: "bad correction kind", value: { ...base, action: "RECORD_CORRECTION", ownerId: undefined, deadlineAt: undefined,
+      { label: "bad correction kind", value: { ...transitionBase("shape-identity", "shape-key", 0), action: "RECORD_CORRECTION",
         correction: { ...correction(), kind: "other" } }, code: "incident_invalid_request" },
-      { label: "bad correction reference", value: { ...base, action: "RECORD_CORRECTION", ownerId: undefined, deadlineAt: undefined,
+      { label: "bad correction reference", value: { ...transitionBase("shape-identity", "shape-key", 0), action: "RECORD_CORRECTION",
         correction: { ...correction(), reference: " " } }, code: "incident_invalid_request" },
-      { label: "bad correction digest", value: { ...base, action: "RECORD_CORRECTION", ownerId: undefined, deadlineAt: undefined,
+      { label: "bad correction digest", value: { ...transitionBase("shape-identity", "shape-key", 0), action: "RECORD_CORRECTION",
         correction: { ...correction(), digest: `sha256:${"A".repeat(64)}` } }, code: "incident_invalid_request" },
-      { label: "bad corrected resolution", value: { ...base, action: "CLOSE", ownerId: undefined, deadlineAt: undefined,
+      { label: "bad corrected resolution", value: { ...transitionBase("shape-identity", "shape-key", 0), action: "CLOSE",
         resolution: { kind: "CORRECTED", explanation: "not allowed" } }, code: "incident_invalid_request" },
-      { label: "bad accepted resolution", value: { ...base, action: "CLOSE", ownerId: undefined, deadlineAt: undefined,
+      { label: "bad accepted resolution", value: { ...transitionBase("shape-identity", "shape-key", 0), action: "CLOSE",
         resolution: { kind: "ACCEPTED_AS_IS", explanation: " " } }, code: "incident_invalid_request" },
     ];
     for (const entry of cases) {
@@ -655,19 +676,18 @@ describe("SDT-G124 authentication, reads, concurrency, and routing", () => {
   });
 
   it("keeps exact filters, encoded detail, and generated-starter lookalikes on their intended routes", async () => {
-    const calls: string[] = [];
-    const composed = composeFetch<unknown, ExecutionContext, Request>({
-      application: (request) => { calls.push(`application:${new URL(request.url).pathname}`); return new Response("application"); },
-      sekiban: {
-        prefix: "/internal/sekiban", extraPaths: ["/operator/repair"], extraPrefixes: ["/maintenance"], authorize: () => true,
-        fetch: (request) => { calls.push(`runtime:${new URL(request.url).pathname}`); return new Response("runtime"); },
-      },
-    });
-    expect((await composed(new Request("https://route.test/internal/sekiban/api/sekiban/serialized/query-other"), {}, {} as ExecutionContext)).status).toBe(404);
-    expect((await composed(new Request("https://route.test/internal/sekiban/operator/repair-other"), {}, {} as ExecutionContext)).status).toBe(404);
-    expect((await composed(new Request("https://route.test/internal/sekiban/maintenance-prefix"), {}, {} as ExecutionContext)).status).toBe(404);
-    expect((await composed(new Request("https://route.test/internal/sekiban/maintenance/incidents"), {}, {} as ExecutionContext)).status).toBe(200);
-    expect(calls).toContain("runtime:/maintenance/incidents");
+    const starter = (await import("../packages/create-dcb/template/src/worker")) as { default: ExportedHandler };
+    const starterFetch = starter.default.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
+    const starterEnv = { ...(env as unknown as Record<string, unknown>), D1: database(), D1_MV: database(), INCIDENT_MAINTAINER_TOKEN: TOKEN };
+    for (const path of [
+      "/internal/sekiban/api/sekiban/serialized/query-other",
+      "/internal/sekiban/operator/repair-other",
+      "/internal/sekiban/maintenance-prefix",
+    ]) {
+      const response = await starterFetch(new Request(`https://route.test${path}`), starterEnv, {} as ExecutionContext);
+      expect(response.status, path).toBe(404);
+      await expect(response.text(), path).resolves.toBe("runtime route is not forwarded");
+    }
 
     const serviceId = `g124-detail-${crypto.randomUUID()}`;
     const identity = "detail/with encoded content";
@@ -682,6 +702,39 @@ describe("SDT-G124 authentication, reads, concurrency, and routing", () => {
     const body = await response.json<{ finding: { incidentIdentity: string }; transitions: Array<{ reason: string }> }>();
     expect(body.finding.incidentIdentity).toBe(identity);
     expect(body.transitions).toEqual([expect.objectContaining({ reason: "take ownership" })]);
+  });
+
+  it("rejects whitespace-only and oversized encoded detail identities before detail or D1 access", async () => {
+    const serviceId = `g124-detail-validation-${crypto.randomUUID()}`;
+    let prepareCalls = 0;
+    const realDatabase = database();
+    const spiedDatabase = new Proxy(realDatabase, {
+      get(target, property, receiver) {
+        if (property === "prepare") {
+          return (...args: Parameters<D1Database["prepare"]>) => {
+            prepareCalls += 1;
+            return target.prepare(...args);
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    }) as D1Database;
+    const detailSpy = vi.spyOn(IncidentLifecycle.prototype, "detail");
+    const worker = createCloudflareOnlyRuntimeWorker({ serviceIdentityProvider: injectableServiceIdentity(serviceId) });
+    const workerFetch = worker.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
+    try {
+      for (const identity of ["   ", "x".repeat(257)]) {
+        const response = await workerFetch(new Request(`https://detail.test/maintenance/incidents/${encodeURIComponent(identity)}`, {
+          headers: { authorization: `Bearer ${TOKEN}`, [TEST_SERVICE_ID_HEADER]: serviceId },
+        }), { D1: spiedDatabase, INCIDENT_MAINTAINER_TOKEN: TOKEN } as never, {} as ExecutionContext);
+        expect(response.status, identity.length.toString()).toBe(400);
+        expect(await response.json()).toMatchObject({ code: "incident_invalid_request" });
+      }
+      expect(detailSpy).not.toHaveBeenCalled();
+      expect(prepareCalls).toBe(0);
+    } finally {
+      detailSpy.mockRestore();
+    }
   });
 
   it("proves exact retry equality, payload/actor conflicts, competing writes, stale versions, and atomic batch rollback", async () => {
@@ -767,52 +820,54 @@ describe("SDT-G124 safety regressions", () => {
   it("preserves a real partial command outcome, fence, health, and non-COMPLETE status across lifecycle actions", async () => {
     const serviceId = `g124-partial-${crypto.randomUUID()}`;
     const tag = `room:g124:partial:${crypto.randomUUID()}`;
-    const calls: string[] = [];
-    const facts = { events: 0, fences: 0 };
+    const tagNamespace = (env as unknown as { TAG?: DurableObjectNamespace }).TAG;
+    if (tagNamespace === undefined) throw new Error("incident partial-write proof requires the TAG binding");
+    const failedTagStub = tagNamespace.get(scopeIdFor(tagNamespace, { serviceId, doClass: "tag", identity: `${tag}-failed` }));
+    const readDurableFence = () => runInDurableObject(failedTagStub, (_instance, state) => state.storage.sql.exec<{
+      reason: string;
+      attempt_id: string;
+      epoch: number;
+    }>("SELECT reason, attempt_id, epoch FROM tag_fence ORDER BY reason, attempt_id").toArray());
     const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
       status, headers: { "content-type": "application/json" },
     });
     const namespace = (name: string): DurableObjectNamespace => ({
       idFromName: (value: string) => value,
-      get: (id: DurableObjectId) => ({
-        fetch: async (request: Request) => {
-          const path = new URL(request.url).pathname;
-          calls.push(`${name}:${path}`);
-          if (name === "bootstrap") return jsonResponse({ leaseEpoch: 1 });
-          if (name === "allocator") {
-            const body = await request.json<{ candidates: Array<{ eventId: string }> }>();
-            return jsonResponse({ attemptId: "partial-attempt", allocatorLineageId: "partial-lineage",
-              candidates: body.candidates.map((candidate) => ({ ...candidate, suid: "0".repeat(29) + "1" })) });
-          }
-          if (path === "/acquire") return jsonResponse({ reservation: { token: "reservation" } }, 201);
-          if (path === "/append") {
-            if (String(id).endsWith(`/${tag}`)) {
-              facts.events += 1;
-              return jsonResponse({ appended: true, version: facts.events, updatedAt: "now" }, 201);
+      get: (id: DurableObjectId) => {
+        void id;
+        return {
+          fetch: async (request: Request) => {
+            const path = new URL(request.url).pathname;
+            if (name === "bootstrap") return jsonResponse({ leaseEpoch: 1 });
+            if (name === "allocator") {
+              const body = await request.json<{ candidates: Array<{ eventId: string }> }>();
+              return jsonResponse({ attemptId: "partial-attempt", allocatorLineageId: "partial-lineage",
+                candidates: body.candidates.map((candidate) => ({ ...candidate, suid: "0".repeat(29) + "1" })) });
             }
-            return jsonResponse({ code: "append-failed" }, 500);
-          }
-          if (path === "/fence/install") { facts.fences += 1; return jsonResponse({ status: "fence-installed" }, 201); }
-          if (path === "/head-facts") return jsonResponse({ head: "0".repeat(30), version: facts.events, updatedAt: "now" });
-          if (path === "/cancel") return jsonResponse({ status: "cancelled" });
-          return jsonResponse({ leaseEpoch: 1 });
-        },
-      } as unknown as DurableObjectStub),
+            return jsonResponse({ code: `unexpected_${path}` }, 500);
+          },
+        } as unknown as DurableObjectStub;
+      },
     }) as unknown as DurableObjectNamespace;
     const worker = new (await import("../packages/dcb-runtime/src/commit/CommitWorker")).CommitWorker({
-      ALLOCATOR: namespace("allocator"), BOOTSTRAP: namespace("bootstrap"), TAG: namespace("tag"),
+      ALLOCATOR: namespace("allocator"), BOOTSTRAP: namespace("bootstrap"), TAG: tagNamespace,
     }, serviceId);
-    const request = new Request("https://partial.test/api/sekiban/serialized/commit", {
+    const request = new Request("https://commit.test/api/sekiban/serialized/commit", {
       method: "POST", headers: { "content-type": "application/json", "x-sdt-g4-test-fault": "tag-append-last",
         "x-sdt-g4-test-attempt-id": "partial-attempt" },
       body: JSON.stringify({ version: 1, eventCandidates: [{ payload: btoa(JSON.stringify({ fixture: "g76-regression-matrix" })),
         eventPayloadName: "G76RegressionMatrixEvent", tags: [tag, `${tag}-failed`] }], consistencyTags: [] }),
     });
     const partial = await worker.handle(request);
-    expect(partial.status).toBe(500);
-    expect(await partial.json()).toMatchObject({ code: "partial_write", partial: { retryable: false } });
-    expect(facts.fences).toBeGreaterThan(0);
-    const healthBefore = { status: "BLOCK", fenceCount: facts.fences, responseStatus: partial.status };
+    const partialBody = await partial.json();
+    expect(partial.status, JSON.stringify(partialBody)).toBe(500);
+    expect(partialBody).toMatchObject({ code: "partial_write", partial: { retryable: false } });
+    const reconciler = new GlobalCompletenessReconciler(database(), tagNamespace);
+    const fenceBefore = await readDurableFence();
+    const healthBefore = await reconciler.readHealth(serviceId, NOW);
+    const coverageBefore = await reconciler.coverage(serviceId, NOW);
+    expect(fenceBefore).toEqual([expect.objectContaining({ reason: PARTIAL_WRITE_FENCE_REASON, attempt_id: "partial-attempt" })]);
+    expect(coverageBefore.kind).not.toBe("SETTLED");
     const lifecycle = new IncidentLifecycle(database(), () => 0);
     const identity = `partial-${crypto.randomUUID()}`;
     await seedFinding(serviceId, identity);
@@ -821,7 +876,11 @@ describe("SDT-G124 safety regressions", () => {
       expectedVersion: 1, reason: "accepted", resolution: { kind: "ACCEPTED_AS_IS", explanation: "partial remains" } }, "alice");
     await lifecycle.transition(serviceId, { action: "REOPEN", incidentIdentity: identity, transitionKey: "reopen",
       expectedVersion: 2, reason: "review again", ownerId: "bob", deadlineAt: 100 }, "alice");
-    expect({ status: "BLOCK", fenceCount: facts.fences, responseStatus: partial.status }).toEqual(healthBefore);
-    expect(calls.some((call) => call.includes("/repair") || call.includes("/replay"))).toBe(false);
+    const fenceAfter = await readDurableFence();
+    const healthAfter = await reconciler.readHealth(serviceId, NOW);
+    const coverageAfter = await reconciler.coverage(serviceId, NOW);
+    expect(fenceAfter).toEqual(fenceBefore);
+    expect(healthAfter).toEqual(healthBefore);
+    expect(coverageAfter).toEqual(coverageBefore);
   });
 });
