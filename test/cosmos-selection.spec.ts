@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   CosmosConfigurationError,
@@ -53,6 +53,13 @@ function tagNamespace(): DurableObjectNamespace {
 
 type TestWorkerFetch = (request: Request, env: object, ctx: ExecutionContext) => Promise<Response>;
 
+function fixtureKey(label: string): string {
+  const bytes = new TextEncoder().encode(`cosmos-${label}`);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
 function workerFetch(worker: { fetch?: unknown }): TestWorkerFetch {
   return worker.fetch as TestWorkerFetch;
 }
@@ -60,7 +67,7 @@ function workerFetch(worker: { fetch?: unknown }): TestWorkerFetch {
 const completeEnvironment = {
   COSMOS_ENDPOINT: "https://cosmos.example/",
   COSMOS_DATABASE: "experimental-db",
-  COSMOS_KEY: "Y2FuYXJ5LWtleS1zdXBwbGllZA==",
+  COSMOS_KEY: fixtureKey("complete"),
   SDT_SERVICE_ID: "selection-test",
 };
 
@@ -141,18 +148,38 @@ describe("SDT-G122 experimental Cosmos selection and configuration", () => {
   });
 
   it("composes the environment-backed provider explicitly and resolves values per invocation", async () => {
-    const calls: Array<{ url: string; method: string; body: string | undefined }> = [];
+    const calls: Array<{ url: string; method: string; body: string | undefined; authorization: string | null }> = [];
     const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      calls.push({ url: String(input), method: init?.method ?? "GET", body: init?.body?.toString() });
+      calls.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: init?.body?.toString(),
+        authorization: new Headers(init?.headers).get("authorization"),
+      });
       return new Response(null, { status: init?.method === "GET" ? 404 : 201 });
     }) as typeof fetch;
     const provider = createCosmosStoreProvider({ fetcher });
-    const envA = { ...completeEnvironment, COSMOS_ENDPOINT: "https://a.example/", COSMOS_DATABASE: "db-a" };
-    const envB = { ...completeEnvironment, COSMOS_ENDPOINT: "https://b.example/", COSMOS_DATABASE: "db-b" };
+    const envA = {
+      ...completeEnvironment,
+      COSMOS_ENDPOINT: "https://a.example/",
+      COSMOS_DATABASE: "db-a",
+      COSMOS_KEY: fixtureKey("invocation-a"),
+    };
+    const envB = {
+      ...completeEnvironment,
+      COSMOS_ENDPOINT: "https://b.example/",
+      COSMOS_DATABASE: "db-b",
+      COSMOS_KEY: fixtureKey("invocation-b"),
+    };
     await provider.create(envA).initialize();
     await provider.create(envB).initialize();
     expect(calls.some((call) => call.url === "https://a.example/dbs" && call.method === "POST" && call.body === JSON.stringify({ id: "db-a" }))).toBe(true);
     expect(calls.some((call) => call.url === "https://b.example/dbs" && call.method === "POST" && call.body === JSON.stringify({ id: "db-b" }))).toBe(true);
+    const authorizationA = calls.find((call) => call.url === "https://a.example/dbs")?.authorization;
+    const authorizationB = calls.find((call) => call.url === "https://b.example/dbs")?.authorization;
+    expect(authorizationA).not.toBeNull();
+    expect(authorizationB).not.toBeNull();
+    expect(authorizationA).not.toBe(authorizationB);
 
     const worker = createRuntimeWorker({ storeProvider: provider });
     const response = await workerFetch(worker)(
@@ -217,23 +244,47 @@ describe("SDT-G122 experimental Cosmos selection and configuration", () => {
   });
 
   it("keeps a supplied canary key out of selected-provider responses and committed configuration", async () => {
-    const canary = "Y2FuYXJ5LXNlY3JldC1tdXN0LW5vdC1sZWFr";
-    const provider = createCosmosStoreProvider({
-      endpoint: "https://canary.example/",
-      database: "canary-db",
-      key: canary,
-      fetcher: (async () => { throw new Error(`transport contained ${canary}`); }) as typeof fetch,
+    const canary = fixtureKey(["canary", "must", "not", "leak"].join("-"));
+    const capturedLogs: unknown[] = [];
+    const consoleMethods = ["debug", "info", "log", "warn", "error"] as const;
+    const spies = consoleMethods.map((method) => {
+      const spy = vi.spyOn(console, method);
+      spy.mockImplementation((...args) => capturedLogs.push(args));
+      return spy;
     });
-    const response = await handleSerializedRead(
-      new Request("https://selection.test/api/sekiban/serialized/tag-latest-sortable", {
-        method: "POST",
-        body: JSON.stringify({ tag: "selection" }),
-      }),
-      { TAG: tagNamespace(), SDT_SERVICE_ID: "selection-test", G11_VERIFICATION_ENABLED: "true" },
-      DEPLOYED_PROJECTOR_REGISTRY,
-      provider,
-    );
-    expect(await response.text()).not.toContain(canary);
-    expect(JSON.stringify({ bindings: ["COSMOS_ENDPOINT", "COSMOS_DATABASE", "COSMOS_KEY"], vars: {} })).not.toContain(canary);
+    try {
+      const successfulProvider = createCosmosStoreProvider({
+        endpoint: "https://canary-success.example/",
+        database: "canary-success-db",
+        key: canary,
+        fetcher: (async () => new Response(null, { status: 201 })) as typeof fetch,
+      });
+      await successfulProvider.create({}).initialize();
+
+      const failingProvider = createCosmosStoreProvider({
+        fetcher: (async () => { throw new Error(`transport contained ${canary}`); }) as typeof fetch,
+      });
+      const response = await handleSerializedRead(
+        new Request("https://selection.test/api/sekiban/serialized/tag-latest-sortable", {
+          method: "POST",
+          body: JSON.stringify({ tag: "selection" }),
+        }),
+        {
+          TAG: tagNamespace(),
+          SDT_SERVICE_ID: "selection-test",
+          COSMOS_ENDPOINT: "https://canary-failure.example/",
+          COSMOS_DATABASE: "canary-failure-db",
+          COSMOS_KEY: canary,
+          G11_VERIFICATION_ENABLED: "true",
+        },
+        DEPLOYED_PROJECTOR_REGISTRY,
+        failingProvider,
+      );
+      expect(response.status).toBe(500);
+      expect(await response.text()).not.toContain(canary);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+    expect(JSON.stringify(capturedLogs)).not.toContain(canary);
   });
 });

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
@@ -14,9 +14,24 @@ const starterPath = join(root, "packages/create-dcb/template/cosmos.experimental
 const guidePath = join(root, "docs/cosmos-layout.md");
 
 const expectedContainerKeys = ["events", "lagEstimates", "pendingArrivals", "findings", "checkpoints"];
+const guidanceRequirements = [
+  {
+    id: "cosmos-live-tag-rebuild-exclusion",
+    pattern: new RegExp([
+      "Cosmos live tag rebuild, a live cross-provider round trip, correction",
+      "application, and a real Azure account probe are unsupported\\.",
+    ].join("\\n")),
+  },
+  {
+    id: "postgres-sealed-rebuild-exclusion",
+    pattern: /The sealed rebuild\s+command remains PostgreSQL-only\./,
+  },
+  {
+    id: "no-production-account-result",
+    pattern: /This is not a production-support promise or a production-account check\./,
+  },
+];
 const labelInventory = [
-  { id: "entry-point", path: "packages/dcb-runtime/src/cosmos.ts", kind: "text", pattern: /@experimental/g, minimum: 8 },
-  { id: "declarations", path: "packages/dcb-runtime/dist/cosmos.d.ts", kind: "text", pattern: /@experimental/g, minimum: 8 },
   { id: "root-readme", path: "README.md", kind: "text", pattern: /experimental cosmos/i },
   { id: "runtime-readme", path: "packages/dcb-runtime/README.md", kind: "text", pattern: /experimental cosmos/i },
   { id: "starter-readme", path: "packages/create-dcb/README.md", kind: "text", pattern: /experimental/i },
@@ -28,6 +43,14 @@ const labelInventory = [
   { id: "migration-guide", path: "docs/migration-sekiban-dcb.md", kind: "text", pattern: /experimental cosmos/i },
   { id: "generated-descriptor", path: "packages/create-dcb/template/cosmos.experimental.json", kind: "descriptor" },
 ];
+const secretArtifactPaths = [
+  "packages/create-dcb/template/cosmos.experimental.json",
+  "packages/create-dcb/template/wrangler.jsonc",
+  ...readdirSync(join(root, "test"))
+    .filter((path) => /^cosmos.*\.spec\.ts$/.test(path))
+    .map((path) => join("test", path)),
+];
+const keyShapedValue = /(?:COSMOS_KEY|["']key["'])\s*[:=]\s*["'][A-Za-z0-9+/]{20,}={0,2}["']/;
 
 function assertContractShape(contract) {
   assert.equal(contract.schemaVersion, 1, "schema version must be 1");
@@ -117,6 +140,9 @@ function validateGuide(text, contract) {
   assert.deepEqual(rows, expected, "guide layout table does not match the contract");
   assert.match(text, /experimental/i, "guide must label Cosmos experimental");
   assert.match(text, /COSMOS_KEY/, "guide must name the secret binding");
+  for (const requirement of guidanceRequirements) {
+    assert.match(text, requirement.pattern, `${requirement.id} guidance is missing`);
+  }
 }
 
 function validateLogicalEvent(contract, ddl) {
@@ -129,17 +155,24 @@ function validateLogicalEvent(contract, ddl) {
 }
 
 function isCompleteLayoutContract(value, contract) {
-  if (value === null || typeof value !== "object" || Array.isArray(value) || value.containers === undefined) return false;
-  const actual = Object.values(value.containers);
-  const expected = Object.values(contract.containers);
-  if (actual.length !== expected.length) return false;
-  return expected.every((entry) => actual.some((candidate) =>
-    candidate?.name === entry.name && candidate?.partitionKeyPath === entry.partitionKeyPath));
+  if (value === null || typeof value !== "object" || Array.isArray(value) || value.containers === undefined) {
+    return false;
+  }
+  const keys = Object.keys(value.containers);
+  if (keys.length !== expectedContainerKeys.length
+    || !expectedContainerKeys.every((key) => keys.includes(key))) return false;
+  return expectedContainerKeys.every((key) => value.containers[key]?.name === contract.containers[key].name);
 }
 
 function validateSingleAuthority(entries, contract) {
-  const matches = entries.filter((entry) => isCompleteLayoutContract(entry.document, contract)).map((entry) => entry.path);
-  assert.deepEqual(matches.sort(), ["contracts/cosmos-layout.json", "packages/create-dcb/template/cosmos.experimental.json"], "a second complete Cosmos layout authority exists");
+  const matches = entries
+    .filter((entry) => isCompleteLayoutContract(entry.document, contract))
+    .map((entry) => entry.path);
+  assert.deepEqual(
+    matches.sort(),
+    ["contracts/cosmos-layout.json", "packages/create-dcb/template/cosmos.experimental.json"],
+    "a second complete Cosmos layout authority exists",
+  );
 }
 
 function validateExperimentalLabels(surfaces) {
@@ -150,12 +183,75 @@ function validateExperimentalLabels(surfaces) {
       assert.equal(value.stability, "experimental", `${entry.id} must remain experimental`);
       continue;
     }
-    const matches = value.match(entry.pattern) ?? [];
-    assert.ok(matches.length >= (entry.minimum ?? 1), `${entry.id} is missing its experimental label`);
+    assert.match(value, entry.pattern, `${entry.id} is missing its experimental label`);
   }
 }
 
-function validateArtifacts(contract, runtime, starter, guide, ddl, contractEntries, surfaces = new Map()) {
+function validateSecretArtifacts(receipt = "") {
+  for (const path of secretArtifactPaths) {
+    const text = readFileSync(join(root, path), "utf8");
+    assert.doesNotMatch(text, keyShapedValue, `credential-shaped value found in ${path}`);
+  }
+  assert.doesNotMatch(receipt, keyShapedValue, "credential-shaped value found in layout receipt");
+}
+
+function parseExportInventory(text) {
+  const inventory = [];
+  const exportPattern = new RegExp([
+    "(^|\\n)",
+    "(?<doc>\\/\\*\\*[\\s\\S]*?\\*\\/\\n)?",
+    "\\s*export\\s+",
+    "(?:(?<type>type)\\s+)?",
+    "(?:(?:declare\\s+)?(?<declaration>class|interface|function|const)\\s+",
+    "(?<name>[A-Za-z_$][\\w$]*)|\\{(?<names>[^}]+)\\})",
+  ].join(""), "g");
+  for (const match of text.matchAll(exportPattern)) {
+    const doc = match.groups?.doc ?? "";
+    if (match.groups?.names !== undefined) {
+      for (const name of match.groups.names.split(",").map((value) => value.trim()).filter(Boolean)) {
+        const [exportedName] = name.split(/\s+as\s+/);
+        inventory.push({
+          name: exportedName,
+          kind: match.groups.type === "type" ? "type" : "value",
+          experimental: /@experimental\b/.test(doc),
+        });
+      }
+      continue;
+    }
+    const declaration = match.groups?.declaration;
+    const name = match.groups?.name;
+    if (declaration !== undefined && name !== undefined) {
+      inventory.push({
+        name,
+        kind: declaration === "function" ? "factory" : declaration,
+        experimental: /@experimental\b/.test(doc),
+      });
+    }
+  }
+  return inventory;
+}
+
+function validateExperimentalExports(source, declarations) {
+  const sourceInventory = parseExportInventory(source);
+  const declarationInventory = parseExportInventory(declarations);
+  assert.ok(sourceInventory.length > 0, "Cosmos entry point export inventory is empty");
+  assert.deepEqual(
+    declarationInventory.map(({ name, kind }) => ({ name, kind })),
+    sourceInventory.map(({ name, kind }) => ({ name, kind })),
+    "Cosmos source and declaration export inventories differ",
+  );
+  for (const entry of sourceInventory) {
+    assert.equal(entry.experimental, true, `Cosmos source export ${entry.name} is missing @experimental`);
+  }
+  for (const entry of declarationInventory) {
+    assert.equal(entry.experimental, true, `Cosmos declaration export ${entry.name} is missing @experimental`);
+  }
+  return sourceInventory;
+}
+
+function validateArtifacts(
+  contract, runtime, starter, guide, ddl, contractEntries, surfaces = new Map(), source = "", declarations = "",
+) {
   assertContractShape(contract);
   const rendered = renderArtifacts(contract);
   assert.equal(Buffer.compare(Buffer.from(runtime), Buffer.from(rendered.runtime)), 0, "generated runtime layout is stale or hand-edited");
@@ -164,6 +260,8 @@ function validateArtifacts(contract, runtime, starter, guide, ddl, contractEntri
   validateLogicalEvent(contract, ddl);
   validateSingleAuthority(contractEntries, contract);
   if (surfaces.size > 0) validateExperimentalLabels(surfaces);
+  if (source.length > 0 || declarations.length > 0) validateExperimentalExports(source, declarations);
+  validateSecretArtifacts();
 }
 
 async function loadInputs() {
@@ -172,6 +270,10 @@ async function loadInputs() {
   const [contractText, guide, ddlText] = await Promise.all([
     readFile(contractPath, "utf8"),
     readFile(guidePath, "utf8"), readFile(join(root, "contracts/event-store-ddl.json"), "utf8"),
+  ]);
+  const [source, declarations] = await Promise.all([
+    readFile(join(root, "packages/dcb-runtime/src/cosmos.ts"), "utf8"),
+    readFile(join(root, "packages/dcb-runtime/dist/cosmos.d.ts"), "utf8"),
   ]);
   const runtime = readFileSync(runtimePath);
   const starter = readFileSync(starterPath);
@@ -182,7 +284,7 @@ async function loadInputs() {
   }));
   return {
     contract: JSON.parse(contractText), runtime, starter, guide, ddl: JSON.parse(ddlText), entries,
-    surfaces: new Map(surfaceValues),
+    surfaces: new Map(surfaceValues), source, declarations,
   };
 }
 
@@ -194,7 +296,10 @@ function expectRed(action, label) {
 
 async function selfTest() {
   const input = await loadInputs();
-  validateArtifacts(input.contract, input.runtime, input.starter, input.guide, input.ddl, input.entries, input.surfaces);
+  validateArtifacts(
+    input.contract, input.runtime, input.starter, input.guide, input.ddl, input.entries,
+    input.surfaces, input.source, input.declarations,
+  );
   const mutation = structuredClone(input.contract);
   delete mutation.containers.findings;
   expectRed(() => assertContractShape(mutation), "missing container");
@@ -204,13 +309,28 @@ async function selfTest() {
   const auxiliaryPath = structuredClone(input.contract);
   auxiliaryPath.containers.findings.partitionKeyPath = "/pk";
   expectRed(() => assertContractShape(auxiliaryPath), "auxiliary partition path");
-  expectRed(() => validateArtifacts(input.contract, `${input.runtime}x`, input.starter, input.guide, input.ddl, input.entries), "runtime mutation");
-  expectRed(() => validateArtifacts(input.contract, input.runtime, `${input.starter}x`, input.guide, input.ddl, input.entries), "starter mutation");
+  expectRed(
+    () => validateArtifacts(input.contract, `${input.runtime}x`, input.starter, input.guide, input.ddl, input.entries),
+    "runtime mutation",
+  );
+  expectRed(
+    () => validateArtifacts(input.contract, input.runtime, `${input.starter}x`, input.guide, input.ddl, input.entries),
+    "starter mutation",
+  );
   expectRed(() => validateGuide(input.guide.replace("dcb-events", "dcb-events-mutated"), input.contract), "guide mutation");
   expectRed(() => validateSingleAuthority([
     { path: "contracts/cosmos-layout.json", document: input.contract },
     { path: "packages/create-dcb/template/cosmos.experimental.json", document: input.contract },
-    { path: "contracts/cosmos-containers.json", document: input.contract },
+    {
+      path: "contracts/cosmos-containers.json",
+      document: {
+        ...input.contract,
+        containers: {
+          ...input.contract.containers,
+          events: { ...input.contract.containers.events, partitionKeyPath: "/serviceId" },
+        },
+      },
+    },
   ], input.contract), "second authority");
   for (const entry of labelInventory) {
     const mutated = new Map(input.surfaces);
@@ -218,7 +338,33 @@ async function selfTest() {
     else mutated.set(entry.path, String(mutated.get(entry.path)).replace(/experimental/gi, "stable"));
     expectRed(() => validateExperimentalLabels(mutated), `${entry.id} experimental label`);
   }
-  process.stdout.write(JSON.stringify({ result: "cosmos-layout-self-test-passed", mutations: 8 + labelInventory.length }) + "\n");
+  const exportInventory = validateExperimentalExports(input.source, input.declarations);
+  for (const entry of exportInventory) {
+    const labelPattern = new RegExp(`@experimental[^\\n]*\\n(?=export[^\\n]*\\b${entry.name}\\b)`);
+    const sourceMutation = input.source.replace(labelPattern, "");
+    const declarationMutation = input.declarations.replace(labelPattern, "");
+    expectRed(
+      () => validateExperimentalExports(sourceMutation, input.declarations),
+      `${entry.name} source experimental label`,
+    );
+    expectRed(
+      () => validateExperimentalExports(input.source, declarationMutation),
+      `${entry.name} declaration experimental label`,
+    );
+  }
+  expectRed(() => validateGuide(
+    input.guide.replace(guidanceRequirements[0].pattern, ""), input.contract,
+  ), guidanceRequirements[0].id);
+  expectRed(() => validateGuide(
+    input.guide.replace(guidanceRequirements[1].pattern, ""), input.contract,
+  ), guidanceRequirements[1].id);
+  expectRed(() => validateGuide(
+    input.guide.replace(guidanceRequirements[2].pattern, ""), input.contract,
+  ), guidanceRequirements[2].id);
+  process.stdout.write(JSON.stringify({
+    result: "cosmos-layout-self-test-passed",
+    mutations: 8 + labelInventory.length + exportInventory.length * 2 + guidanceRequirements.length,
+  }) + "\n");
 }
 
 async function main() {
@@ -234,8 +380,16 @@ async function main() {
   }
   const input = await loadInputs();
   if (process.argv.includes("--self-test")) return selfTest();
-  validateArtifacts(input.contract, input.runtime, input.starter, input.guide, input.ddl, input.entries, input.surfaces);
-  process.stdout.write(JSON.stringify({ result: "cosmos-layout-check-passed", containers: Object.values(input.contract.containers).map((entry) => entry.name) }) + "\n");
+  validateArtifacts(
+    input.contract, input.runtime, input.starter, input.guide, input.ddl, input.entries,
+    input.surfaces, input.source, input.declarations,
+  );
+  const receipt = JSON.stringify({
+    result: "cosmos-layout-check-passed",
+    containers: Object.values(input.contract.containers).map((entry) => entry.name),
+  });
+  validateSecretArtifacts(receipt);
+  process.stdout.write(`${receipt}\n`);
 }
 
 main().catch((error) => {
