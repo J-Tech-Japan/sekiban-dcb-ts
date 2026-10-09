@@ -27,6 +27,7 @@ import { createD1StoreProvider } from "./d1";
 import { handleProjectionLag, pollLiveProjections, type LiveProjectionPollObserver } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
+import { handleIncidentMaintenance, isIncidentMaintenancePath } from "./http/IncidentMaintenance";
 import { TagDurableObject as RuntimeTagDurableObject } from "./tag/TagDurableObject";
 import {
   TagStateDurableObject as RuntimeTagStateDurableObject,
@@ -122,6 +123,7 @@ export interface CloudflareOnlyEnv {
   D1_MV: D1Database;
   AUTO_DRAIN_OUTBOX?: string;
   REPAIR_OPERATOR_TOKEN: string;
+  INCIDENT_MAINTAINER_TOKEN?: string;
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
   G11_VERIFICATION_ENABLED?: string;
   SDT_SERVICE_ID?: string;
@@ -263,6 +265,10 @@ export function createCloudflareOnlyRuntimeWorker(
   const storeProvider = createD1StoreProvider();
   return {
     async fetch(request, env, ctx): Promise<Response> {
+      const url = new URL(request.url);
+      if (isIncidentMaintenancePath(url.pathname)) {
+        return handleIncidentMaintenance(request, env, options.serviceIdentityProvider ?? envServiceIdentity(env));
+      }
       const serviceIdentity = options.serviceIdentityProvider ?? envServiceIdentity(env);
       const requestIdentityOptions = { allowG11Verification: env.G11_VERIFICATION_ENABLED === "true" };
       let requestServiceId: string;
@@ -272,7 +278,6 @@ export function createCloudflareOnlyRuntimeWorker(
         return scopeIdentityMissingResponse();
       }
       const durableHopObserver = createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise));
-      const url = new URL(request.url);
       if (url.pathname === "/api/sekiban/serialized/commit") {
         return handleSerializedCommit(request, env, {
           domainDeliveryClass: options.config?.deliveryClass,

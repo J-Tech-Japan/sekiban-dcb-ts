@@ -198,6 +198,9 @@ function assertInventory(project) {
 
   const worker = readFileSync(join(project, "src/worker.ts"), "utf8");
   for (const forbidden of forbiddenWorkerSource) assert(!worker.includes(forbidden), `worker imports or contains forbidden surface: ${forbidden}`);
+  const readme = readFileSync(join(project, "README.md"), "utf8");
+  assert(readme.includes("wrangler secret put INCIDENT_MAINTAINER_TOKEN"), "starter README omitted incident secret setup");
+  assert(readme.includes("Never place") && readme.includes("vars"), "starter README omitted secret vars guidance");
 
   const allText = files.map((file) => readFileSync(join(project, file), "utf8")).join("\n");
   assert(!allText.includes("sekiban-dcb-meeting-room"), "meeting-room resource name leaked into generated project");
@@ -239,6 +242,13 @@ function assertConfig(project, projectName) {
   });
   assert(migrations[0].sqlFiles >= 1 && migrations[1].sqlFiles >= 1, "migration directories contain no SQL");
   return { names, migrations, placeholders: [databases[0].database_id, databases[1].database_id] };
+}
+
+function assertIncidentMigrationParity(project) {
+  const rootMigration = readFileSync(join(root, "migrations/d1/g32/0021_incident_lifecycle.sql"));
+  const generatedMigration = readFileSync(join(project, "migrations/d1/g32/0021_incident_lifecycle.sql"));
+  assert(rootMigration.equals(generatedMigration), "generated incident lifecycle migration differs from the root migration");
+  return { byteIdentical: true, path: "migrations/d1/g32/0021_incident_lifecycle.sql" };
 }
 
 function assertReplaceManifest(project) {
@@ -378,6 +388,24 @@ function dryRun(project, proofRoot, config) {
   };
 }
 
+function applyLocalPipelineMigration(project, proofRoot, pipelineName) {
+  const wrangler = join(project, "node_modules", "wrangler", "bin", "wrangler.js");
+  const persistTo = join(proofRoot, "wrangler-local-state");
+  run(process.execPath, [
+    wrangler,
+    "d1",
+    "migrations",
+    "apply",
+    pipelineName,
+    "--local",
+    "--config",
+    join(project, "wrangler.jsonc"),
+    "--persist-to",
+    persistTo,
+  ], { cwd: project, env: { ...process.env, CI: "true" } });
+  return { command: ["wrangler", "d1", "migrations", "apply", pipelineName, "--local"], persistTo: "proof-local-state" };
+}
+
 async function main() {
   assert(process.argv.includes("--check") && process.argv.length === 3, "usage: node scripts/g103-create-starter.mjs --check");
   assert(process.env.G32_DEPLOY_LIVE !== "1", "refusing to run while G32_DEPLOY_LIVE=1");
@@ -396,6 +424,7 @@ async function main() {
     assert(existsSync(project), "create CLI did not write the slugified project directory");
     const inventory = assertInventory(project);
     const configProof = assertConfig(project, projectName);
+    const migrationParity = assertIncidentMigrationParity(project);
     const replaceProof = assertReplaceManifest(project);
     const packageProof = assertPackage(project);
     const configText = readFileSync(join(project, "wrangler.jsonc"), "utf8");
@@ -405,6 +434,7 @@ async function main() {
     assert(helperPack !== undefined, `npm pack did not produce a helper archive: ${packOutput.stdout}`);
     const installs = await registryAndHelperInstall(project, join(packRoot, helperPack));
     const plans = await helperPlans(project, configText, configProof.names);
+    const localMigration = applyLocalPipelineMigration(project, proofRoot, configProof.names.pipeline);
     const dry = dryRun(project, proofRoot, parseJsonc(configText));
 
     process.stdout.write(`${JSON.stringify({
@@ -413,10 +443,12 @@ async function main() {
       create: { cleanTempDirectory: true, slugifiedDirectory: true, stdout: create.stdout.trim() },
       inventory,
       config: configProof,
+      migrationParity,
       replace: replaceProof,
       package: packageProof,
       installs,
       helperPlans: plans,
+      localMigration,
       dryRun: dry,
       safety: {
         liveWorkerRefused: true,
