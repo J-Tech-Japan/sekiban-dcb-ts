@@ -1,54 +1,84 @@
-# Cosmos layout decision
+# Experimental Cosmos provider
 
-## Decision
+Cosmos is an experimental, explicit opt-in provider. Postgres remains the
+runtime default and the generated starter remains D1. Merely configuring
+Cosmos values, adding a request field, or adding a request header never
+selects this provider.
 
-The Cosmos adapter is deliberately separate from the historical .NET Cosmos
-layout. The serialized-dcb-v1 compatibility surface is the contract; there is
-no undocumented cross-language document compatibility promise in this slice.
-The separation keeps the TypeScript `PipelineStore` ports explicit and lets a
-future interop adapter be added without changing the default Postgres provider
-or the V1 wire.
+## Layout contract
 
-The adapter uses the Linux vNext emulator in gateway mode for the executable
-lane. The lane exercises the query, continuation, create-conflict, replace,
-and `If-Match` conditional-write patterns used below. It does not depend on
-change feed, parallel cross-partition queries, stored procedures, or triggers.
+The sole handwritten authority is
+[`contracts/cosmos-layout.json`](../contracts/cosmos-layout.json). The runtime
+module and starter descriptor are generated from it. The event record fields
+continue to follow the logical Cosmos shape in
+[`contracts/event-store-ddl.json`](../contracts/event-store-ddl.json).
 
-## Mapping
+| `key` | `container` | `partition path` | `partition values` |
+| --- | --- | --- | --- |
+| `events` | `dcb-events` | `/pk` | `{serviceId}|{eventId}; {serviceId}|__dcb_event_ops__` |
+| `lagEstimates` | `dcb-lag-estimates` | `/serviceId` | `{serviceId}` |
+| `pendingArrivals` | `dcb-pending-arrivals` | `/serviceId` | `{serviceId}` |
+| `findings` | `dcb-findings` | `/serviceId` | `{serviceId}` |
+| `checkpoints` | `dcb-projection-checkpoints` | `/serviceId` | `{serviceId}` |
 
-All containers use the service-scoped partition key `/serviceId`. Cosmos
-document `id` values are escaped from the logical identity with
-`encodeURIComponent`; the logical values below remain available as fields for
-queries and evidence.
+Logical event documents use the canonical event id. Event sidecars and service
+guard documents use the adapter's `safeId` encoding. Auxiliary documents use
+their existing logical identity encoded with `safeId` where the adapter does
+so. The event container is intentionally mixed: logical events and event
+sidecars use `serviceId|eventId`, while allocator-lineage, SUID-binding, and
+delivery-incident guards use the reserved
+`serviceId|__dcb_event_ops__` partition.
 
-| Structure | Container | Partition-key value | Document id | SUID/order | State/checkpoint mapping |
-| --- | --- | --- | --- | --- | --- |
-| Durable events and arrival observations | `dcb-events` | `serviceId` | escaped `eventId` | `suid` is opaque and sorted with the V1 UTF-8 ordinal in the adapter; `eventId` breaks ties | payload, complete `eventTags`, first/last arrival, max lag, and idempotent per-tag arrival facts live in one event document |
-| Dynamic lag estimate | `dcb-lag-estimates` | `serviceId` | `serviceId` | no source ordering | `estimateMs` plus `observedAt`; reads apply the same decay rule as Postgres |
-| Detector pending arrivals | `dcb-pending-arrivals` | `serviceId` | escaped `eventId` | no source ordering | attempt identity, expected/observed paths, first observation, and lag bound |
-| Detector findings | `dcb-findings` | `serviceId` | escaped `eventId`, path, classification | list is deterministic by observed time/event/path | append-only `MISSING_STABLE`, `EXCLUDED_AUDITED`, or `RESOLVED_LATE` record |
-| Projection state/checkpoint | `dcb-projection-checkpoints` | `serviceId` | escaped `projectionId` | checkpoint stores opaque last SUID | `stateJson`, version, and updated time advance with an `If-Match` CAS |
+## Selecting the provider
 
-This is the complete mapping for the three contract areas: event/detector
-durability, detector observations, and projection state. No request header can
-select a different service partition or container.
+Import the experimental entry point and pass its factory in source:
 
-## Executable branch fixture
+```ts
+import { createRuntimeWorker } from "@sekiban/dcb-runtime";
+import { createCosmosStoreProvider } from "@sekiban/dcb-runtime/cosmos";
 
-`scripts/store-contract.mjs` runs the same `PipelineStore` contract assertions
-against the adapter's document-client seam and against a real emulator when the
-Cosmos lane supplies `COSMOS_ENDPOINT`, `COSMOS_KEY`, and `COSMOS_DATABASE`.
-The emulator runner fails closed when any required value is absent; it never
-turns an unavailable emulator into a skipped green test. The fixture covers
-event-id idempotency/conflict, bytewise SUID ordering, detector de-duplication,
-checkpoint CAS, and re-delivery after injected write failures.
+const worker = createRuntimeWorker({
+  storeProvider: createCosmosStoreProvider(),
+});
+```
 
-The deliberately-separate branch is executable rather than documentation-only:
-`test/cosmos-pipeline.spec.ts` asserts the five TypeScript container names,
-the `/serviceId` path and service-id partition value for every container, and
-that none of the names collides with the historical .NET `events`/`tags`/`states`
-layout. A future interop adapter must therefore choose a new explicit provider
-instead of silently sharing these containers. The same spec drives both the
-Cosmos-backed query and tag-read handlers with production-shaped namespace
-headers, asserting that the service id and partition key remain
-`serialized-dcb-v1`.
+The factory resolves `COSMOS_ENDPOINT` and `COSMOS_DATABASE` deployment values
+and the `COSMOS_KEY` secret binding for each invocation. A missing, empty, or
+partial triple fails with a redacted configuration error before a network
+request. Configure the key with the deployment secret facility:
+
+```sh
+npx wrangler secret put COSMOS_KEY
+```
+
+Do not put the key, a connection string, or a usable credential in `vars`, a
+committed file, a log, or a receipt. Tests may inject a document client
+directly without credentials. Static Node configuration is also supported only
+when all three endpoint, database, and key values are supplied together.
+
+## Initialization and supported behavior
+
+Initialization creates the database and all five containers from the generated
+layout. Event scans are cross-partition queries filtered by service id because
+logical events do not share one service partition. Auxiliary reads use their
+service-local partition. The shared store contract covers create/read/query,
+continuation paging, idempotency, conditional replacement, detector state,
+and conflict behavior.
+
+Bootstrap export/import is experimental. Use a fresh, isolated target database,
+with a fixed export high watermark and the provider verifier after replay.
+This is not a production-support promise or a production-account check.
+
+The pinned Linux vNext emulator is the local and pull-request witness:
+
+```sh
+npm run ci:local -- --lane cosmos
+```
+
+The lane fails when Docker, readiness, required values, either real contract,
+container cleanup, or protected key-file cleanup fails. An unavailable
+emulator is never reported as a skipped success.
+
+Cosmos live tag rebuild, a live cross-provider round trip, correction
+application, and a real Azure account probe are unsupported. The sealed rebuild
+command remains PostgreSQL-only.

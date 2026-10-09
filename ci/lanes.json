@@ -94,7 +94,7 @@
         {"id": "g102", "command": "npm run test:sample:registry-consumer"},
         {"id": "g103", "command": "npm run test:starter:create"},
         {"id": "g104", "command": "npm run test:cloudflare:cli"},
-        {"id": "starter-cold-install", "command": "npm run test:starter-cold-install && npm run test:starter-cold-install -- --self-test"},
+        {"id": "starter-cold-install", "command": "npm run test:starter-cold-install && npm run test:starter-cold-install -- --self-test && node scripts/ci-local.mjs --self-test"},
         {"id": "g35", "command": "npm run test:durable-object:scope"},
         {"id": "g35-red", "command": "npm run test:durable-object:scope:forced-red", "env": {"SDT_G35_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g64-red", "command": "npm run test:release:matched-set:forced-red", "env": {"SDT_G64_FORCE_FAILURE": "1"}, "expect": "red"},
@@ -271,10 +271,11 @@
     },
     {
       "name": "cosmos",
-      "tier": "local",
+      "tier": "pr",
       "services": ["cosmos"],
-      "affectedPaths": ["test/g20-*.ts", "test/g22-*.ts", "scripts/cosmos-*.mjs", "scripts/g20-*.mjs", "scripts/g22-*.mjs", "tools/sekiban-parity/**", "scripts/store-contract.mjs"],
+      "affectedPaths": ["contracts/cosmos-layout.json", "contracts/event-store-ddl.json", "contracts/dcb-tags-derivation.json", "packages/dcb-runtime/src/generated/cosmos-layout.ts", "packages/dcb-runtime/src/store/CosmosEventStore.ts", "packages/dcb-runtime/src/store/provider.ts", "packages/dcb-runtime/src/cosmos.ts", "packages/dcb-runtime/src/index.ts", "packages/dcb-runtime/src/read/SerializedReadWorker.ts", "packages/create-dcb/template/cosmos.experimental.json", "packages/create-dcb/template/README.md", "packages/create-dcb/README.md", "docs/cosmos-layout.md", "docs/d1-pipeline-store.md", "docs/domain-authoring.md", "docs/migration-sekiban-dcb.md", "README.md", "packages/dcb-runtime/README.md", "samples/meeting-room/README.md", "scripts/cosmos-layout-contract.mjs", "scripts/cosmos-experimental-consumer-check.mjs", "scripts/cosmos-ci-wiring-check.mjs", "scripts/g40-ci-coverage-check.mjs", "scripts/ci-local.mjs", "scripts/g22-bootstrap-cosmos-contract.mjs", "scripts/g103-create-starter.mjs", "scripts/starter-cold-install-check.mjs", "test/cosmos-pipeline.spec.ts", "test/cosmos-workerd.spec.ts", "test/cosmos-selection.spec.ts", "package.json", "ci/lanes.json", ".github/workflows/ci.yml", "scripts/store-contract.mjs"],
       "commands": [
+        {"id": "cosmos-contract", "command": "npm run test:cosmos:contract"},
         {"id": "cosmos", "command": "npm run test:cosmos"},
         {"id": "g22-cosmos", "command": "npm run test:bootstrap:providers:cosmos"},
         {"id": "cosmos-wiring", "command": "npm run test:cosmos-wiring"},

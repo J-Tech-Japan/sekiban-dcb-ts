@@ -263,7 +263,7 @@ digests and proposed rows before applying with `--input-sha256` and
 `--receipt`. Additions require `--correction-manifest` and its matching
 `--correction-sha256`; removal and automatic repair are not supported. Retain
 the receipt and use an exact rerun for recovery. Rebuilt tag-summary first and
-last times equal the rebuild transaction time. SQLite and Cosmos live rebuilds
+last times equal the rebuild transaction time. SQLite and experimental Cosmos live rebuilds
 are not supported. `tools/derive-dcb-tags/index.mjs` and
 `contracts/dcb-tags-derivation.json` remain compatibility-fixture-only.
 

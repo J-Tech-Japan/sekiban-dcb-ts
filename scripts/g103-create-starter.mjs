@@ -33,6 +33,7 @@ const requiredFiles = [
   "AGENTS.md",
   "cloudflare.config.ts",
   "package.json",
+  "cosmos.experimental.json",
   "wrangler.jsonc",
   "src/worker.ts",
   "src/booking-domain.ts",
@@ -198,6 +199,9 @@ function assertInventory(project) {
 
   const worker = readFileSync(join(project, "src/worker.ts"), "utf8");
   for (const forbidden of forbiddenWorkerSource) assert(!worker.includes(forbidden), `worker imports or contains forbidden surface: ${forbidden}`);
+  assert(!worker.includes("@sekiban/dcb-runtime/cosmos"), "starter worker activated the experimental Cosmos provider");
+  const cosmosDescriptorProof = assertCosmosDescriptor(project);
+  assert(cosmosDescriptorProof.byteParity, "generated Cosmos descriptor is not byte-identical to the template");
   const readme = readFileSync(join(project, "README.md"), "utf8");
   assert(readme.includes("wrangler secret put INCIDENT_MAINTAINER_TOKEN"), "starter README omitted incident secret setup");
   assert(readme.includes("Never place") && readme.includes("vars"), "starter README omitted secret vars guidance");
@@ -223,6 +227,7 @@ function assertConfig(project, projectName) {
   const names = resourceNames(projectName);
   assert(!/G32_[A-Z0-9_]+/.test(text), "wrangler config contains a G32_* variable");
   assert(!text.includes("meeting-room"), "wrangler config contains a meeting-room name");
+  assert(!text.includes("COSMOS_KEY") && !text.includes("COSMOS_ENDPOINT"), "active Wrangler configuration contains Cosmos bindings");
   assertNoLiveDatabaseIds(text, "wrangler config");
   assert(config.name === names.worker, "Worker name was not derived from the slug");
   assert(config.vars?.SDT_SERVICE_ID === names.service, "service ID was not derived from the slug");
@@ -242,6 +247,24 @@ function assertConfig(project, projectName) {
   });
   assert(migrations[0].sqlFiles >= 1 && migrations[1].sqlFiles >= 1, "migration directories contain no SQL");
   return { names, migrations, placeholders: [databases[0].database_id, databases[1].database_id] };
+}
+
+function assertCosmosDescriptor(project) {
+  const authority = JSON.parse(readFileSync(join(root, "contracts/cosmos-layout.json"), "utf8"));
+  const descriptor = JSON.parse(readFileSync(join(project, "cosmos.experimental.json"), "utf8"));
+  assert(descriptor.stability === "experimental" && descriptor.provider === "cosmos", "starter Cosmos descriptor lost its experimental marker");
+  assert(descriptor.active === false, "starter Cosmos descriptor must remain inactive");
+  assert(JSON.stringify(descriptor.bindings) === JSON.stringify(authority.bindings), "starter Cosmos bindings differ from the authority");
+  const expectedContainers = Object.fromEntries(Object.entries(authority.containers).map(([key, entry]) => [key, {
+    name: entry.name,
+    partitionKeyPath: entry.partitionKeyPath,
+    partitionValueKinds: entry.partitionValueKinds,
+    documentIds: entry.documentIds,
+  }]));
+  assert(JSON.stringify(descriptor.containers) === JSON.stringify(expectedContainers), "starter Cosmos descriptor differs from the authority");
+  const generatedBytes = readFileSync(join(project, "cosmos.experimental.json"));
+  const templateBytes = readFileSync(join(root, "packages/create-dcb/template/cosmos.experimental.json"));
+  return { active: descriptor.active, byteParity: Buffer.compare(generatedBytes, templateBytes) === 0 };
 }
 
 function assertIncidentMigrationParity(project) {

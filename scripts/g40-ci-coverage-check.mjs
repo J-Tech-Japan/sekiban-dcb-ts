@@ -177,7 +177,7 @@ function addWorkflowShapeChecks(graph, issues) {
   if (concurrency["cancel-in-progress"] !== true) issues.add("workflow-shape", "ci.yml concurrency must cancel superseded runs");
 
   const jobs = asObject(ciDocument.jobs);
-  const expectedPrJobs = ["ci-foundation", "ci-pr-cheap"];
+  const expectedPrJobs = ["ci-foundation", "ci-pr-cheap", "ci-cosmos-emulator"];
   const ciDispatches = workflowRunDispatches(graph, CI_WORKFLOW);
   const manifestLanes = Array.isArray(graph.snapshot.manifest?.lanes) ? graph.snapshot.manifest.lanes : [];
   const prLaneNames = new Set(manifestLanes.filter((lane) => lane?.tier === "pr").map((lane) => lane.name));
@@ -452,10 +452,11 @@ function coverageSelfTestFixture() {
     schema: "sdt-ci-lanes/v1",
     tiers: { pr: {}, local: {}, full: { includes: ["pr", "local"] } },
     pathsIgnore: [],
-    requiredLanes: ["foundation", "cheap"],
+    requiredLanes: ["foundation", "cheap", "cosmos"],
     lanes: [
       { name: "foundation", tier: "pr", affectedPaths: ["package.json"], commands: [{ id: "foundation-check", command: "node scripts/foundation-check.mjs" }] },
       { name: "cheap", tier: "pr", affectedPaths: ["package.json"], commands: [{ id: "commit-trace-seal", command: "node scripts/commit-trace-contract.mjs --check" }] },
+      { name: "cosmos", tier: "pr", affectedPaths: ["scripts/ci-local.mjs"], commands: [{ id: "cosmos-contract", command: "node scripts/ci-local.mjs --self-test" }] },
     ],
   };
   const ciPath = CI_WORKFLOW;
@@ -472,9 +473,12 @@ function coverageSelfTestFixture() {
         "ci-pr-cheap": {
           steps: [{ uses: "actions/checkout@v5", with: { "fetch-depth": 0 } }, { run: "node scripts/ci-local.mjs --lane cheap --ci" }],
         },
+        "ci-cosmos-emulator": {
+          steps: [{ uses: "actions/checkout@v5", with: { "fetch-depth": 0 } }, { run: "node scripts/ci-local.mjs --lane cosmos" }],
+        },
         verify: {
           if: "${{ always() }}",
-          needs: ["ci-foundation", "ci-pr-cheap"],
+          needs: ["ci-foundation", "ci-pr-cheap", "ci-cosmos-emulator"],
           env: { G40_VERIFY_NEEDS_JSON: "${{ toJson(needs) }}" },
           steps: [{ run: "node scripts/g40-verify-needs.mjs" }],
         },
@@ -495,11 +499,12 @@ function coverageSelfTestFixture() {
   const dispatches = [
     { origin: "workflow", workflowPath: ciPath, jobName: "ci-foundation", stepIndex: 1, selectedLanes: ["foundation"], unknownNames: [], invalidArgument: false, source: { triggers: ["pull_request", "push"] } },
     { origin: "workflow", workflowPath: ciPath, jobName: "ci-pr-cheap", stepIndex: 1, selectedLanes: ["cheap"], unknownNames: [], invalidArgument: false, source: { triggers: ["pull_request", "push"] } },
-    { origin: "workflow", workflowPath: fullPath, jobName: "full", stepIndex: 0, selectedLanes: ["foundation", "cheap"], unknownNames: [], invalidArgument: false, source: { triggers: ["schedule", "workflow_dispatch"] } },
+    { origin: "workflow", workflowPath: ciPath, jobName: "ci-cosmos-emulator", stepIndex: 1, selectedLanes: ["cosmos"], unknownNames: [], invalidArgument: false, source: { triggers: ["pull_request", "push"] } },
+    { origin: "workflow", workflowPath: fullPath, jobName: "full", stepIndex: 0, selectedLanes: ["foundation", "cheap", "cosmos"], unknownNames: [], invalidArgument: false, source: { triggers: ["schedule", "workflow_dispatch"] } },
   ];
   const snapshot = {
     root: process.cwd(),
-    files: ["package.json", "ci/lanes.json"],
+    files: ["package.json", "ci/lanes.json", "scripts/ci-local.mjs"],
     loadErrors: [],
     rootPackage: { relativePath: "package.json", directory: "", name: "fixture", document: {}, scripts: {} },
     packages: [{ relativePath: "package.json", directory: "", name: "fixture", document: {}, scripts: {} }],
@@ -522,7 +527,7 @@ function coverageSelfTestFixture() {
       terminals: [],
       dispatches,
       missingPaths: [],
-      closureByLane: new Map([["foundation", { files: new Set() }], ["cheap", { files: new Set() }]]),
+      closureByLane: new Map([["foundation", { files: new Set() }], ["cheap", { files: new Set() }], ["cosmos", { files: new Set() }]]),
     },
     terminalCommands: [],
     dispatches,
@@ -544,6 +549,9 @@ export function runSelfTest() {
 
   const missingVerifyEnv = structuredClone(passing);
   delete missingVerifyEnv.snapshot.workflows[0].document.jobs.verify.env;
+  const missingCosmosHostedJob = structuredClone(passing);
+  delete missingCosmosHostedJob.snapshot.workflows[0].document.jobs["ci-cosmos-emulator"];
+  missingCosmosHostedJob.snapshot.workflows[0].document.jobs.verify.needs = ["ci-foundation", "ci-pr-cheap"];
   const duplicateLane = structuredClone(passing);
   const duplicate = structuredClone(duplicateLane.snapshot.manifest.lanes[0]);
   duplicate.commands = duplicate.commands.map((command) => ({ ...command, id: `${command.id}-duplicate` }));
@@ -586,6 +594,7 @@ export function runSelfTest() {
     pass: { result: "passed", reasonCodes: passResult.reasonCodes },
     failures: [
       selfTestFailure(missingVerifyEnv, "verify-needs-env", "workflow-shape"),
+      selfTestFailure(missingCosmosHostedJob, "missing-cosmos-hosted-job", "workflow-shape"),
       selfTestFailure(duplicateLane, "duplicate-lane", "manifest-shape"),
       selfTestFailure(missingFull, "missing-full-workflow", "workflow-shape"),
       { label: "malformed-collections", reportedReasonCodes: combinedResult.reasonCodes },

@@ -12,6 +12,13 @@ import {
   DEFAULT_COSMOS_CONTAINERS,
 } from "../packages/dcb-runtime/src/cosmos";
 import {
+  COSMOS_BINDINGS,
+  COSMOS_CONTAINER_LAYOUT,
+  COSMOS_CONTAINER_NAMES,
+  COSMOS_DOCUMENT_ID_RULES,
+  COSMOS_LAYOUT_STABILITY,
+} from "../packages/dcb-runtime/src/generated/cosmos-layout";
+import {
   COSMOS_AUXILIARY_PARTITION_KEY_PATH,
   COSMOS_EVENT_PARTITION_KEY_PATH,
   COSMOS_PARTITION_KEY_PATH,
@@ -53,7 +60,7 @@ class PipelineMemoryClient implements CosmosDocumentClient {
     if (document.serviceId !== partitionKey && !(container === DEFAULT_COSMOS_CONTAINERS.events && document.pk === partitionKey)) {
       throw new Error("partition key mismatch");
     }
-    this.observations.push({ container, partitionKey, serviceId: String(document.serviceId) });
+    this.observations.push({ container, id: String(document.id), partitionKey, serviceId: String(document.serviceId) });
     const key = this.key(container, partitionKey, String(document.id));
     if (this.rows.has(key)) throw new CosmosClientError(409, "duplicate document");
     const row = { document: JSON.parse(JSON.stringify(document)) as JsonObject, etag: `W/"${++this.etag}"` };
@@ -65,7 +72,7 @@ class PipelineMemoryClient implements CosmosDocumentClient {
     if (document.serviceId !== partitionKey && !(container === DEFAULT_COSMOS_CONTAINERS.events && document.pk === partitionKey)) {
       throw new Error("partition key mismatch");
     }
-    this.observations.push({ container, partitionKey, serviceId: String(document.serviceId) });
+    this.observations.push({ container, id: String(document.id), partitionKey, serviceId: String(document.serviceId) });
     const key = this.key(container, partitionKey, String(document.id));
     const current = this.rows.get(key);
     if (current === undefined || (etag !== undefined && current.etag !== etag)) return false;
@@ -163,23 +170,12 @@ describe("SDT-G12 Cosmos provider pipeline composition", () => {
     expect(JSON.parse((await list.json<{ itemsJson: string }>()).itemsJson)).toHaveLength(1);
   });
 
-  it("pins the separate five-container, service-partitioned layout", () => {
-    expect(DEFAULT_COSMOS_CONTAINERS).toEqual({
-      events: "dcb-events",
-      lagEstimates: "dcb-lag-estimates",
-      pendingArrivals: "dcb-pending-arrivals",
-      findings: "dcb-findings",
-      checkpoints: "dcb-projection-checkpoints",
-    });
-
+  it("pins the separate five-container, service-partitioned layout", async () => {
+    expect(COSMOS_LAYOUT_STABILITY).toBe("experimental");
+    expect(COSMOS_BINDINGS).toEqual({ endpoint: "COSMOS_ENDPOINT", database: "COSMOS_DATABASE", key: "COSMOS_KEY" });
+    expect(DEFAULT_COSMOS_CONTAINERS).toEqual(COSMOS_CONTAINER_NAMES);
     const definitions = cosmosContainerDefinitions();
-    expect(definitions.map((definition) => definition.name)).toEqual([
-      "dcb-events",
-      "dcb-lag-estimates",
-      "dcb-pending-arrivals",
-      "dcb-findings",
-      "dcb-projection-checkpoints",
-    ]);
+    expect(definitions.map((definition) => definition.name)).toEqual(Object.values(COSMOS_CONTAINER_NAMES));
     expect(definitions).toHaveLength(5);
     expect(new Set(definitions.map((definition) => definition.name)).size).toBe(5);
     expect(COSMOS_PARTITION_KEY_PATH).toBe(COSMOS_AUXILIARY_PARTITION_KEY_PATH);
@@ -190,6 +186,41 @@ describe("SDT-G12 Cosmos provider pipeline composition", () => {
     expect(definitions.slice(1).map((definition) => definition.partitionKeyValue(SERVICE_ID))).toEqual(
       definitions.slice(1).map(() => SERVICE_ID),
     );
+    expect(COSMOS_DOCUMENT_ID_RULES).toEqual({
+      events: {
+        logicalEvent: "canonical event id",
+        eventSidecar: "safeId(\"event-ops\", eventId)",
+        serviceGuards: {
+          allocatorLineageBinding: "safeId(\"allocator-lineage-binding\")",
+          suidBinding: "safeId(\"suid-binding\", suid)",
+          deliveryIncident: "safeId(\"incident\", identityKey)",
+        },
+      },
+      lagEstimates: { lagEstimate: "serviceId" },
+      pendingArrivals: { pendingArrival: "safeId(eventId)" },
+      findings: {
+        finding: "safeId(eventId, path, classification)",
+        incidentProjection: "safeId(\"incident\", identityKey)",
+      },
+      checkpoints: { checkpoint: "safeId(projectionId)" },
+    });
+
+    const client = new PipelineMemoryClient();
+    const store = createCosmosStoreProvider({ client }).create({});
+    await store.initialize();
+    await store.recordDelivery(testMessage(), 1_000);
+    const observedEventPartitions = client.observations
+      .filter((observation) => observation.container === DEFAULT_COSMOS_CONTAINERS.events)
+      .map((observation) => observation.partitionKey)
+      .filter((value): value is string => value !== undefined);
+    expect(observedEventPartitions).toContain(`${SERVICE_ID}|${testMessage().eventId}`);
+    expect(observedEventPartitions).toContain(`${SERVICE_ID}|__dcb_event_ops__`);
+    const sidecarId = ["event-ops", testMessage().eventId].map(encodeURIComponent).join("~");
+    expect(client.observations.some((observation) => observation.id === testMessage().eventId && observation.partitionKey === `${SERVICE_ID}|${testMessage().eventId}`)).toBe(true);
+    expect(client.observations.some((observation) => observation.id === sidecarId && observation.partitionKey === `${SERVICE_ID}|${testMessage().eventId}`)).toBe(true);
+    expect(client.observations.some((observation) => observation.id === "allocator-lineage-binding" && observation.partitionKey === `${SERVICE_ID}|__dcb_event_ops__`)).toBe(true);
+    expect(COSMOS_CONTAINER_LAYOUT.events.partitionKeyPath).toBe(COSMOS_EVENT_PARTITION_KEY_PATH);
+    expect(COSMOS_CONTAINER_LAYOUT.findings.partitionKeyPath).toBe(COSMOS_AUXILIARY_PARTITION_KEY_PATH);
 
     // The historical .NET layout is a separate namespace, not an alias for a
     // TypeScript container. This negative contract catches a five-name rename

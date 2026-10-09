@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "stability": "experimental",
+  "provider": "cosmos",
+  "logicalEventContract": "contracts/event-store-ddl.json#cosmos",
+  "bindings": {
+    "endpoint": "COSMOS_ENDPOINT",
+    "database": "COSMOS_DATABASE",
+    "key": "COSMOS_KEY"
+  },
+  "containers": {
+    "events": {
+      "name": "dcb-events",
+      "partitionKeyPath": "/pk",
+      "partitionValueKinds": [
+        "{serviceId}|{eventId}",
+        "{serviceId}|__dcb_event_ops__"
+      ],
+      "documentIds": {
+        "logicalEvent": "canonical event id",
+        "eventSidecar": "safeId(\"event-ops\", eventId)",
+        "serviceGuards": {
+          "allocatorLineageBinding": "safeId(\"allocator-lineage-binding\")",
+          "suidBinding": "safeId(\"suid-binding\", suid)",
+          "deliveryIncident": "safeId(\"incident\", identityKey)"
+        }
+      }
+    },
+    "lagEstimates": {
+      "name": "dcb-lag-estimates",
+      "partitionKeyPath": "/serviceId",
+      "partitionValueKinds": ["{serviceId}"],
+      "documentIds": { "lagEstimate": "serviceId" }
+    },
+    "pendingArrivals": {
+      "name": "dcb-pending-arrivals",
+      "partitionKeyPath": "/serviceId",
+      "partitionValueKinds": ["{serviceId}"],
+      "documentIds": { "pendingArrival": "safeId(eventId)" }
+    },
+    "findings": {
+      "name": "dcb-findings",
+      "partitionKeyPath": "/serviceId",
+      "partitionValueKinds": ["{serviceId}"],
+      "documentIds": {
+        "finding": "safeId(eventId, path, classification)",
+        "incidentProjection": "safeId(\"incident\", identityKey)"
+      }
+    },
+    "checkpoints": {
+      "name": "dcb-projection-checkpoints",
+      "partitionKeyPath": "/serviceId",
+      "partitionValueKinds": ["{serviceId}"],
+      "documentIds": { "checkpoint": "safeId(projectionId)" }
+    }
+  }
+}

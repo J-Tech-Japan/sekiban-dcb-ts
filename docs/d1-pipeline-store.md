@@ -40,7 +40,7 @@ override is introduced.
 ## Verification
 
 The required Miniflare lane runs the same shared PipelineStore contract used by
-Postgres/Cosmos plus D1-specific fault, collision, lineage, pending-union,
+Postgres and experimental Cosmos plus D1-specific fault, collision, lineage, pending-union,
 checkpoint-CAS, migration, and BINARY-ordering assertions. It is wired into the
 normal CI verify job and fails when the D1 binding or migration is unavailable;
 there is no silent skip.

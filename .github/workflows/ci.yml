@@ -97,11 +97,31 @@ jobs:
       - name: Execute manifest PR cheap tier and CI coverage guards
         run: node scripts/ci-local.mjs --lane cheap --ci
 
+  # Cosmos is an experimental provider, but its real emulator contract is a
+  # required PR witness. The runner owns an isolated detached worktree,
+  # ephemeral key, random ports, emulator, and cleanup for this job.
+  ci-cosmos-emulator:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Execute the required real Cosmos emulator lane
+        run: node scripts/ci-local.mjs --lane cosmos
+
   # Keep the required aggregate context. always() makes skipped/failed PR
   # jobs observable; the verification guard converts either state to a red check.
   verify:
     if: ${{ always() }}
-    needs: [ci-foundation, ci-pr-cheap]
+    needs: [ci-foundation, ci-pr-cheap, ci-cosmos-emulator]
     runs-on: ubuntu-latest
     env:
       G40_VERIFY_NEEDS_JSON: ${{ toJson(needs) }}

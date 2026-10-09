@@ -256,6 +256,25 @@ function finishInstall(work, env, mode, artifact, receipt) {
   const project = join(work, "cold-start-booking");
   assert(existsSync(project), "create-dcb did not create cold-start-booking");
   assertGeneratedFileSet(walkFiles(project), artifact.createdExpected);
+  const authority = packageJson(join(root, "contracts/cosmos-layout.json"));
+  const descriptor = packageJson(join(project, "cosmos.experimental.json"));
+  const descriptorBytes = readFileSync(join(project, "cosmos.experimental.json"));
+  const templateDescriptorBytes = readFileSync(join(root, "packages/create-dcb/template/cosmos.experimental.json"));
+  assert(Buffer.compare(descriptorBytes, templateDescriptorBytes) === 0, "starter Cosmos descriptor is not byte-identical to the template");
+  assert(descriptor.stability === "experimental" && descriptor.provider === "cosmos", "starter Cosmos descriptor lost its experimental marker");
+  assert(descriptor.active === false, "starter Cosmos descriptor must remain inactive");
+  assert(JSON.stringify(descriptor.bindings) === JSON.stringify(authority.bindings), "starter Cosmos bindings differ from the authority");
+  const expectedContainers = Object.fromEntries(Object.entries(authority.containers).map(([key, entry]) => [key, {
+    name: entry.name,
+    partitionKeyPath: entry.partitionKeyPath,
+    partitionValueKinds: entry.partitionValueKinds,
+    documentIds: entry.documentIds,
+  }]));
+  assert(JSON.stringify(descriptor.containers) === JSON.stringify(expectedContainers), "starter Cosmos descriptor differs from the authority");
+  const starterWorker = readFileSync(join(project, "src/worker.ts"), "utf8");
+  assert(!starterWorker.includes("@sekiban/dcb-runtime/cosmos"), "generated worker activated Cosmos");
+  const starterWrangler = readFileSync(join(project, "wrangler.jsonc"), "utf8");
+  assert(starterWrangler.includes('"d1_databases"') && !starterWrangler.includes("COSMOS_KEY"), "generated Wrangler composition is not active D1-only");
 
   const manifestPath = join(project, "package.json");
   const manifest = packageJson(manifestPath);

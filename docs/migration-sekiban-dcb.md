@@ -59,7 +59,7 @@ operational arrival facts, lineage, and commit attemptId belong in
    Retain the receipt. An exact rerun recovers the stored receipt after a file
    failure and performs no inserts. Rebuilt tag-summary `FirstEventAt` and
    `LastEventAt` values are the rebuild transaction time because every rebuilt
-   `CreatedAt` uses that time. SQLite and Cosmos live rebuilds are not
+   `CreatedAt` uses that time. SQLite and experimental Cosmos live rebuilds are not
    supported here.
 
 The repository's pinned `tools/sekiban-parity` runner exercises the same
@@ -76,8 +76,8 @@ metadata.
    is unavailable.
 4. Recreate or verify TypeScript tag state through the application's supported
    import and projection procedures. The PostgreSQL rebuild command documented
-   above is only the TypeScript→C# procedure; it does not populate Durable
-   Object tag storage. SQLite and Cosmos live rebuilds are not supported here.
+   above is the PostgreSQL-only TypeScript→C# procedure; it does not populate Durable
+   Object tag storage. SQLite and experimental Cosmos live rebuilds are not supported here.
 
 ## Production cutover safety
 

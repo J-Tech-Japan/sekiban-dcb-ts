@@ -25,6 +25,9 @@ interface ReadWorkerEnv {
   TAG_STATE?: DurableObjectNamespace;
   POSTGRES_URL?: string;
   HYPERDRIVE?: Hyperdrive;
+  COSMOS_ENDPOINT?: string;
+  COSMOS_DATABASE?: string;
+  COSMOS_KEY?: string;
   /** Optional explicit D1 provider binding; Postgres remains the default. */
   D1?: D1Database;
   /** Set only by an authenticated deployment-verification lane. */
@@ -209,10 +212,10 @@ export class SerializedReadWorker {
     // Direct unit tests can exercise Tag DO determinacy with only TAG. The
     // default provider has no backing store in that fixture. An explicit
     // provider (including Cosmos) is always checked when it is configured.
-    if (this.storeProvider === undefined || this.storeProvider.isConfigured?.(this.env) === false) {
-      return;
-    }
     try {
+      if (this.storeProvider === undefined || this.storeProvider.isConfigured?.(this.env) === false) {
+        return;
+      }
       const store = this.storeProvider.create(this.env);
       await store.initialize();
       const nowMs = Date.now();
