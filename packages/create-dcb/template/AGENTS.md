@@ -3,6 +3,10 @@
 Use `npm run migrate` for D1 migrations and `npm run deploy` for the Worker.
 Wrangler remains this starter's build and deploy path.
 
+Keep `deployment-topology.json`, `DEPLOYMENT.md`, `scripts/deploy-check.mjs`,
+`wrangler.jsonc`, and both migration directories as deployment infrastructure
+when replacing the booking application.
+
 The deliberate `cloudflare.config.ts` guard refuses cf commands run from the
 project root when they load this project's config. It does not cover
 subdirectories, so never run cf from a subdirectory, especially `public/`, and

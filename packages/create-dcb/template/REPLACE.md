@@ -22,6 +22,9 @@ bindings do not need to change.
 
 - `src/worker.ts` — the Worker shell and Durable Object re-exports.
 - `wrangler.jsonc` — Worker, D1, Queue, dead-letter queue, and Durable Object configuration.
+- `deployment-topology.json` — the sole handwritten deployment data authority.
+- `DEPLOYMENT.md` — the checked standalone deployment runbook.
+- `scripts/deploy-check.mjs` — the credential-free local topology and dry-run gate.
 - `migrations/d1/g32/` and `migrations/mv/` — the project-local migration SQL.
 - `scripts/migrate.sh` and `scripts/deploy.sh` — helper-backed lifecycle commands.
 - `package.json` — the published dependency versions and helper scripts.

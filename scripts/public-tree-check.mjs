@@ -197,7 +197,7 @@ function isPublicMarkdownPath(relativePath) {
     || (segments[0] === "samples" && segments.length === 3 && segments[2] === "README.md")
     || (segments[0] === "samples" && segments[2] === "docs" && relativePath.endsWith(".md"))
     || (segments[0] === "packages" && segments.length === 3 && segments[2] === "README.md")
-    || (segments[0] === "packages" && segments[2] === "template" && segments[3] === "README.md");
+    || (segments[0] === "packages" && segments[2] === "template" && ["README.md", "DEPLOYMENT.md"].includes(segments[3]));
 }
 
 function checkInternalUnitText(relativePath, text) {
@@ -461,6 +461,9 @@ function runSelfTest() {
       repos.push(vocabularyRepo);
       expectFailure(vocabularyRepo, "internal-unit-vocabulary", selfTestOptions);
     }
+    const deploymentMarkdownRepo = makeSelfTestRepo([["packages/create-dcb/template/DEPLOYMENT.md", "G44"]]);
+    repos.push(deploymentMarkdownRepo);
+    expectFailure(deploymentMarkdownRepo, "internal-unit-vocabulary", selfTestOptions);
     const privateHostPathRepo = makeSelfTestRepo([["path.txt", internalHostPath]]);
     repos.push(privateHostPathRepo);
     expectFailure(privateHostPathRepo, "private-host-path", selfTestOptions);

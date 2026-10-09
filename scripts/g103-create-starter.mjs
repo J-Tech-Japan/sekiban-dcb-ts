@@ -2,7 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -29,12 +29,14 @@ const matchedSet = [
 ];
 const requiredFiles = [
   "README.md",
+  "DEPLOYMENT.md",
   "REPLACE.md",
   "AGENTS.md",
   "cloudflare.config.ts",
   "package.json",
   "cosmos.experimental.json",
   "wrangler.jsonc",
+  "deployment-topology.json",
   "src/worker.ts",
   "src/booking-domain.ts",
   "src/booking-transport.ts",
@@ -300,6 +302,7 @@ function assertPackage(project) {
   assert(manifest.devDependencies?.["@cloudflare/workers-types"] === "5.20260820.1", "starter must pin Workers types 5.20260820.1 for standalone typecheck");
   assert(manifest.scripts?.migrate === "dcb-cloudflare migrate --config wrangler.jsonc", "migrate script is not helper-only");
   assert(manifest.scripts?.deploy === "dcb-cloudflare deploy --config wrangler.jsonc", "deploy script is not helper-only");
+  assert(manifest.scripts?.["deploy:check"] === "node scripts/deploy-check.mjs", "deploy:check script is not registered");
   assert(manifest.scripts?.typecheck === "tsc --noEmit", "typecheck script is not standalone");
   assert(!JSON.stringify(manifest).includes("file:") && !JSON.stringify(manifest).includes("workspace:"), "starter package has a monorepo runtime dependency");
   return {
@@ -385,30 +388,36 @@ async function helperPlans(project, configText, names) {
   return { migrate, deploy, config: "wrangler.jsonc", derivedNames: [names.pipeline, names.mv, names.queue, names.dlq] };
 }
 
-function dryRun(project, proofRoot, config) {
-  const outdir = join(proofRoot, "dry-run");
-  mkdirSync(outdir, { recursive: true });
-  const args = ["deploy", "--config", join(project, "wrangler.jsonc"), "--dry-run", "--outdir", outdir, "--outfile", join(outdir, "worker.js")];
-  assert(!args.includes(liveWorker), "dry-run command named the live Worker");
-  const env = { ...process.env, CI: "true" };
+function cloudflareSafeEnvironment() {
+  const env = { ...process.env };
   delete env.CLOUDFLARE_API_TOKEN;
-  delete env.G32_DEPLOY_LIVE;
-  const wrangler = join(project, "node_modules", "wrangler", "bin", "wrangler.js");
-  assert(existsSync(wrangler), "generated project did not install wrangler");
-  assert(existsSync(join(project, "node_modules", ".bin", "wrangler")), "generated project missing wrangler bin");
-  run(process.execPath, [wrangler, ...args], { cwd: project, env });
-  const bundlePath = join(outdir, "worker.js");
-  assert(existsSync(bundlePath), "wrangler dry-run did not write a Worker bundle");
-  const bundle = readFileSync(bundlePath, "utf8");
-  assert(bundle.includes("create-room") && bundle.includes("reserve-room"), "dry-run bundle omitted the booking command surface");
-  assert(config.name !== liveWorker, "generated config used the live Worker name");
-  return {
-    command: ["wrangler", "deploy", "--config", "wrangler.jsonc", "--dry-run"],
-    worker: config.name,
-    bundleBytes: Buffer.byteLength(bundle),
-    bookingMarkers: ["create-room", "reserve-room"],
-    wranglerSource: "project-local",
-  };
+  delete env.CLOUDFLARE_ACCOUNT_ID;
+  return env;
+}
+
+function parseLastJson(output, label) {
+  const start = output.lastIndexOf("\n{");
+  assert(start >= 0, `${label} did not print a JSON receipt`);
+  try {
+    return JSON.parse(output.slice(start + 1));
+  } catch (error) {
+    fail(`${label} printed invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function assertDeployCheckReceipt(receipt) {
+  assert(receipt.bundle?.projectLocalWrangler === true, "deploy:check did not report project-local Wrangler");
+  assert(receipt.bundle?.dryRun === true, "deploy:check did not report dry-run");
+  assert(receipt.bundle?.createRoom === true && receipt.bundle?.reserveRoom === true, "deploy:check receipt omitted booking markers");
+  assert(receipt.placeholders?.status === "fresh-template", "deploy:check did not report fresh placeholder mode");
+  const locations = receipt.placeholders.locations ?? [];
+  assert(locations.length === 2, "deploy:check did not report both D1 placeholders");
+  for (const location of locations) {
+    assert(location.path.includes("d1_databases[binding=") && location.databaseName && location.creationCommand && location.replacement, "deploy:check placeholder report is incomplete");
+  }
+  assert(Array.isArray(receipt.migrationFileCounts) && receipt.migrationFileCounts.every((entry) => entry.files > 0), "deploy:check migration counts are not measured");
+  assert(!JSON.stringify(receipt).match(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i), "deploy:check receipt exposed a configured resource ID");
+  return { status: "passed", placeholders: locations.map((entry) => entry.binding), markers: ["create-room", "reserve-room"] };
 }
 
 function applyLocalPipelineMigration(project, proofRoot, pipelineName) {
@@ -458,7 +467,10 @@ async function main() {
     const installs = await registryAndHelperInstall(project, join(packRoot, helperPack));
     const plans = await helperPlans(project, configText, configProof.names);
     const localMigration = applyLocalPipelineMigration(project, proofRoot, configProof.names.pipeline);
-    const dry = dryRun(project, proofRoot, parseJsonc(configText));
+    const selfTest = run("npm", ["run", "deploy:check", "--", "--self-test"], { cwd: project, env: cloudflareSafeEnvironment() });
+    assert(selfTest.stdout.includes("deploy-check-self-test-passed"), "generated deploy-check self-test did not pass");
+    const deployCheckOutput = run("npm", ["run", "deploy:check"], { cwd: project, env: cloudflareSafeEnvironment() });
+    const deployCheck = assertDeployCheckReceipt(parseLastJson(deployCheckOutput.stdout, "deploy:check"));
 
     process.stdout.write(`${JSON.stringify({
       result: "g103-create-starter-check-passed",
@@ -472,7 +484,7 @@ async function main() {
       installs,
       helperPlans: plans,
       localMigration,
-      dryRun: dry,
+      deployCheck,
       safety: {
         liveWorkerRefused: true,
         liveDatabaseIdsAbsent: true,

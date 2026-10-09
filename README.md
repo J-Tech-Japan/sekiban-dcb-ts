@@ -14,7 +14,9 @@ cd my-booking-app
 npm install
 ```
 
-The starter packages require Node.js 20 or newer. The generated project's README covers creating the two D1 databases, `npm run migrate`, and `npm run deploy`.
+The starter packages require Node.js 20 or newer. The generated project's
+[`DEPLOYMENT.md`](packages/create-dcb/template/DEPLOYMENT.md) is the standalone
+guide for its topology, offline gate, and future deployment steps.
 
 ## Packages
 
@@ -85,7 +87,7 @@ The Cloudflare-only sample uses one D1 database for the PipelineStore and a sepa
 npx wrangler d1 create sekiban-dcb-meeting-room-cloudflare-pipeline
 npx wrangler d1 create sekiban-dcb-meeting-room-cloudflare-mv
 ./samples/meeting-room/scripts/migrate-remote.sh
-npx wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --keep-vars
+npx wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc
 ```
 
 Replace the two D1 IDs in `samples/meeting-room/wrangler.cloudflare-only.jsonc` before migrating or deploying. The optional library and gate checks are listed in the development section.

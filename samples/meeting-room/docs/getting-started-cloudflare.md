@@ -133,9 +133,11 @@ load:
 To reuse short demo IDs after verify seed / conflicts:
 
 1. Wipe / rotate the durable namespace as your operator C-0 procedure requires.
-2. Change the non-secret Wrangler var `SDT_SERVICE_ID` (e.g. append `-rYYYYMMDD`)
-   and redeploy with `--keep-vars` only if you intentionally preserve other vars;
-   otherwise set the new service id in the dashboard / vars and deploy.
+2. Change `vars.SDT_SERVICE_ID` in
+   `wrangler.cloudflare-only.jsonc` (e.g. append `-rYYYYMMDD`) and deploy with
+   the checked-in value. Add `--keep-vars` only for the reviewed exception of
+   intentionally preserving other dashboard-only vars; otherwise the normal
+   deployment removes dashboard-only vars before applying checked-in values.
 3. **Hard-reload** the browser tab (or close it). In-memory `portableSnapshots`
    survive a server wipe until reload; the browser reconciles occupied snapshots
    against `/api/read` before create/reserve so a stale tab should not invent
