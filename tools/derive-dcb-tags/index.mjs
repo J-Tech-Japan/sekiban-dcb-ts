@@ -117,7 +117,7 @@ export function expectedDcbTagRows(value, provider, manifest = derivationManifes
   }));
 }
 
-/** Full provider-field comparison, including Cosmos pk/id rather than a subset. */
+/** Full provider-field comparison for compatibility fixtures, including Cosmos pk/id rather than a subset. */
 export function assertDcbTagRowsAgainstManifest(value, provider, actual, manifest = derivationManifest()) {
   const expected = expectedDcbTagRows(value, provider, manifest);
   if (!Array.isArray(actual) || actual.length !== expected.length) fail(`${provider} rebuild row count differs from manifest expectation`);
@@ -134,7 +134,7 @@ export function assertDcbTagRowsAgainstManifest(value, provider, actual, manifes
   return expected;
 }
 
-/** Derive rebuildable C# tag rows without reading a wall clock. */
+/** Derive compatibility-fixture rows without reading a wall clock; not live membership. */
 export function deriveDcbTags(value, provider) {
   if (provider !== "postgres" && provider !== "sqlite" && provider !== "cosmos") fail("provider must be postgres, sqlite, or cosmos");
   return Object.freeze(orderedTagPairs(value).map(({ event, tag }, index) => {
@@ -163,15 +163,7 @@ export function deriveDcbTags(value, provider) {
 }
 
 function main() {
-  const [provider, path] = process.argv.slice(2);
-  if (provider === undefined || path === undefined || process.argv.length !== 4) {
-    fail("usage: derive-dcb-tags <postgres|sqlite|cosmos> <events.json>");
-  }
-  const source = JSON.parse(readFileSync(path, "utf8"));
-  const manifest = derivationManifest();
-  const rows = deriveDcbTags(source, provider);
-  assertDcbTagRowsAgainstManifest(source, provider, rows, manifest);
-  process.stdout.write(`${JSON.stringify(rows, null, 2)}\n`);
+  fail("the executable declared-tag path is disabled; use npm run postgres:tags:rebuild -- --input <sealed-file>");
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

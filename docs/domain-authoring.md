@@ -253,6 +253,21 @@ causationId, correlationId, executedUser }`: `id` is UUID v7,
 `(id, "SerializedCommit", "SerializedSekibanExecutor")`. Operational attempt
 facts live in the TS sidecar, never in author-facing metadata.
 
-`tools/derive-dcb-tags` can rebuild C# `dcb_tags` rows from these event records.
-It is a migration/rebuild tool only: a runtime domain continues to treat the
-Tag Durable Object and the event's ordered `family:value` tags as the authority.
+The PostgreSQL rebuild is the TypeScript→C# migration procedure only. It
+consumes a sealed global file with explicit committed membership and healthy
+coverage. This repository has no producer for that file; stop when either fact
+is unavailable. Stop writers, load the exact logical events into a fresh
+PostgreSQL service target, run
+`npm run postgres:tags:rebuild -- --input <sealed.json>` and review its exact
+digests and proposed rows before applying with `--input-sha256` and
+`--receipt`. Additions require `--correction-manifest` and its matching
+`--correction-sha256`; removal and automatic repair are not supported. Retain
+the receipt and use an exact rerun for recovery. Rebuilt tag-summary first and
+last times equal the rebuild transaction time. SQLite and Cosmos live rebuilds
+are not supported. `tools/derive-dcb-tags/index.mjs` and
+`contracts/dcb-tags-derivation.json` remain compatibility-fixture-only.
+
+There is no C#→TypeScript live tag-state rebuild path in this repository. Do
+not use the PostgreSQL command, declared tags, bootstrap counts, or an
+events-only file to populate TypeScript tag state; use the application's
+supported import and projection procedures instead.

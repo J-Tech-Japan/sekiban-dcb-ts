@@ -35,14 +35,32 @@ operational arrival facts, lineage, and commit attemptId belong in
 
 ## TypeScript to C#
 
-1. Stop the source writer and export `dcb_events` logical records, retaining
-   the exact `payload` text and tag order.
-2. Import the records into C# `dcb_events`. Validate UUID/SUID/EventType and
-   all ten logical fields before writing.
-3. Run `tools/derive-dcb-tags --provider postgres` (or `sqlite`/`cosmos`) over
-   the exported records. It sorts by `(sortableUniqueId, tag)`, collapses a
-   duplicate tag within an event, and emits C# rebuild rows.
-4. Check derived row count and field content, then perform the C# tag query.
+1. Stop all writers and export the exact logical records, retaining payload
+   text and tag order.
+2. Import the records into C# `dcb_events` and validate all ten logical fields.
+3. Obtain an already sealed global file containing committed membership and
+   healthy coverage. This repository has no producer for that file. Stop when
+   either committed membership or healthy sealed evidence is unavailable.
+4. Load the matching logical events into a fresh PostgreSQL service target.
+   Run the read-only dry run first:
+
+   `npm run postgres:tags:rebuild -- --input <sealed.json>`
+
+   Review the file digest, content digest, counts, and exact proposed rows.
+   Apply only after review:
+
+   `npm run postgres:tags:rebuild -- --input <sealed.json> --apply --input-sha256 sha256:<64 lowercase hex> --receipt <receipt.json>`
+
+   An additive membership requires an explicit correction file and its exact
+   supplied digest:
+
+   `npm run postgres:tags:rebuild -- --input <sealed.json> --apply --input-sha256 sha256:<64 lowercase hex> --receipt <receipt.json> --correction-manifest <correction.json> --correction-sha256 sha256:<64 lowercase hex>`
+
+   Retain the receipt. An exact rerun recovers the stored receipt after a file
+   failure and performs no inserts. Rebuilt tag-summary `FirstEventAt` and
+   `LastEventAt` values are the rebuild transaction time because every rebuilt
+   `CreatedAt` uses that time. SQLite and Cosmos live rebuilds are not
+   supported here.
 
 The repository's pinned `tools/sekiban-parity` runner exercises the same
 record path in CI, including byte-distinct payload JSON and nullable C# import
@@ -50,16 +68,16 @@ metadata.
 
 ## C# to TypeScript
 
-1. Stop the C# writer and export `dcb_events`; `dcb_tags` is intentionally not
-   imported as runtime authority.
-2. Import/replay logical events through the TypeScript bootstrap import lane.
-   It accepts C# RFC 4122 IDs and all-null C# metadata where appropriate, but
-   validates 30-digit SUIDs, unversioned EventType, exact payload casing, and
-   tag strings before any durable write.
-3. Rebuild Tag Durable Object state and projections from events. The event
-   tags and Tag DO remain authoritative; no runtime tags table is maintained.
-4. Use the projection/list query only after the normal replay/convergence
-   receipt confirms the imported target.
+1. Stop all writers and export the exact logical records.
+2. Import the records into a fresh TypeScript service target.
+3. This repository has no C#→TypeScript live tag-state rebuild path. Do not
+   construct committed membership from declared tags, bootstrap counts, or an
+   events-only file. Stop when committed membership or healthy sealed evidence
+   is unavailable.
+4. Recreate or verify TypeScript tag state through the application's supported
+   import and projection procedures. The PostgreSQL rebuild command documented
+   above is only the TypeScript→C# procedure; it does not populate Durable
+   Object tag storage. SQLite and Cosmos live rebuilds are not supported here.
 
 ## Production cutover safety
 
