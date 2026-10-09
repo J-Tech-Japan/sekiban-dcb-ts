@@ -250,7 +250,7 @@ function registryMode(work, env) {
   return {
     helper: { name: helperPackage, version: helperVersion },
     creator: { name: createPackage, version: creatorVersion, files },
-    createdExpected: files.filter((path) => path.startsWith("template/")).map((path) => path.slice("template/")),
+    createdExpected: files.filter((path) => path.startsWith("template/")).map((path) => path.slice("template/".length)),
   };
 }
 

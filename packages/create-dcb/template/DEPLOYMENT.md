@@ -44,9 +44,9 @@ of that authority, and `wrangler.jsonc` is its deployed configuration form.
 <!-- deployment-topology:end -->
 
 Assets are served from the `public` directory, so the optional `ASSETS` runtime
-property is unused and is not a Wrangler binding. The optional
-`INCIDENT_MAINTAINER_TOKEN` is runtime-owned and is listed as a secret name in
-the authority; its value is never part of this project configuration.
+property is unused and is not a Wrangler binding. The optional incident-
+maintenance secret is runtime-owned and is listed by name
+in the authority; its value is never part of this project configuration.
 
 ## 3. Install and run the offline check
 
@@ -131,20 +131,22 @@ Against the URL of a future deployed Worker, create a fresh room with a fresh
 room ID, reserve it with a fresh reservation ID, then read both resources:
 
 ```sh
-curl -fsS -X POST "$BASE_URL/api/command" \
+curl -fsS -X POST "$BASE_URL/api/commands/create-room" \
   -H 'content-type: application/json' \
-  -d '{"command":"create-room","roomId":"room-smoke-<fresh>"}'
-curl -fsS -X POST "$BASE_URL/api/command" \
+  -d '{"roomId":"room-smoke-<fresh>","name":"Smoke room"}'
+curl -fsS -X POST "$BASE_URL/api/commands/reserve-room" \
   -H 'content-type: application/json' \
-  -d '{"command":"reserve-room","roomId":"room-smoke-<fresh>","reservationId":"reservation-smoke-<fresh>"}'
+  -d '{"roomId":"room-smoke-<fresh>","reservationId":"reservation-smoke-<fresh>"}'
 curl -fsS "$BASE_URL/api/read/room?roomId=room-smoke-<fresh>"
 curl -fsS "$BASE_URL/api/read/reservation?reservationId=reservation-smoke-<fresh>"
 ```
 
 Require successful HTTP responses. Compare the returned room and reservation
 IDs, the committed command outcome, and the visible room/reservation fields
-after materialized-view catch-up. Do not replace `$BASE_URL` with a hosted
-domain in this document.
+after materialized-view catch-up. The command routes take the input object
+directly; the alternative `{ "input": { ... } }` envelope is also accepted by
+the generated Worker. Do not replace `$BASE_URL` with a hosted domain in this
+document.
 
 ## 9. Optional incident-maintenance secret
 
@@ -162,11 +164,16 @@ Do not add the secret name or value to `vars`, and do not commit its value.
 Before teardown, retain or export anything that must be kept. If deletion is
 chosen, remove resources in this order:
 
-1. Delete the Worker using its rendered name and configuration.
-2. Delete the work Queue.
-3. Delete the dead-letter Queue.
-4. Delete the `D1` database.
-5. Delete the `D1_MV` database.
+```sh
+npx wrangler delete --name {{WORKER_NAME}}
+npx wrangler queues delete {{QUEUE_NAME}}
+npx wrangler queues delete {{DLQ_NAME}}
+npx wrangler d1 delete {{PIPELINE_DB}}
+npx wrangler d1 delete {{MV_DB}}
+```
+
+These commands are future-only and must be run in the same order: Worker,
+work Queue, dead-letter Queue, pipeline D1, then materialized-view D1.
 
 Deleting the Worker removes its assets, triggers, secrets, and owned Durable
 Object namespaces and data. Resource deletion is irreversible. Decide on

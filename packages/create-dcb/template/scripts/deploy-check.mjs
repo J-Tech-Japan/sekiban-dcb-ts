@@ -11,6 +11,7 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
@@ -103,7 +104,7 @@ function scanDuplicateKeys(source, label) {
         assert(text[index] === '"', "jsonc-parse", `${label}${path} expected an object key`);
         const key = string();
         const keyPath = `${path}.${key}`;
-        if (keys.has(key)) fail("duplicate-key", keyPath);
+        if (keys.has(key)) fail("duplicate-collection-key", path);
         keys.add(key);
         whitespace();
         assert(text[index] === ":", "jsonc-parse", `${keyPath} is missing a colon`);
@@ -179,9 +180,86 @@ function array(value, path) {
 
 function unique(values, path) {
   const seen = new Set();
-  for (const value of values) {
-    if (seen.has(value)) fail("duplicate-collection-key", `${path}[${value}]`);
+  values.forEach((value, index) => {
+    if (seen.has(value)) fail("duplicate-collection-key", `${path}[${index}]`);
     seen.add(value);
+  });
+}
+
+function uniqueEntries(entries, identity, path) {
+  unique(entries.map(identity), path);
+}
+
+function validateCollectionIdentities(authority, config) {
+  const d1 = config.d1_databases ?? [];
+  uniqueEntries(d1, (entry) => entry?.binding, "wrangler.d1_databases.binding");
+  uniqueEntries(d1, (entry) => entry?.database_name, "wrangler.d1_databases.database_name");
+
+  const producers = config.queues?.producers ?? [];
+  const consumers = config.queues?.consumers ?? [];
+  uniqueEntries(producers, (entry) => entry?.binding, "wrangler.queues.producers.binding");
+  uniqueEntries(producers, (entry) => entry?.queue, "wrangler.queues.producers.queue");
+  uniqueEntries(consumers, (entry) => entry?.queue, "wrangler.queues.consumers.queue");
+
+  const durableBindings = config.durable_objects?.bindings ?? [];
+  const migrations = config.migrations ?? [];
+  uniqueEntries(durableBindings, (entry) => entry?.name, "wrangler.durable_objects.bindings.name");
+  uniqueEntries(durableBindings, (entry) => entry?.class_name, "wrangler.durable_objects.bindings.class_name");
+  uniqueEntries(migrations, (entry) => entry?.tag, "wrangler.migrations.tag");
+  const migratedClasses = migrations.flatMap((entry) => entry?.new_sqlite_classes ?? []);
+  unique(migratedClasses, "wrangler.migrations.new_sqlite_classes");
+  unique(config.triggers?.crons ?? [], "wrangler.triggers.crons");
+
+  const creation = authority.queues.creation;
+  uniqueEntries(creation, (entry) => entry?.kind, "$.queues.creation.kind");
+  uniqueEntries(creation, (entry) => entry?.name, "$.queues.creation.name");
+  uniqueEntries(authority.d1, (entry) => entry?.binding, "$.d1.binding");
+  uniqueEntries(authority.d1, (entry) => entry?.databaseName, "$.d1.databaseName");
+  uniqueEntries(authority.queues.producers, (entry) => entry?.binding, "$.queues.producers.binding");
+  uniqueEntries(authority.queues.producers, (entry) => entry?.queue, "$.queues.producers.queue");
+  uniqueEntries(authority.queues.consumers, (entry) => entry?.queue, "$.queues.consumers.queue");
+  uniqueEntries(authority.durableObjects.bindings, (entry) => entry?.name, "$.durableObjects.bindings.name");
+  uniqueEntries(authority.durableObjects.bindings, (entry) => entry?.className, "$.durableObjects.bindings.className");
+  uniqueEntries(authority.durableObjects.migrations, (entry) => entry?.tag, "$.durableObjects.migrations.tag");
+  unique(
+    authority.durableObjects.migrations.flatMap((entry) => entry?.newSqliteClasses ?? []),
+    "$.durableObjects.migrations.newSqliteClasses",
+  );
+  unique(authority.triggers.crons, "$.triggers.crons");
+  unique(Object.keys(authority.vars), "$.vars");
+  unique(authority.secrets.map((entry) => entry?.name), "$.secrets.name");
+
+  const queueKinds = new Map();
+  for (const [index, entry] of creation.entries()) {
+    const prior = queueKinds.get(entry?.name);
+    if (prior !== undefined && prior !== entry?.kind) fail("duplicate-collection-key", `$.queues.creation[${index}]`);
+    queueKinds.set(entry?.name, entry?.kind);
+  }
+}
+
+function validateAuthorityCollectionIdentities(authority) {
+  uniqueEntries(authority.d1, (entry) => entry?.binding, "$.d1.binding");
+  uniqueEntries(authority.d1, (entry) => entry?.databaseName, "$.d1.databaseName");
+  uniqueEntries(authority.queues.producers, (entry) => entry?.binding, "$.queues.producers.binding");
+  uniqueEntries(authority.queues.producers, (entry) => entry?.queue, "$.queues.producers.queue");
+  uniqueEntries(authority.queues.consumers, (entry) => entry?.queue, "$.queues.consumers.queue");
+  uniqueEntries(authority.durableObjects.bindings, (entry) => entry?.name, "$.durableObjects.bindings.name");
+  uniqueEntries(authority.durableObjects.bindings, (entry) => entry?.className, "$.durableObjects.bindings.className");
+  uniqueEntries(authority.durableObjects.migrations, (entry) => entry?.tag, "$.durableObjects.migrations.tag");
+  unique(
+    authority.durableObjects.migrations.flatMap((entry) => entry?.newSqliteClasses ?? []),
+    "$.durableObjects.migrations.newSqliteClasses",
+  );
+  unique(authority.queues.creation.map((entry) => entry?.kind), "$.queues.creation.kind");
+  unique(authority.queues.creation.map((entry) => entry?.name), "$.queues.creation.name");
+  unique(authority.triggers.crons, "$.triggers.crons");
+  unique(Object.keys(authority.vars), "$.vars");
+  unique(authority.secrets.map((entry) => entry?.name), "$.secrets.name");
+  const queueKinds = new Map();
+  for (const [index, entry] of authority.queues.creation.entries()) {
+    const prior = queueKinds.get(entry?.name);
+    if (prior !== undefined && prior !== entry?.kind) fail("duplicate-collection-key", `$.queues.creation[${index}]`);
+    queueKinds.set(entry?.name, entry?.kind);
   }
 }
 
@@ -193,25 +271,23 @@ function validateAuthority(authority) {
   string(worker.entrypoint, "$.worker.entrypoint");
 
   const d1 = array(authority.d1, "$.d1");
-  unique(d1.map((entry) => entry?.binding), "$.d1.binding");
   for (const [index, entry] of d1.entries()) {
     object(entry, `$.d1[${index}]`, ["binding", "databaseName", "idPlaceholder", "placeholderPath", "migrationsDir", "creationCommand", "replacement"]);
     for (const key of ["binding", "databaseName", "idPlaceholder", "placeholderPath", "migrationsDir", "creationCommand", "replacement"]) {
       string(entry[key], `$.d1[${index}].${key}`);
     }
   }
+  validateAuthorityCollectionIdentities(authority);
   assert(d1.length === 2, "authority-d1-count", String(d1.length));
 
   const queues = object(authority.queues, "$.queues", ["producers", "consumers", "creation"]);
   const producers = array(queues.producers, "$.queues.producers");
-  unique(producers.map((entry) => entry?.binding), "$.queues.producers.binding");
   for (const [index, entry] of producers.entries()) {
     object(entry, `$.queues.producers[${index}]`, ["binding", "queue"]);
     string(entry.binding, `$.queues.producers[${index}].binding`);
     string(entry.queue, `$.queues.producers[${index}].queue`);
   }
   const consumers = array(queues.consumers, "$.queues.consumers");
-  unique(consumers.map((entry) => entry?.queue), "$.queues.consumers.queue");
   for (const [index, entry] of consumers.entries()) {
     object(entry, `$.queues.consumers[${index}]`, ["queue", "maxBatchTimeout", "maxRetries", "deadLetterQueue"]);
     string(entry.queue, `$.queues.consumers[${index}].queue`);
@@ -220,7 +296,6 @@ function validateAuthority(authority) {
     string(entry.deadLetterQueue, `$.queues.consumers[${index}].deadLetterQueue`);
   }
   const creation = array(queues.creation, "$.queues.creation");
-  unique(creation.map((entry) => entry?.kind), "$.queues.creation.kind");
   for (const [index, entry] of creation.entries()) {
     object(entry, `$.queues.creation[${index}]`, ["kind", "name", "command"]);
     string(entry.kind, `$.queues.creation[${index}].kind`);
@@ -231,21 +306,18 @@ function validateAuthority(authority) {
 
   const durableObjects = object(authority.durableObjects, "$.durableObjects", ["bindings", "migrations"]);
   const bindings = array(durableObjects.bindings, "$.durableObjects.bindings");
-  unique(bindings.map((entry) => entry?.name), "$.durableObjects.bindings.name");
   for (const [index, entry] of bindings.entries()) {
     object(entry, `$.durableObjects.bindings[${index}]`, ["name", "className"]);
     string(entry.name, `$.durableObjects.bindings[${index}].name`);
     string(entry.className, `$.durableObjects.bindings[${index}].className`);
   }
   const migrations = array(durableObjects.migrations, "$.durableObjects.migrations");
-  unique(migrations.map((entry) => entry?.tag), "$.durableObjects.migrations.tag");
   for (const [index, entry] of migrations.entries()) {
     object(entry, `$.durableObjects.migrations[${index}]`, ["tag", "newSqliteClasses"]);
     string(entry.tag, `$.durableObjects.migrations[${index}].tag`);
     const classes = array(entry.newSqliteClasses, `$.durableObjects.migrations[${index}].newSqliteClasses`);
     assert(classes.length > 0, "authority-shape", `$.durableObjects.migrations[${index}].newSqliteClasses`);
     classes.forEach((value, classIndex) => string(value, `$.durableObjects.migrations[${index}].newSqliteClasses[${classIndex}]`));
-    unique(classes, `$.durableObjects.migrations[${index}].newSqliteClasses`);
   }
   assert(bindings.length === 5 && migrations.length === 3, "authority-do-count");
 
@@ -256,22 +328,24 @@ function validateAuthority(authority) {
   const triggers = object(authority.triggers, "$.triggers", ["crons"]);
   const crons = array(triggers.crons, "$.triggers.crons");
   crons.forEach((value, index) => string(value, `$.triggers.crons[${index}]`));
-  unique(crons, "$.triggers.crons");
   assert(crons.length > 0, "authority-cron-count");
-  for (const secret of authority.secrets ?? []) {
-    if (secret?.name && Object.hasOwn(authority.vars ?? {}, secret.name)) fail("secret-in-vars", secret.name);
-  }
+  assert(
+    authority.vars !== null && typeof authority.vars === "object" && !Array.isArray(authority.vars),
+    "authority-shape",
+    "$.vars must be an object",
+  );
+  const authoritySecretNames = new Set((authority.secrets ?? []).map((entry) => entry?.name));
+  for (const key of Object.keys(authority.vars)) assert(!authoritySecretNames.has(key), "secret-in-vars");
   const vars = object(authority.vars, "$.vars", ["DOMAIN_DELIVERY_CLASS", "SDT_SERVICE_ID"]);
   for (const [key, value] of Object.entries(vars)) string(value, `$.vars.${key}`);
   const secrets = array(authority.secrets, "$.secrets");
-  unique(secrets.map((entry) => entry?.name), "$.secrets.name");
   for (const [index, entry] of secrets.entries()) {
     object(entry, `$.secrets[${index}]`, ["name", "optional", "ownership", "forbiddenIn"]);
     string(entry.name, `$.secrets[${index}].name`);
     assert(typeof entry.optional === "boolean", "authority-shape", `$.secrets[${index}].optional`);
     string(entry.ownership, `$.secrets[${index}].ownership`);
     assert(entry.forbiddenIn === "vars", "authority-secret-boundary", `$.secrets[${index}].forbiddenIn`);
-    assert(!Object.hasOwn(vars, entry.name), "secret-in-vars", entry.name);
+    assert(!Object.hasOwn(vars, entry.name), "secret-in-vars");
   }
   return authority;
 }
@@ -320,6 +394,9 @@ function expectedTopology(authority) {
 function compareTopology(authority, config) {
   assert(!Object.hasOwn(config, "account_id"), "account-id-forbidden");
   object(config, "wrangler", ["$schema", "name", "main", "compatibility_date", "compatibility_flags", "vars", "assets", "triggers", "d1_databases", "queues", "durable_objects", "migrations"]);
+  validateCollectionIdentities(authority, config);
+  const secretNames = new Set(authority.secrets.map((entry) => entry.name));
+  for (const name of Object.keys(config.vars ?? {})) assert(!secretNames.has(name), "secret-in-vars");
   assert(config.name === authority.worker.name, "worker-name", config.name);
   assert(config.main === authority.worker.entrypoint, "worker-entrypoint", config.main);
   assert(canonical(config.compatibility_flags) === canonical(["nodejs_compat"]), "compatibility-flags");
@@ -340,8 +417,6 @@ function compareTopology(authority, config) {
     const actualRows = actual.filter((row) => row.kind === kind).sort((a, b) => canonical(a).localeCompare(canonical(b)));
     assert(canonical(expectedRows) === canonical(actualRows), reason);
   }
-  const expectedSecrets = new Set(authority.secrets.map((entry) => entry.name));
-  for (const name of Object.keys(config.vars ?? {})) assert(!expectedSecrets.has(name), "secret-in-vars", name);
   assert(canonical(config.vars) === canonical(authority.vars), "vars-parity");
   assert(canonical(config.triggers?.crons ?? []) === canonical(authority.triggers.crons), "cron-parity");
   assert(config.assets?.directory === authority.assets.directory && !Object.hasOwn(config.assets, "binding"), "assets-parity");
@@ -369,7 +444,7 @@ function migrationCounts(authority) {
   });
 }
 
-function placeholderEntries(authority, config, allowConfigured = false) {
+function placeholderEntries(authority, config, requireConfigured = false) {
   const expected = new Map(authority.d1.map((entry) => [entry.idPlaceholder, entry]));
   const found = [];
   function walk(value, path) {
@@ -400,7 +475,7 @@ function placeholderEntries(authority, config, allowConfigured = false) {
     }
   }
   walk(config, "$");
-  if (allowConfigured && found.length === 0) return found;
+  if (requireConfigured) return found.sort((a, b) => a.binding.localeCompare(b.binding));
   assert(found.length === expected.size, "placeholder-count", `${found.length}/${expected.size}`);
   for (const entry of expected.values()) assert(found.some((item) => item.binding === entry.binding), "placeholder-report-missing", entry.binding);
   return found.sort((a, b) => a.binding.localeCompare(b.binding));
@@ -413,6 +488,11 @@ function configuredD1Ids(authority, config, requireConfigured) {
     for (const entry of config.d1_databases) assert(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entry.database_id), "configured-id-shape", entry.binding);
   }
   return placeholders;
+}
+
+function wranglerFailure(result) {
+  if (result.signal) return `signal-${result.signal}`;
+  return `exit-status-${result.status ?? "unknown"}`;
 }
 
 function assertPlaceholderReceipt(expected, reported) {
@@ -439,43 +519,77 @@ function workerStructure(authority, source, label) {
   const worker = sourceFile(label, source);
   const expectedClasses = authority.durableObjects.bindings.map((entry) => entry.className).sort();
   const exports = [];
-  let composition = false;
+  let composedWorker = null;
+  let exportedWorker = false;
+  const runtimeDeclarations = new Map();
   const handlers = { application: false, fetch: false, queue: false, scheduled: false };
+  function containsCall(node, name) {
+    let found = false;
+    function inspect(child) {
+      if (ts.isCallExpression(child) && ts.isIdentifier(child.expression) && child.expression.text === name) {
+        found = true;
+      }
+      if (!found) ts.forEachChild(child, inspect);
+    }
+    inspect(node);
+    return found;
+  }
+  function runtimeProperty(node, names) {
+    return ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && names.has(node.expression.text);
+  }
   function visit(node) {
     if (ts.isExportDeclaration(node) && node.moduleSpecifier?.text === "@sekiban/dcb-cloudflare" && ts.isNamedExports(node.exportClause)) {
       for (const specifier of node.exportClause.elements) exports.push((specifier.propertyName ?? specifier.name).text);
     }
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      if (node.expression.text === "createCloudflareOnlyRuntimeWorker") composition = true;
-      if (node.expression.text === "composeHandlers") {
-        const root = node.arguments[0];
-        const properties = root && ts.isObjectLiteralExpression(root) ? root.properties : [];
-        for (const property of properties) {
-          if (!ts.isPropertyAssignment(property) || !ts.isIdentifier(property.name)) continue;
-          if (property.name.text === "application") {
-            handlers.application = true;
-            handlers.fetch = propertyNames(property.initializer).includes("fetch");
-          }
-          if (property.name.text === "sekiban") {
-            for (const name of propertyNames(property.initializer)) {
-              if (name === "fetch") handlers.fetch = true;
-              if (name === "queue") handlers.queue = true;
-              if (name === "scheduled") handlers.scheduled = true;
-            }
-          }
-        }
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      if (node.name.text === "worker" && node.initializer && ts.isCallExpression(node.initializer) &&
+          ts.isIdentifier(node.initializer.expression) && node.initializer.expression.text === "composeHandlers") {
+        composedWorker = node.initializer;
       }
+      if (node.initializer && containsCall(node.initializer, "createCloudflareOnlyRuntimeWorker")) {
+        runtimeDeclarations.set(node.name.text, node.initializer);
+      }
+    }
+    if (ts.isExportAssignment(node) && !node.isExportEquals && ts.isIdentifier(node.expression) &&
+        node.expression.text === "worker") {
+      exportedWorker = true;
     }
     ts.forEachChild(node, visit);
   }
   visit(worker);
+  const runtimeNames = new Set(runtimeDeclarations.keys());
+  const root = composedWorker?.arguments[0];
+  const properties = root && ts.isObjectLiteralExpression(root) ? root.properties : [];
+  for (const property of properties) {
+    if (!ts.isPropertyAssignment(property) || !ts.isIdentifier(property.name)) continue;
+    if (property.name.text === "application") {
+      handlers.application = true;
+      handlers.fetch = propertyNames(property.initializer).includes("fetch");
+    }
+    if (property.name.text === "sekiban" && ts.isObjectLiteralExpression(property.initializer)) {
+      for (const entry of property.initializer.properties) {
+        if (!ts.isPropertyAssignment(entry) || !ts.isIdentifier(entry.name)) continue;
+        if (entry.name.text === "fetch") handlers.fetch = runtimeProperty(entry.initializer, runtimeNames);
+        if (entry.name.text === "queue") handlers.queue = runtimeProperty(entry.initializer, runtimeNames);
+        if (entry.name.text === "scheduled") handlers.scheduled = runtimeProperty(entry.initializer, runtimeNames);
+      }
+    }
+  }
+  let composedUsesRuntime = false;
+  function inspectComposed(node) {
+    if (ts.isIdentifier(node) && runtimeNames.has(node.text)) composedUsesRuntime = true;
+    if (!composedUsesRuntime) ts.forEachChild(node, inspectComposed);
+  }
+  if (composedWorker) inspectComposed(composedWorker);
+  const composition = exportedWorker && composedWorker !== null && composedUsesRuntime;
   return { exports: exports.sort(), expectedClasses, composition, handlers };
 }
 
-function sourceParity(authority) {
+function sourceParity(authority, overrides = new Map()) {
   const workerPath = join(project, authority.worker.entrypoint);
   assert(existsSync(workerPath), "worker-source-missing", authority.worker.entrypoint);
-  const structure = workerStructure(authority, readFileSync(workerPath, "utf8"), authority.worker.entrypoint);
+  const readSource = (path) => overrides.get(path) ?? readFileSync(path, "utf8");
+  const structure = workerStructure(authority, readSource(workerPath), authority.worker.entrypoint);
   assert(canonical(structure.exports) === canonical(structure.expectedClasses), "worker-do-exports");
   assert(structure.composition, "worker-runtime-composition");
   assert(structure.handlers.application && structure.handlers.fetch && structure.handlers.queue && structure.handlers.scheduled, "worker-handler-registration");
@@ -494,15 +608,42 @@ function sourceParity(authority) {
   collect(join(project, "src"));
   const reads = new Set();
   for (const [name, path] of files) {
-    const parsed = sourceFile(name, readFileSync(path, "utf8"));
+    const parsed = sourceFile(name, overrides.get(path) ?? readFileSync(path, "utf8"));
+    const aliases = new Set(["env"]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      function findAliases(node) {
+        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer &&
+            ts.isIdentifier(node.initializer) && aliases.has(node.initializer.text)) {
+          if (!aliases.has(node.name.text)) {
+            aliases.add(node.name.text);
+            changed = true;
+          }
+        }
+        ts.forEachChild(node, findAliases);
+      }
+      findAliases(parsed);
+    }
     function inspect(node) {
-      if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "env") reads.add(node.name.text);
+      if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && aliases.has(node.expression.text)) {
+        reads.add(node.name.text);
+      }
+      if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && aliases.has(node.expression.text) &&
+          node.argumentExpression && ts.isStringLiteral(node.argumentExpression)) {
+        reads.add(node.argumentExpression.text);
+      }
       ts.forEachChild(node, inspect);
     }
     inspect(parsed);
   }
-  for (const name of reads) assert(declared.has(name) || optionalUnused.has(name), "worker-undeclared-read", name);
-  return { exportedClasses: structure.expectedClasses, runtimeComposition: true, handlers: ["fetch", "queue", "scheduled"], optionalAssets: "unused" };
+  for (const name of reads) assert(declared.has(name) || optionalUnused.has(name), "worker-undeclared-read");
+  return {
+    exportedClasses: structure.expectedClasses,
+    runtimeComposition: structure.composition,
+    handlers: ["fetch", "queue", "scheduled"],
+    optionalAssets: "unused",
+  };
 }
 
 function runbookRows(authority) {
@@ -530,8 +671,50 @@ function parseRunbookRows(text) {
     assert(cells.length === 3, "runbook-row-shape", line);
     return { kind: cells[0], key: cells[1], value: cells[2] };
   });
-  unique(rows.map((row) => `${row.kind}|${row.key}`), "runbook.rows");
+  const identities = rows.map((row) => `${row.kind}|${row.key}`);
+  const seen = new Set();
+  identities.forEach((identity, index) => {
+    if (seen.has(identity)) fail("duplicate-collection-key", `runbook.rows[${index}]`);
+    seen.add(identity);
+  });
   return rows;
+}
+
+function compareSmokeContract(text) {
+  const routesSource = readFileSync(join(project, "src/booking-routes.ts"), "utf8");
+  const transportSource = readFileSync(join(project, "src/booking-transport.ts"), "utf8");
+  const domainSource = readFileSync(join(project, "src/booking-domain.ts"), "utf8");
+  assert(routesSource.includes('path.startsWith("/api/commands/")'), "smoke-source-route");
+  assert(
+    routesSource.includes('"/api/read/room"') && routesSource.includes('"/api/read/reservation"'),
+    "smoke-source-route",
+  );
+  assert(
+    transportSource.includes('case "create-room"') && transportSource.includes('case "reserve-room"'),
+    "smoke-source-command",
+  );
+  assert(
+    /const roomInput\s*=\s*z\.object\(\{[\s\S]*roomId[\s\S]*name/.test(domainSource),
+    "smoke-source-body",
+  );
+  assert(
+    /const reservationInput\s*=\s*z\.object\(\{[\s\S]*roomId[\s\S]*reservationId/.test(domainSource),
+    "smoke-source-body",
+  );
+  assert(text.includes("$BASE_URL/api/commands/create-room"), "smoke-route-parity");
+  assert(text.includes("$BASE_URL/api/commands/reserve-room"), "smoke-route-parity");
+  assert(text.includes("$BASE_URL/api/read/room?roomId="), "smoke-route-parity");
+  assert(text.includes("$BASE_URL/api/read/reservation?reservationId="), "smoke-route-parity");
+  assert(text.includes(`-d '{"roomId":"room-smoke-<fresh>","name":"Smoke room"}'`), "smoke-body-parity");
+  assert(
+    text.includes(`-d '{"roomId":"room-smoke-<fresh>","reservationId":"reservation-smoke-<fresh>"}'`),
+    "smoke-body-parity",
+  );
+  assert(!text.includes("$BASE_URL/api/command\""), "smoke-route-parity");
+  return {
+    routes: ["/api/commands/create-room", "/api/commands/reserve-room", "/api/read/room", "/api/read/reservation"],
+    bodyKeys: ["roomId", "name", "reservationId"],
+  };
 }
 
 function compareRunbook(authority, text) {
@@ -543,7 +726,8 @@ function compareRunbook(authority, text) {
   const foundCommands = [...text.matchAll(/^\s*(npx wrangler (?:d1|queues) create \S+)\s*$/gm)].map((match) => match[1]);
   assert(canonical(foundCommands) === canonical(commands), "runbook-creation-commands");
   assert(/npm run deploy\s*$/m.test(text) && !/npm run deploy\s+--keep-vars/.test(text), "runbook-keep-vars-default");
-  return { rows: actual.length, creationCommands: commands.length };
+  const smoke = compareSmokeContract(text);
+  return { rows: actual.length, creationCommands: commands.length, smoke };
 }
 
 function validateNoCfDependency(manifest, gateText) {
@@ -624,7 +808,7 @@ function runGate(requireConfigured) {
     const env = sanitized.env;
     const removedCredentials = sanitized.removed;
     const result = spawnSync(process.execPath, [wrangler, ...args], { cwd: project, env, encoding: "utf8", shell: false, maxBuffer: 64 * 1024 * 1024 });
-    assert(result.status === 0, "wrangler-dry-run", `${result.stdout ?? ""}${result.stderr ?? ""}`.trim());
+    assert(result.status === 0, "wrangler-dry-run", wranglerFailure(result));
     assert(existsSync(outfile), "bundle-missing");
     const bundle = readFileSync(outfile, "utf8");
     assert(bundle.includes("create-room"), "bundle-marker-create-room");
@@ -657,7 +841,12 @@ function selfTest() {
   checks.push(expectFailure("d1-parity", () => validate(
     mutate((candidate) => candidate.config.d1_databases.pop()),
   )));
-  checks.push(expectFailure("queue-producer-parity", () => validate(
+  checks.push(expectFailure("duplicate-collection-key", () => validate(
+    mutate((candidate) => candidate.config.d1_databases.push(
+      structuredClone(candidate.config.d1_databases[0]),
+    )),
+  )));
+  checks.push(expectFailure("duplicate-collection-key", () => validate(
     mutate((candidate) => candidate.config.queues.producers.push(
       structuredClone(candidate.config.queues.producers[0]),
     )),
@@ -677,12 +866,17 @@ function selfTest() {
     )).authority,
   )));
   checks.push(expectFailure("duplicate-collection-key", () => validateAuthority(
+    mutate((candidate) => {
+      candidate.authority.queues.creation[1].name = candidate.authority.queues.creation[0].name;
+    }).authority,
+  )));
+  checks.push(expectFailure("duplicate-collection-key", () => validateAuthority(
     mutate((candidate) => candidate.authority.durableObjects.migrations.push(
       structuredClone(candidate.authority.durableObjects.migrations[0]),
     )).authority,
   )));
   checks.push(expectFailure("secret-in-vars", () => validateAuthority(
-    mutate((candidate) => { candidate.authority.vars.INCIDENT_MAINTAINER_TOKEN = "bad"; }).authority,
+    mutate((candidate) => { candidate.authority.vars[candidate.authority.secrets[0].name] = "bad"; }).authority,
   )));
   checks.push(expectFailure("authority-key", () => validateAuthority(
     mutate((candidate) => { candidate.authority.account_id = "bad"; }).authority,
@@ -706,6 +900,22 @@ function selfTest() {
     const structure = workerStructure(baseline.authority, mutant, "missing-handler-mutant.ts");
     assert(structure.handlers.application && structure.handlers.fetch && structure.handlers.queue && structure.handlers.scheduled, "worker-handler-registration");
   }));
+  checks.push(expectFailure("durable-migration-parity", () => validate(mutate((candidate) => {
+    candidate.config.migrations[0].new_sqlite_classes[0] = "ChangedDurableObject";
+  }))));
+  checks.push(expectFailure("durable-migration-parity", () => validate(mutate((candidate) => {
+    const moved = candidate.config.migrations[2].new_sqlite_classes.pop();
+    candidate.config.migrations[1].new_sqlite_classes.push(moved);
+  }))));
+  checks.push(expectFailure("assets-parity", () => validate(mutate((candidate) => {
+    candidate.config.assets.directory = "assets-drift";
+  }))));
+  checks.push(expectFailure("cron-parity", () => validate(mutate((candidate) => {
+    candidate.config.triggers.crons[0] = "*/5 * * * *";
+  }))));
+  checks.push(expectFailure("var-parity", () => validate(mutate((candidate) => {
+    candidate.config.vars.EXTRA_VAR = "unexpected";
+  }))));
   checks.push(expectFailure("d1-parity", () => validate(mutate((candidate) => {
     candidate.authority.d1[0].migrationsDir = candidate.authority.d1[1].migrationsDir;
     candidate.authority.d1[1].migrationsDir = "migrations/d1/g32";
@@ -744,19 +954,46 @@ function selfTest() {
     config.d1_databases[1].database_id = "not-a-provider-id";
     configuredD1Ids(baseline.authority, config, true);
   }));
-  checks.push(expectFailure("worker-undeclared-read", () => {
-    const source = sourceFile("mutant.ts", "const value = env.NOT_IN_AUTHORITY;");
-    const reads = [];
-    function visit(node) { if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "env") reads.push(node.name.text); ts.forEachChild(node, visit); }
-    visit(source);
-    assert(reads.every((name) => Object.hasOwn(baseline.authority.vars, name)), "worker-undeclared-read", reads[0]);
-  }));
+  const workerPath = join(project, baseline.authority.worker.entrypoint);
+  checks.push(expectFailure("worker-undeclared-read", () => sourceParity(baseline.authority, new Map([
+    [workerPath, `${workerText}\nconst envAlias = env; const value = env["NOT_IN_AUTHORITY"];\nconst other = envAlias["NOT_IN_AUTHORITY"];`],
+  ]))));
   checks.push(expectFailure("command-without-dry-run", () => safeArgs(["deploy", "--config", "wrangler.jsonc"])));
   checks.push(expectFailure("remote-command-vector", () => safeArgs(["deploy", "--config", "wrangler.jsonc", "--dry-run", "--outdir", "x", "--outfile", "y", "login"])));
   checks.push(expectFailure("cf-dependency", () => validateNoCfDependency({ dependencies: { cf: "1.0.0" } }, "")));
   checks.push(expectFailure("cf-gate-invocation", () => validateNoCfDependency({}, "spawnSync(\"cf\", [])")));
   const green = validateProject(baseline);
   assert(green.placeholders.length === 2, "self-test-green-placeholder-count");
+  checks.push(expectFailure("duplicate-collection-key", () => compareRunbook(
+    baseline.authority,
+    baseline.runbook.replace(
+      "<!-- deployment-topology:end -->",
+      `| worker | ${baseline.authority.worker.name} | ${baseline.authority.worker.entrypoint} |\n<!-- deployment-topology:end -->`,
+    ),
+  )));
+  checks.push(expectFailure("require-configured-placeholder", () => {
+    const config = structuredClone(baseline.config);
+    config.d1_databases[1].database_id = "11111111-1111-4111-8111-111111111111";
+    configuredD1Ids(baseline.authority, config, true);
+  }));
+  const stubDir = mkdtempSync(join(project, ".deploy-check-stub-"));
+  try {
+    const configuredId = "11111111-1111-4111-8111-111111111111";
+    const stub = join(stubDir, "wrangler-stub.mjs");
+    writeFileSync(
+      stub,
+      `process.stdout.write(${JSON.stringify(configuredId)}); process.stderr.write(${JSON.stringify(configuredId)}); process.exitCode = 1;`,
+    );
+    const stubResult = spawnSync(process.execPath, [stub], { encoding: "utf8" });
+    const diagnostic = wranglerFailure(stubResult);
+    assert(
+      !diagnostic.includes(configuredId) && !JSON.stringify({ diagnostic }).includes(configuredId),
+      "wrangler-diagnostic-redaction",
+    );
+    checks.push("wrangler-diagnostic-redaction");
+  } finally {
+    rmSync(stubDir, { recursive: true, force: true });
+  }
   const inherited = { CLOUDFLARE_API_TOKEN: "canary", CLOUDFLARE_ACCOUNT_ID: "canary", KEEP: "yes" };
   const sanitized = sanitizeEnvironment(inherited);
   assert(!Object.hasOwn(sanitized.env, "CLOUDFLARE_API_TOKEN") && !Object.hasOwn(sanitized.env, "CLOUDFLARE_ACCOUNT_ID") && sanitized.env.KEEP === "yes", "credential-sanitization");

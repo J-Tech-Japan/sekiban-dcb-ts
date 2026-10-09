@@ -205,8 +205,15 @@ function assertInventory(project) {
   const cosmosDescriptorProof = assertCosmosDescriptor(project);
   assert(cosmosDescriptorProof.byteParity, "generated Cosmos descriptor is not byte-identical to the template");
   const readme = readFileSync(join(project, "README.md"), "utf8");
-  assert(readme.includes("wrangler secret put INCIDENT_MAINTAINER_TOKEN"), "starter README omitted incident secret setup");
-  assert(readme.includes("Never place") && readme.includes("vars"), "starter README omitted secret vars guidance");
+  const topology = JSON.parse(readFileSync(join(project, "deployment-topology.json"), "utf8"));
+  const secretName = topology.secrets[0].name;
+  const deployment = readFileSync(join(project, "DEPLOYMENT.md"), "utf8");
+  assert(!readme.includes(secretName), "starter README leaked the incident secret name");
+  assert(deployment.includes(`wrangler secret put ${secretName}`), "DEPLOYMENT.md omitted incident secret setup");
+  assert(
+    readme.includes("DEPLOYMENT.md") && deployment.includes("Do not") && deployment.includes("vars"),
+    "starter secret boundary guidance is incomplete",
+  );
 
   const allText = files.map((file) => readFileSync(join(project, file), "utf8")).join("\n");
   assert(!allText.includes("sekiban-dcb-meeting-room"), "meeting-room resource name leaked into generated project");
@@ -416,6 +423,25 @@ function assertDeployCheckReceipt(receipt) {
     assert(location.path.includes("d1_databases[binding=") && location.databaseName && location.creationCommand && location.replacement, "deploy:check placeholder report is incomplete");
   }
   assert(Array.isArray(receipt.migrationFileCounts) && receipt.migrationFileCounts.every((entry) => entry.files > 0), "deploy:check migration counts are not measured");
+  assert(Array.isArray(receipt.topology), "deploy:check receipt omitted topology");
+  const topologyKinds = receipt.topology.reduce((counts, entry) => {
+    counts[entry.kind] = (counts[entry.kind] ?? 0) + 1;
+    return counts;
+  }, {});
+  const expectedTopologyKinds = {
+    d1: 2,
+    "queue-producer": 1,
+    "queue-consumer": 1,
+    "durable-object": 5,
+    "durable-migration": 3,
+    assets: 1,
+    cron: 1,
+    var: 2,
+  };
+  assert(
+    JSON.stringify(Object.entries(topologyKinds).sort()) === JSON.stringify(Object.entries(expectedTopologyKinds).sort()),
+    "deploy:check topology receipt is incomplete",
+  );
   assert(!JSON.stringify(receipt).match(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i), "deploy:check receipt exposed a configured resource ID");
   return { status: "passed", placeholders: locations.map((entry) => entry.binding), markers: ["create-room", "reserve-room"] };
 }
@@ -434,7 +460,7 @@ function applyLocalPipelineMigration(project, proofRoot, pipelineName) {
     join(project, "wrangler.jsonc"),
     "--persist-to",
     persistTo,
-  ], { cwd: project, env: { ...process.env, CI: "true" } });
+  ], { cwd: project, env: { ...cloudflareSafeEnvironment(), CI: "true" } });
   return { command: ["wrangler", "d1", "migrations", "apply", pipelineName, "--local"], persistTo: "proof-local-state" };
 }
 
