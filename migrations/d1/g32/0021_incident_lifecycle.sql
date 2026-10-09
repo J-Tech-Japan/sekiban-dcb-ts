@@ -97,6 +97,8 @@ CREATE TABLE serialized_dcb_incident_transitions (
      substr(after_correction_digest, 8) NOT GLOB '*[^0-9a-f]*')),
   CHECK ((before_owner_id IS NULL) = (before_deadline_at IS NULL)),
   CHECK ((after_owner_id IS NULL) = (after_deadline_at IS NULL)),
+  CHECK (before_owner_id IS NULL OR length(CAST(before_owner_id AS BLOB)) BETWEEN 1 AND 256),
+  CHECK (after_owner_id IS NULL OR length(CAST(after_owner_id AS BLOB)) BETWEEN 1 AND 256),
   CHECK (from_state <> 'OPEN' OR
     (before_owner_id IS NULL AND before_deadline_at IS NULL AND before_correction_kind IS NULL AND
      before_correction_reference IS NULL AND before_correction_digest IS NULL AND before_close_resolution IS NULL AND before_close_reason IS NULL)),
@@ -107,7 +109,12 @@ CREATE TABLE serialized_dcb_incident_transitions (
     (before_owner_id IS NOT NULL AND before_deadline_at IS NOT NULL AND before_correction_kind IS NOT NULL AND
      before_correction_reference IS NOT NULL AND before_correction_digest IS NOT NULL AND before_close_resolution IS NULL AND before_close_reason IS NULL)),
   CHECK (from_state <> 'CLOSED' OR
-    (before_owner_id IS NOT NULL AND before_deadline_at IS NOT NULL AND before_close_resolution IS NOT NULL AND before_close_reason IS NOT NULL)),
+    (before_owner_id IS NOT NULL AND before_deadline_at IS NOT NULL AND before_close_resolution IS NOT NULL AND
+     before_close_reason IS NOT NULL AND length(CAST(before_close_reason AS BLOB)) BETWEEN 1 AND 2048 AND
+     ((before_close_resolution = 'CORRECTED' AND before_correction_kind IS NOT NULL AND
+       before_correction_reference IS NOT NULL AND before_correction_digest IS NOT NULL) OR
+      (before_close_resolution = 'ACCEPTED_AS_IS' AND before_correction_kind IS NULL AND
+       before_correction_reference IS NULL AND before_correction_digest IS NULL)))),
   CHECK (to_state <> 'OPEN' OR
     (after_owner_id IS NULL AND after_deadline_at IS NULL AND after_correction_kind IS NULL AND
      after_correction_reference IS NULL AND after_correction_digest IS NULL AND after_close_resolution IS NULL AND after_close_reason IS NULL)),
@@ -122,7 +129,11 @@ CREATE TABLE serialized_dcb_incident_transitions (
      after_close_reason IS NOT NULL AND ((after_close_resolution = 'CORRECTED' AND after_correction_kind IS NOT NULL AND
      after_correction_reference IS NOT NULL AND after_correction_digest IS NOT NULL) OR
      (after_close_resolution = 'ACCEPTED_AS_IS' AND after_correction_kind IS NULL AND
-     after_correction_reference IS NULL AND after_correction_digest IS NULL))))
+     after_correction_reference IS NULL AND after_correction_digest IS NULL)))),
+  CHECK ((before_close_resolution IS NULL) = (before_close_reason IS NULL)),
+  CHECK ((after_close_resolution IS NULL) = (after_close_reason IS NULL)),
+  CHECK (before_close_reason IS NULL OR length(CAST(before_close_reason AS BLOB)) BETWEEN 1 AND 2048),
+  CHECK (after_close_reason IS NULL OR length(CAST(after_close_reason AS BLOB)) BETWEEN 1 AND 2048)
 );
 
 CREATE INDEX serialized_dcb_incident_lifecycles_service_state_idx

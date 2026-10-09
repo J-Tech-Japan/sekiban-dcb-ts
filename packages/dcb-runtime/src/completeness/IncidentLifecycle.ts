@@ -169,6 +169,14 @@ function boundedString(value: unknown, name: string, maximum: number, required =
   return normalized.length === 0 ? null : normalized;
 }
 
+export function normalizeIncidentIdentity(value: unknown): string {
+  const identity = boundedString(value, "incidentIdentity", MAX_IDENTITY_BYTES);
+  if (identity === null) {
+    throw new IncidentLifecycleError("incident_invalid_request", 400, "incidentIdentity must be non-empty");
+  }
+  return identity;
+}
+
 function safeInteger(value: unknown, name: string): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
     throw new IncidentLifecycleError("incident_invalid_request", 400, `${name} must be a safe integer`);
@@ -208,7 +216,7 @@ function normalizeRequest(value: unknown): IncidentTransitionRequest {
     throw new IncidentLifecycleError("incident_invalid_request", 400, "transition has keys not valid for its action");
   }
   const base = {
-    incidentIdentity: boundedString(value.incidentIdentity, "incidentIdentity", MAX_IDENTITY_BYTES) as string,
+    incidentIdentity: normalizeIncidentIdentity(value.incidentIdentity),
     transitionKey: boundedString(value.transitionKey, "transitionKey", MAX_IDENTITY_BYTES) as string,
     expectedVersion: safeInteger(value.expectedVersion, "expectedVersion"),
     reason: boundedString(value.reason, "reason", MAX_LONG_TEXT_BYTES) as string,
@@ -478,7 +486,15 @@ export class IncidentLifecycle {
 
   async transition(serviceId: string, value: unknown, actor: string): Promise<IncidentTransitionResult> {
     const request = normalizeRequest(value);
-    const actorId = boundedString(actor, "x-sdt-maintainer", MAX_IDENTITY_BYTES);
+    let actorId: string | null;
+    try {
+      actorId = boundedString(actor, "x-sdt-maintainer", MAX_IDENTITY_BYTES);
+    } catch (caught) {
+      if (caught instanceof IncidentLifecycleError && caught.code === "incident_invalid_request") {
+        throw new IncidentLifecycleError("incident_invalid_actor", 400, caught.message);
+      }
+      throw caught;
+    }
     if (actorId === null) throw new IncidentLifecycleError("incident_invalid_actor", 400, "x-sdt-maintainer must be non-empty");
     const finding = await this.finding(serviceId, request.incidentIdentity);
     const digest = await digestFor(request, actorId);

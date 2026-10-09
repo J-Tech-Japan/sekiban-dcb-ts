@@ -1,6 +1,7 @@
 import {
   IncidentLifecycle,
   IncidentLifecycleError,
+  normalizeIncidentIdentity,
   type IncidentListFilters,
 } from "../completeness/IncidentLifecycle";
 import {
@@ -32,9 +33,25 @@ function configuredToken(value: string | undefined): string | undefined {
   return token.length === 0 ? undefined : token;
 }
 
-function authenticated(request: Request, token: string): boolean {
-  const credential = request.headers.get("authorization");
-  return credential !== null && credential === `Bearer ${token}`;
+async function digest(value: string): Promise<Uint8Array> {
+  const bytes = new TextEncoder().encode(value);
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+}
+
+function fixedLengthEqual(left: Uint8Array, right: Uint8Array): boolean {
+  let difference = left.length ^ right.length;
+  const length = Math.max(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    difference |= (left[index] ?? 0) ^ (right[index] ?? 0);
+  }
+  return difference === 0;
+}
+
+async function authenticated(request: Request, token: string): Promise<boolean> {
+  const credential = request.headers.get("authorization") ?? "";
+  const suppliedToken = credential.startsWith("Bearer ") ? credential.slice("Bearer ".length) : "";
+  const [expectedDigest, suppliedDigest] = await Promise.all([digest(token), digest(suppliedToken)]);
+  return fixedLengthEqual(expectedDigest, suppliedDigest);
 }
 
 function boolFilter(value: string | null, name: string): boolean | undefined {
@@ -83,7 +100,7 @@ function incidentIdentityFromPath(pathname: string): string {
     throw new IncidentLifecycleError("incident_route_not_found", 404, "Incident route not found");
   }
   try {
-    return decodeURIComponent(encoded);
+    return normalizeIncidentIdentity(decodeURIComponent(encoded));
   } catch {
     throw new IncidentLifecycleError("incident_invalid_request", 400, "Incident identity must be URI encoded");
   }
@@ -102,7 +119,7 @@ export async function handleIncidentMaintenance(
   if (token === undefined) {
     return error(503, "incident_maintenance_unavailable", "Incident maintenance is not configured");
   }
-  if (!authenticated(request, token)) {
+  if (!(await authenticated(request, token))) {
     return error(401, "incident_auth_required", "A valid incident maintenance bearer token is required");
   }
 

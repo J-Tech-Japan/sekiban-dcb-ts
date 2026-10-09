@@ -161,6 +161,7 @@ export {
 export {
   IncidentLifecycle,
   IncidentLifecycleError,
+  normalizeIncidentIdentity,
 } from "./completeness/IncidentLifecycle";
 export type {
   IncidentDetailResult,
