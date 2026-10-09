@@ -258,6 +258,9 @@ function finishInstall(work, env, mode, artifact, receipt) {
   assertGeneratedFileSet(walkFiles(project), artifact.createdExpected);
   const authority = packageJson(join(root, "contracts/cosmos-layout.json"));
   const descriptor = packageJson(join(project, "cosmos.experimental.json"));
+  const descriptorBytes = readFileSync(join(project, "cosmos.experimental.json"));
+  const templateDescriptorBytes = readFileSync(join(root, "packages/create-dcb/template/cosmos.experimental.json"));
+  assert(Buffer.compare(descriptorBytes, templateDescriptorBytes) === 0, "starter Cosmos descriptor is not byte-identical to the template");
   assert(descriptor.stability === "experimental" && descriptor.provider === "cosmos", "starter Cosmos descriptor lost its experimental marker");
   assert(descriptor.active === false, "starter Cosmos descriptor must remain inactive");
   assert(JSON.stringify(descriptor.bindings) === JSON.stringify(authority.bindings), "starter Cosmos bindings differ from the authority");

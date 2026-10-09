@@ -18,33 +18,40 @@
       ],
       "documentIds": {
         "logicalEvent": "canonical event id",
-        "eventSidecar": "safeId(eventId, ...)",
-        "serviceGuard": "safeId(kind, ... )"
+        "eventSidecar": "safeId(\"event-ops\", eventId)",
+        "serviceGuards": {
+          "allocatorLineageBinding": "safeId(\"allocator-lineage-binding\")",
+          "suidBinding": "safeId(\"suid-binding\", suid)",
+          "deliveryIncident": "safeId(\"incident\", identityKey)"
+        }
       }
     },
     "lagEstimates": {
       "name": "dcb-lag-estimates",
       "partitionKeyPath": "/serviceId",
       "partitionValueKinds": ["{serviceId}"],
-      "documentIds": { "auxiliary": "safeId(serviceId, ... )" }
+      "documentIds": { "lagEstimate": "serviceId" }
     },
     "pendingArrivals": {
       "name": "dcb-pending-arrivals",
       "partitionKeyPath": "/serviceId",
       "partitionValueKinds": ["{serviceId}"],
-      "documentIds": { "auxiliary": "safeId(serviceId, ... )" }
+      "documentIds": { "pendingArrival": "safeId(eventId)" }
     },
     "findings": {
       "name": "dcb-findings",
       "partitionKeyPath": "/serviceId",
       "partitionValueKinds": ["{serviceId}"],
-      "documentIds": { "auxiliary": "safeId(serviceId, ... )" }
+      "documentIds": {
+        "finding": "safeId(eventId, path, classification)",
+        "incidentProjection": "safeId(\"incident\", identityKey)"
+      }
     },
     "checkpoints": {
       "name": "dcb-projection-checkpoints",
       "partitionKeyPath": "/serviceId",
       "partitionValueKinds": ["{serviceId}"],
-      "documentIds": { "auxiliary": "safeId(serviceId, ... )" }
+      "documentIds": { "checkpoint": "safeId(projectionId)" }
     }
   }
 }

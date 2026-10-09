@@ -13,8 +13,8 @@ const canonicalRepositoryUrl = "git+https://github.com/J-Tech-Japan/sekiban-dcb-
 const publicPackages = ["dcb-core", "dcb-domain", "dcb-client", "dcb-runtime"];
 
 const expectedV5Counts = {
-  "actions/checkout@v5": 8,
-  "actions/setup-node@v5": 8,
+  "actions/checkout@v5": 9,
+  "actions/setup-node@v5": 9,
   "actions/cache@v5": 2,
   "actions/setup-dotnet@v5": 1,
 };

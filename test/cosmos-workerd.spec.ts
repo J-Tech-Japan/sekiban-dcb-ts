@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CosmosRestClient } from "../packages/dcb-runtime/src/store/CosmosEventStore";
+import { COSMOS_CONTAINER_LAYOUT, COSMOS_CONTAINER_NAMES } from "../packages/dcb-runtime/src/generated/cosmos-layout";
 
 function fixtureKey(): string {
   const bytes = new TextEncoder().encode("workerd-cosmos-fixture-key");
@@ -43,16 +44,15 @@ describe("SDT-G12 workerd Cosmos REST path", () => {
     const containerBodies = calls
       .filter((call) => call.method === "POST" && call.url.endsWith("/colls"))
       .map((call) => call.body as { id: string; partitionKey: { paths: string[]; kind: string } });
-    expect(containerBodies).toEqual([
-      { id: "dcb-events", partitionKey: { paths: ["/pk"], kind: "Hash" } },
-      { id: "dcb-lag-estimates", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
-      { id: "dcb-pending-arrivals", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
-      { id: "dcb-findings", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
-      { id: "dcb-projection-checkpoints", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
-    ]);
-    expect(containerBodies.slice(1).every((container) => container.partitionKey.paths[0] === "/serviceId")).toBe(true);
-    expect((await client.query("dcb-events", "SELECT * FROM c WHERE c.serviceId = @serviceId", [{ name: "@serviceId", value: "service" }], "service")).map((row) => row.document.id)).toEqual(["one", "two"]);
-    expect(await client.read("dcb-events", "missing", "service")).toBeUndefined();
+    expect(containerBodies).toEqual(Object.entries(COSMOS_CONTAINER_LAYOUT).map(([key, layout]) => ({
+      id: COSMOS_CONTAINER_NAMES[key as keyof typeof COSMOS_CONTAINER_NAMES],
+      partitionKey: { paths: [layout.partitionKeyPath], kind: "Hash" },
+    })));
+    expect(containerBodies.slice(1).every((container, index) =>
+      container.partitionKey.paths[0] === Object.values(COSMOS_CONTAINER_LAYOUT)[index + 1]?.partitionKeyPath)).toBe(true);
+    const events = COSMOS_CONTAINER_NAMES.events;
+    expect((await client.query(events, "SELECT * FROM c WHERE c.serviceId = @serviceId", [{ name: "@serviceId", value: "service" }], "service")).map((row) => row.document.id)).toEqual(["one", "two"]);
+    expect(await client.read(events, "missing", "service")).toBeUndefined();
     expect(calls.length).toBe(9);
     expect(calls.every((call) => {
       const authorization = call.headers.get("authorization");

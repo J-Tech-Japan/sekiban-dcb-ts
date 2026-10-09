@@ -17,8 +17,12 @@
       ],
       "documentIds": {
         "logicalEvent": "canonical event id",
-        "eventSidecar": "safeId(eventId, ...)",
-        "serviceGuard": "safeId(kind, ... )"
+        "eventSidecar": "safeId(\"event-ops\", eventId)",
+        "serviceGuards": {
+          "allocatorLineageBinding": "safeId(\"allocator-lineage-binding\")",
+          "suidBinding": "safeId(\"suid-binding\", suid)",
+          "deliveryIncident": "safeId(\"incident\", identityKey)"
+        }
       }
     },
     "lagEstimates": {
@@ -28,7 +32,7 @@
         "{serviceId}"
       ],
       "documentIds": {
-        "auxiliary": "safeId(serviceId, ... )"
+        "lagEstimate": "serviceId"
       }
     },
     "pendingArrivals": {
@@ -38,7 +42,7 @@
         "{serviceId}"
       ],
       "documentIds": {
-        "auxiliary": "safeId(serviceId, ... )"
+        "pendingArrival": "safeId(eventId)"
       }
     },
     "findings": {
@@ -48,7 +52,8 @@
         "{serviceId}"
       ],
       "documentIds": {
-        "auxiliary": "safeId(serviceId, ... )"
+        "finding": "safeId(eventId, path, classification)",
+        "incidentProjection": "safeId(\"incident\", identityKey)"
       }
     },
     "checkpoints": {
@@ -58,7 +63,7 @@
         "{serviceId}"
       ],
       "documentIds": {
-        "auxiliary": "safeId(serviceId, ... )"
+        "checkpoint": "safeId(projectionId)"
       }
     }
   }

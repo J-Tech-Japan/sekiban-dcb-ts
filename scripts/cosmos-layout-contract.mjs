@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
@@ -11,13 +13,20 @@ const runtimePath = join(root, "packages/dcb-runtime/src/generated/cosmos-layout
 const starterPath = join(root, "packages/create-dcb/template/cosmos.experimental.json");
 const guidePath = join(root, "docs/cosmos-layout.md");
 
-const expectedContainers = ["events", "lagEstimates", "pendingArrivals", "findings", "checkpoints"];
-const expectedNames = [
-  "dcb-events",
-  "dcb-lag-estimates",
-  "dcb-pending-arrivals",
-  "dcb-findings",
-  "dcb-projection-checkpoints",
+const expectedContainerKeys = ["events", "lagEstimates", "pendingArrivals", "findings", "checkpoints"];
+const labelInventory = [
+  { id: "entry-point", path: "packages/dcb-runtime/src/cosmos.ts", kind: "text", pattern: /@experimental/g, minimum: 8 },
+  { id: "declarations", path: "packages/dcb-runtime/dist/cosmos.d.ts", kind: "text", pattern: /@experimental/g, minimum: 8 },
+  { id: "root-readme", path: "README.md", kind: "text", pattern: /experimental cosmos/i },
+  { id: "runtime-readme", path: "packages/dcb-runtime/README.md", kind: "text", pattern: /experimental cosmos/i },
+  { id: "starter-readme", path: "packages/create-dcb/README.md", kind: "text", pattern: /experimental/i },
+  { id: "generated-starter-readme", path: "packages/create-dcb/template/README.md", kind: "text", pattern: /experimental cosmos/i },
+  { id: "sample-readme", path: "samples/meeting-room/README.md", kind: "text", pattern: /experimental cosmos/i },
+  { id: "provider-guide", path: "docs/cosmos-layout.md", kind: "text", pattern: /experimental cosmos/i },
+  { id: "comparison-guide", path: "docs/d1-pipeline-store.md", kind: "text", pattern: /experimental cosmos/i },
+  { id: "domain-guide", path: "docs/domain-authoring.md", kind: "text", pattern: /experimental cosmos/i },
+  { id: "migration-guide", path: "docs/migration-sekiban-dcb.md", kind: "text", pattern: /experimental cosmos/i },
+  { id: "generated-descriptor", path: "packages/create-dcb/template/cosmos.experimental.json", kind: "descriptor" },
 ];
 
 function assertContractShape(contract) {
@@ -26,36 +35,53 @@ function assertContractShape(contract) {
   assert.equal(contract.provider, "cosmos", "provider id must be cosmos");
   assert.equal(contract.logicalEventContract, "contracts/event-store-ddl.json#cosmos", "logical event link changed");
   assert.deepEqual(Object.keys(contract.bindings).sort(), ["database", "endpoint", "key"]);
-  assert.deepEqual(Object.keys(contract.containers), expectedContainers);
-  assert.deepEqual(Object.values(contract.containers).map((entry) => entry.name), expectedNames);
+  assert.deepEqual(Object.keys(contract.containers), expectedContainerKeys);
+  assert.equal(Object.values(contract.containers).length, 5);
   assert.equal(contract.containers.events.partitionKeyPath, "/pk");
-  assert.deepEqual(Object.values(contract.containers).slice(1).map((entry) => entry.partitionKeyPath), [
-    "/serviceId", "/serviceId", "/serviceId", "/serviceId",
-  ]);
+  const auxiliaryPartitionPath = contract.containers.lagEstimates.partitionKeyPath;
+  assert.equal(auxiliaryPartitionPath, "/serviceId");
+  for (const key of expectedContainerKeys.slice(1)) {
+    assert.equal(contract.containers[key].partitionKeyPath, auxiliaryPartitionPath);
+  }
   assert.deepEqual(contract.containers.events.partitionValueKinds, [
     "{serviceId}|{eventId}", "{serviceId}|__dcb_event_ops__",
   ]);
-  for (const key of expectedContainers.slice(1)) {
+  for (const key of expectedContainerKeys.slice(1)) {
     assert.deepEqual(contract.containers[key].partitionValueKinds, ["{serviceId}"]);
   }
+  assert.deepEqual(contract.containers.events.documentIds, {
+    logicalEvent: "canonical event id",
+    eventSidecar: "safeId(\"event-ops\", eventId)",
+    serviceGuards: {
+      allocatorLineageBinding: "safeId(\"allocator-lineage-binding\")",
+      suidBinding: "safeId(\"suid-binding\", suid)",
+      deliveryIncident: "safeId(\"incident\", identityKey)",
+    },
+  });
+  assert.deepEqual(contract.containers.lagEstimates.documentIds, { lagEstimate: "serviceId" });
+  assert.deepEqual(contract.containers.pendingArrivals.documentIds, { pendingArrival: "safeId(eventId)" });
+  assert.deepEqual(contract.containers.findings.documentIds, {
+    finding: "safeId(eventId, path, classification)",
+    incidentProjection: "safeId(\"incident\", identityKey)",
+  });
+  assert.deepEqual(contract.containers.checkpoints.documentIds, { checkpoint: "safeId(projectionId)" });
 }
 
-function renderRuntime(contract) {
+function renderArtifacts(contract) {
   const containers = Object.fromEntries(Object.entries(contract.containers).map(([key, entry]) => [key, {
     name: entry.name,
     partitionKeyPath: entry.partitionKeyPath,
     partitionValueKinds: entry.partitionValueKinds,
+    documentIds: entry.documentIds,
   }]));
-  return `// Generated by scripts/cosmos-layout-contract.mjs. Do not edit.\n\n` +
+  const runtime = `// Generated by scripts/cosmos-layout-contract.mjs. Do not edit.\n\n` +
     `export const COSMOS_LAYOUT_STABILITY = ${JSON.stringify(contract.stability)} as const;\n` +
     `export const COSMOS_PROVIDER_ID = ${JSON.stringify(contract.provider)} as const;\n` +
     `export const COSMOS_BINDINGS = Object.freeze(${JSON.stringify(contract.bindings, null, 2)}) as {\n` +
     `  readonly endpoint: "COSMOS_ENDPOINT";\n  readonly database: "COSMOS_DATABASE";\n  readonly key: "COSMOS_KEY";\n};\n` +
     `export const COSMOS_CONTAINER_LAYOUT = Object.freeze(${JSON.stringify(containers, null, 2)} as const);\n` +
+    `export const COSMOS_DOCUMENT_ID_RULES = Object.freeze(${JSON.stringify(Object.fromEntries(Object.entries(contract.containers).map(([key, entry]) => [key, entry.documentIds])), null, 2)} as const);\n` +
     `export const COSMOS_CONTAINER_NAMES = Object.freeze(${JSON.stringify(Object.fromEntries(Object.entries(contract.containers).map(([key, entry]) => [key, entry.name])), null, 2)} as const);\n`;
-}
-
-function renderStarter(contract) {
   const descriptor = {
     stability: contract.stability,
     provider: contract.provider,
@@ -68,7 +94,7 @@ function renderStarter(contract) {
       documentIds: entry.documentIds,
     }])),
   };
-  return `${JSON.stringify(descriptor, null, 2)}\n`;
+  return { runtime, starter: `${JSON.stringify(descriptor, null, 2)}\n` };
 }
 
 function parseGuideRows(text) {
@@ -82,7 +108,7 @@ function parseGuideRows(text) {
 
 function validateGuide(text, contract) {
   const rows = parseGuideRows(text);
-  const expected = expectedContainers.map((key) => ({
+  const expected = expectedContainerKeys.map((key) => ({
     key,
     name: contract.containers[key].name,
     path: contract.containers[key].partitionKeyPath,
@@ -102,26 +128,62 @@ function validateLogicalEvent(contract, ddl) {
   ]);
 }
 
-function validateSingleAuthority(entries) {
-  const matches = entries.filter((entry) => /^cosmos-layout.*\.json$/.test(entry));
-  assert.deepEqual(matches, ["cosmos-layout.json"], "a second complete Cosmos layout authority exists");
+function isCompleteLayoutContract(value, contract) {
+  if (value === null || typeof value !== "object" || Array.isArray(value) || value.containers === undefined) return false;
+  const actual = Object.values(value.containers);
+  const expected = Object.values(contract.containers);
+  if (actual.length !== expected.length) return false;
+  return expected.every((entry) => actual.some((candidate) =>
+    candidate?.name === entry.name && candidate?.partitionKeyPath === entry.partitionKeyPath));
 }
 
-function validateArtifacts(contract, runtime, starter, guide, ddl, contractEntries) {
+function validateSingleAuthority(entries, contract) {
+  const matches = entries.filter((entry) => isCompleteLayoutContract(entry.document, contract)).map((entry) => entry.path);
+  assert.deepEqual(matches.sort(), ["contracts/cosmos-layout.json", "packages/create-dcb/template/cosmos.experimental.json"], "a second complete Cosmos layout authority exists");
+}
+
+function validateExperimentalLabels(surfaces) {
+  for (const entry of labelInventory) {
+    const value = surfaces.get(entry.path);
+    assert.notEqual(value, undefined, `experimental label surface is missing: ${entry.path}`);
+    if (entry.kind === "descriptor") {
+      assert.equal(value.stability, "experimental", `${entry.id} must remain experimental`);
+      continue;
+    }
+    const matches = value.match(entry.pattern) ?? [];
+    assert.ok(matches.length >= (entry.minimum ?? 1), `${entry.id} is missing its experimental label`);
+  }
+}
+
+function validateArtifacts(contract, runtime, starter, guide, ddl, contractEntries, surfaces = new Map()) {
   assertContractShape(contract);
-  assert.equal(runtime, renderRuntime(contract), "generated runtime layout is stale or hand-edited");
-  assert.equal(starter, renderStarter(contract), "generated starter descriptor is stale or hand-edited");
+  const rendered = renderArtifacts(contract);
+  assert.equal(Buffer.compare(Buffer.from(runtime), Buffer.from(rendered.runtime)), 0, "generated runtime layout is stale or hand-edited");
+  assert.equal(Buffer.compare(Buffer.from(starter), Buffer.from(rendered.starter)), 0, "generated starter descriptor is stale or hand-edited");
   validateGuide(guide, contract);
   validateLogicalEvent(contract, ddl);
-  validateSingleAuthority(contractEntries);
+  validateSingleAuthority(contractEntries, contract);
+  if (surfaces.size > 0) validateExperimentalLabels(surfaces);
 }
 
 async function loadInputs() {
-  const [contractText, runtime, starter, guide, ddlText, entries] = await Promise.all([
-    readFile(contractPath, "utf8"), readFile(runtimePath, "utf8"), readFile(starterPath, "utf8"),
-    readFile(guidePath, "utf8"), readFile(join(root, "contracts/event-store-ddl.json"), "utf8"), readdir(join(root, "contracts")),
+  const trackedJson = execFileSync("git", ["ls-files", "--", "*.json"], { cwd: root, encoding: "utf8" })
+    .trim().split("\n").filter(Boolean);
+  const [contractText, guide, ddlText] = await Promise.all([
+    readFile(contractPath, "utf8"),
+    readFile(guidePath, "utf8"), readFile(join(root, "contracts/event-store-ddl.json"), "utf8"),
   ]);
-  return { contract: JSON.parse(contractText), runtime, starter, guide, ddl: JSON.parse(ddlText), entries };
+  const runtime = readFileSync(runtimePath);
+  const starter = readFileSync(starterPath);
+  const entries = trackedJson.map((path) => ({ path, document: JSON.parse(readFileSync(join(root, path), "utf8")) }));
+  const surfaceValues = await Promise.all(labelInventory.map(async (entry) => {
+    const text = await readFile(join(root, entry.path), "utf8");
+    return [entry.path, entry.kind === "descriptor" ? JSON.parse(text) : text];
+  }));
+  return {
+    contract: JSON.parse(contractText), runtime, starter, guide, ddl: JSON.parse(ddlText), entries,
+    surfaces: new Map(surfaceValues),
+  };
 }
 
 function expectRed(action, label) {
@@ -132,7 +194,7 @@ function expectRed(action, label) {
 
 async function selfTest() {
   const input = await loadInputs();
-  validateArtifacts(input.contract, input.runtime, input.starter, input.guide, input.ddl, input.entries);
+  validateArtifacts(input.contract, input.runtime, input.starter, input.guide, input.ddl, input.entries, input.surfaces);
   const mutation = structuredClone(input.contract);
   delete mutation.containers.findings;
   expectRed(() => assertContractShape(mutation), "missing container");
@@ -145,9 +207,18 @@ async function selfTest() {
   expectRed(() => validateArtifacts(input.contract, `${input.runtime}x`, input.starter, input.guide, input.ddl, input.entries), "runtime mutation");
   expectRed(() => validateArtifacts(input.contract, input.runtime, `${input.starter}x`, input.guide, input.ddl, input.entries), "starter mutation");
   expectRed(() => validateGuide(input.guide.replace("dcb-events", "dcb-events-mutated"), input.contract), "guide mutation");
-  expectRed(() => validateSingleAuthority(["cosmos-layout.json", "cosmos-layout-copy.json"]), "second authority");
-  expectRed(() => assert.match(input.guide.replace(/experimental/gi, "stable"), /experimental/i), "experimental label");
-  process.stdout.write(JSON.stringify({ result: "cosmos-layout-self-test-passed", mutations: 8 }) + "\n");
+  expectRed(() => validateSingleAuthority([
+    { path: "contracts/cosmos-layout.json", document: input.contract },
+    { path: "packages/create-dcb/template/cosmos.experimental.json", document: input.contract },
+    { path: "contracts/cosmos-containers.json", document: input.contract },
+  ], input.contract), "second authority");
+  for (const entry of labelInventory) {
+    const mutated = new Map(input.surfaces);
+    if (entry.kind === "descriptor") mutated.set(entry.path, { ...mutated.get(entry.path), stability: "stable" });
+    else mutated.set(entry.path, String(mutated.get(entry.path)).replace(/experimental/gi, "stable"));
+    expectRed(() => validateExperimentalLabels(mutated), `${entry.id} experimental label`);
+  }
+  process.stdout.write(JSON.stringify({ result: "cosmos-layout-self-test-passed", mutations: 8 + labelInventory.length }) + "\n");
 }
 
 async function main() {
@@ -155,15 +226,16 @@ async function main() {
     const contract = JSON.parse(await readFile(contractPath, "utf8"));
     assertContractShape(contract);
     await mkdir(dirname(runtimePath), { recursive: true });
-    await writeFile(runtimePath, renderRuntime(contract));
-    await writeFile(starterPath, renderStarter(contract));
+    const rendered = renderArtifacts(contract);
+    await writeFile(runtimePath, rendered.runtime);
+    await writeFile(starterPath, rendered.starter);
     process.stdout.write(JSON.stringify({ result: "cosmos-layout-written", runtime: runtimePath, starter: starterPath }) + "\n");
     return;
   }
   const input = await loadInputs();
   if (process.argv.includes("--self-test")) return selfTest();
-  validateArtifacts(input.contract, input.runtime, input.starter, input.guide, input.ddl, input.entries);
-  process.stdout.write(JSON.stringify({ result: "cosmos-layout-check-passed", containers: expectedNames }) + "\n");
+  validateArtifacts(input.contract, input.runtime, input.starter, input.guide, input.ddl, input.entries, input.surfaces);
+  process.stdout.write(JSON.stringify({ result: "cosmos-layout-check-passed", containers: Object.values(input.contract.containers).map((entry) => entry.name) }) + "\n");
 }
 
 main().catch((error) => {
@@ -171,4 +243,4 @@ main().catch((error) => {
   process.exitCode = 1;
 });
 
-export { renderRuntime, renderStarter, validateArtifacts };
+export { renderArtifacts, validateArtifacts, validateExperimentalLabels };

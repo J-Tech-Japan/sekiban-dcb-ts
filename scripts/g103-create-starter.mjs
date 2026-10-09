@@ -200,7 +200,8 @@ function assertInventory(project) {
   const worker = readFileSync(join(project, "src/worker.ts"), "utf8");
   for (const forbidden of forbiddenWorkerSource) assert(!worker.includes(forbidden), `worker imports or contains forbidden surface: ${forbidden}`);
   assert(!worker.includes("@sekiban/dcb-runtime/cosmos"), "starter worker activated the experimental Cosmos provider");
-  assertCosmosDescriptor(project);
+  const cosmosDescriptorProof = assertCosmosDescriptor(project);
+  assert(cosmosDescriptorProof.byteParity, "generated Cosmos descriptor is not byte-identical to the template");
   const readme = readFileSync(join(project, "README.md"), "utf8");
   assert(readme.includes("wrangler secret put INCIDENT_MAINTAINER_TOKEN"), "starter README omitted incident secret setup");
   assert(readme.includes("Never place") && readme.includes("vars"), "starter README omitted secret vars guidance");
@@ -261,7 +262,9 @@ function assertCosmosDescriptor(project) {
     documentIds: entry.documentIds,
   }]));
   assert(JSON.stringify(descriptor.containers) === JSON.stringify(expectedContainers), "starter Cosmos descriptor differs from the authority");
-  return { active: descriptor.active, byteParity: JSON.stringify(descriptor) === JSON.stringify(JSON.parse(readFileSync(join(root, "packages/create-dcb/template/cosmos.experimental.json"), "utf8"))) };
+  const generatedBytes = readFileSync(join(project, "cosmos.experimental.json"));
+  const templateBytes = readFileSync(join(root, "packages/create-dcb/template/cosmos.experimental.json"));
+  return { active: descriptor.active, byteParity: Buffer.compare(generatedBytes, templateBytes) === 0 };
 }
 
 function assertIncidentMigrationParity(project) {

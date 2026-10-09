@@ -25,6 +25,7 @@ function findCosmosLane(manifest) {
 
 function assertManifest(manifest) {
   const lane = findCosmosLane(manifest);
+  assert.ok(lane.services.includes("cosmos"), "the Cosmos lane must own the Cosmos service");
   assert.ok(lane.commands.some((entry) => entry?.id === "cosmos" && entry.command === "npm run test:cosmos"), "the Cosmos lane must execute the real Cosmos contract");
   assert.ok(lane.commands.some((entry) => entry?.id === "g22-cosmos" && entry.command === "npm run test:bootstrap:providers:cosmos"), "the Cosmos lane must execute the G22 Cosmos contract");
   assert.ok(lane.commands.some((entry) => entry?.id === "cosmos-wiring" && entry.command === "npm run test:cosmos-wiring"), "the Cosmos lane must execute its wiring guard");
@@ -79,6 +80,14 @@ function assertRunnerSecurity(runner, packageJson) {
   assert.doesNotMatch(runner, /COSMOS_KEY\s*[:=]\s*\$\{\{/, "the local runner must not expose a committed Cosmos credential");
   assert.match(String(packageJson.scripts?.["test:cosmos"] ?? ""), /--require-real-cosmos/, "the real Cosmos store command must require the emulator");
   assert.match(String(packageJson.scripts?.["test:bootstrap:providers:cosmos"] ?? ""), /--require-real-cosmos/, "the real Cosmos bootstrap command must require the emulator");
+  const keyRegistration = runner.indexOf("cleanup.push(() => deleteCosmosKeyFile(keyFile));");
+  const chmod = runner.indexOf("chmodSync(keyFile, 0o600);");
+  const start = runner.indexOf('dockerCommand(["run"');
+  const containerRegistration = runner.indexOf("cleanup.push(() => cleanupCosmosContainer(container, dockerCommand));");
+  assert.ok(keyRegistration >= 0, "Cosmos key cleanup must be registered");
+  assert.ok(keyRegistration < chmod && chmod < start, "Cosmos key cleanup must be registered before chmod and startup");
+  assert.ok(start < containerRegistration, "Cosmos container cleanup must be registered after startup");
+  assert.ok(containerRegistration > keyRegistration, "container cleanup must follow key cleanup registration");
 }
 
 function validate(manifest, workflow, pullRequestWorkflow, runner, packageJson) {
@@ -134,6 +143,16 @@ async function main() {
     assert.throws(() => assertManifest(unready), /readiness/);
     const missingRealFlag = { ...packageJson, scripts: { ...packageJson.scripts, "test:cosmos": "npm run build:packages && node scripts/store-contract.mjs" } };
     assert.throws(() => assertRunnerSecurity(runner, missingRealFlag), /require the emulator/);
+    const missingBootstrapRealFlag = { ...packageJson, scripts: { ...packageJson.scripts, "test:bootstrap:providers:cosmos": "npm run build:packages && node scripts/g22-bootstrap-cosmos-contract.mjs" } };
+    assert.throws(() => assertRunnerSecurity(runner, missingBootstrapRealFlag), /require the emulator/);
+    const missingService = structuredClone(manifest);
+    findCosmosLane(missingService).services = [];
+    assert.throws(() => assertManifest(missingService), /own the Cosmos service/);
+    const missingPort = structuredClone(manifest);
+    missingPort.services.cosmos.ports = [8080, 8081];
+    assert.throws(() => assertManifest(missingPort), /ports/);
+    const missingCleanup = runner.replace("cleanup.push(() => deleteCosmosKeyFile(keyFile));", "");
+    assert.throws(() => assertRunnerSecurity(missingCleanup, packageJson), /key cleanup must be registered/);
     process.stdout.write(`${JSON.stringify({
       result: "cosmos-wiring-self-test-passed",
       healthy,
@@ -143,6 +162,10 @@ async function main() {
       verifyNeedsMutation: { name: "remove-verify-edge", result: "red" },
       readinessMutation: { name: "change-readiness-path", result: "red" },
       realFlagMutation: { name: "remove-real-contract-flag", result: "red" },
+      bootstrapRealFlagMutation: { name: "remove-bootstrap-real-contract-flag", result: "red" },
+      missingServiceMutation: { name: "remove-cosmos-service", result: "red" },
+      missingPortsMutation: { name: "remove-cosmos-port", result: "red" },
+      missingCleanupMutation: { name: "remove-key-cleanup-registration", result: "red" },
     })}\n`);
     return;
   }

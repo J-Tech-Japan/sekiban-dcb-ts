@@ -10,22 +10,26 @@ import {
 import type { StoreProvider, StoreProviderEnvironment } from "./store/provider";
 import { bootstrapEventIdentityMatches, createBootstrapStoreAdapter, type BootstrapStoreAdapter } from "./bootstrap/BootstrapStoreAdapter";
 
-/** @experimental Public Cosmos adapter exports are intentionally opt-in. */
-export {
-  CosmosClientError,
-  CosmosEventStore,
-  CosmosRestClient,
-  DEFAULT_COSMOS_CONTAINERS,
-  compareCosmosSuid,
-} from "./store/CosmosEventStore";
-/** @experimental Public Cosmos option and document types. */
-export type {
-  CosmosContainerNames,
-  CosmosDocumentClient,
-  CosmosDocumentRecord,
-  CosmosStoreOptions,
-  CosmosWriteBoundary,
-} from "./store/CosmosEventStore";
+/** @experimental */
+export { CosmosClientError } from "./store/CosmosEventStore";
+/** @experimental */
+export { CosmosEventStore } from "./store/CosmosEventStore";
+/** @experimental */
+export { CosmosRestClient } from "./store/CosmosEventStore";
+/** @experimental */
+export { DEFAULT_COSMOS_CONTAINERS } from "./store/CosmosEventStore";
+/** @experimental */
+export { compareCosmosSuid } from "./store/CosmosEventStore";
+/** @experimental */
+export type { CosmosContainerNames } from "./store/CosmosEventStore";
+/** @experimental */
+export type { CosmosDocumentClient } from "./store/CosmosEventStore";
+/** @experimental */
+export type { CosmosDocumentRecord } from "./store/CosmosEventStore";
+/** @experimental */
+export type { CosmosStoreOptions } from "./store/CosmosEventStore";
+/** @experimental */
+export type { CosmosWriteBoundary } from "./store/CosmosEventStore";
 
 /** @experimental Cosmos is an explicit, opt-in provider. */
 export class CosmosConfigurationError extends Error {
@@ -108,6 +112,7 @@ export function createCosmosStoreProvider(config: CosmosStoreProviderConfig = {}
   });
 }
 
+/** @experimental Explicit bootstrap adapter for the opt-in Cosmos provider. */
 export function createCosmosBootstrapAdapter(store: CosmosEventStore): BootstrapStoreAdapter {
   return createBootstrapStoreAdapter("cosmos", store, (event, record) => bootstrapEventIdentityMatches(event, record));
 }

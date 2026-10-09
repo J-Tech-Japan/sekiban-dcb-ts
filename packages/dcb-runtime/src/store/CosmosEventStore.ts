@@ -6,6 +6,7 @@ import { decayedLagEstimateMs } from "../safeWindow";
 import {
   COSMOS_CONTAINER_LAYOUT,
   COSMOS_CONTAINER_NAMES,
+  COSMOS_DOCUMENT_ID_RULES,
 } from "../generated/cosmos-layout";
 import {
   CanonicalEventIdentityConflictError,
@@ -79,24 +80,28 @@ export interface CosmosContainerDefinition {
 export function cosmosContainerDefinitions(
   containers: CosmosContainerNames = DEFAULT_COSMOS_CONTAINERS,
 ): readonly CosmosContainerDefinition[] {
-  return [
-    {
-      name: containers.events,
-      partitionKeyPath: COSMOS_EVENT_PARTITION_KEY_PATH,
-      // The C# CosmosEvent is partitioned by the exact serviceId|id pair.
-      // Refuse a missing id here so an introspection fixture cannot mistake
-      // an auxiliary service partition for the logical event partition.
-      partitionKeyValue: (serviceId: string, id?: string) => {
-        if (typeof id !== "string" || id.length === 0) throw new Error("Cosmos event partition key requires an event id");
-        return eventPk(serviceId, id);
-      },
-    },
-    ...[containers.lagEstimates, containers.pendingArrivals, containers.findings, containers.checkpoints].map((name) => ({
+  return Object.keys(COSMOS_CONTAINER_LAYOUT).map((key) => {
+    const layout = COSMOS_CONTAINER_LAYOUT[key as keyof typeof COSMOS_CONTAINER_LAYOUT];
+    const name = containers[key as keyof CosmosContainerNames];
+    if (key === "events") {
+      return {
+        name,
+        partitionKeyPath: layout.partitionKeyPath,
+        // The C# CosmosEvent is partitioned by the exact serviceId|id pair.
+        // Refuse a missing id here so an introspection fixture cannot mistake
+        // an auxiliary service partition for the logical event partition.
+        partitionKeyValue: (serviceId: string, id?: string) => {
+          if (typeof id !== "string" || id.length === 0) throw new Error("Cosmos event partition key requires an event id");
+          return eventPk(serviceId, id);
+        },
+      };
+    }
+    return {
       name,
-      partitionKeyPath: COSMOS_AUXILIARY_PARTITION_KEY_PATH,
+      partitionKeyPath: layout.partitionKeyPath,
       partitionKeyValue: (serviceId: string) => serviceId,
-    })),
-  ];
+    };
+  });
 }
 
 export interface CosmosStoreOptions {
@@ -180,6 +185,21 @@ export function compareCosmosSuid(left: string, right: string): number {
 function safeId(...parts: string[]): string {
   return parts.map((part) => encodeURIComponent(part)).join("~");
 }
+
+function rulePrefix(rule: string, fallback: string): string {
+  return rule.match(/^safeId\("([^"]+)"/)?.[1] ?? fallback;
+}
+
+const EVENT_OPS_ID_PREFIX = rulePrefix(COSMOS_DOCUMENT_ID_RULES.events.eventSidecar, "event-ops");
+const LINEAGE_ID_PREFIX = rulePrefix(
+  COSMOS_DOCUMENT_ID_RULES.events.serviceGuards.allocatorLineageBinding,
+  "allocator-lineage-binding",
+);
+const SUID_ID_PREFIX = rulePrefix(COSMOS_DOCUMENT_ID_RULES.events.serviceGuards.suidBinding, "suid-binding");
+const INCIDENT_ID_PREFIX = rulePrefix(
+  COSMOS_DOCUMENT_ID_RULES.events.serviceGuards.deliveryIncident,
+  "incident",
+);
 
 /** The exact CosmosEvent partition-key derivation from Sekiban.Dcb. */
 function eventPk(serviceId: string, id: string): string {
@@ -493,19 +513,22 @@ export class CosmosRestClient implements CosmosDocumentClient {
       ["sign"],
     );
     const signature = encodeURIComponent(`type=master&ver=1.0&sig=${base64(await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(signaturePayload)))}`);
-    const response = await this.fetcher(new URL(path, this.endpoint), {
-      method,
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        "x-ms-date": date,
-        "x-ms-version": "2018-12-31",
-        authorization: signature,
-        ...extraHeaders,
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    return response;
+    try {
+      return await this.fetcher(new URL(path, this.endpoint), {
+        method,
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          "x-ms-date": date,
+          "x-ms-version": "2018-12-31",
+          authorization: signature,
+          ...extraHeaders,
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch {
+      throw new CosmosClientError(0, "Cosmos request failed before a response was received");
+    }
   }
 
   private async errorFrom(response: Response, prefix: string): Promise<CosmosClientError> {
@@ -912,7 +935,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     this.ready();
     return (await this.client.read<IncidentDocument>(
       this.containers.events,
-      safeId("incident", identityKey),
+      safeId(INCIDENT_ID_PREFIX, identityKey),
       auxiliaryPk(serviceId),
     )) !== undefined;
   }
@@ -951,7 +974,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
 
   private async bindLineage(serviceId: string, allocatorLineageId: string, boundAt: number): Promise<void> {
     const document: LineageBindingDocument = {
-      id: safeId("allocator-lineage-binding"),
+      id: safeId(LINEAGE_ID_PREFIX),
       pk: auxiliaryPk(serviceId),
       serviceId,
       kind: "allocator-lineage-binding",
@@ -972,7 +995,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
    * mutation. Historical rows are still checked by eventDocuments above.
    */
   private async reserveSuid(serviceId: string, suid: string, eventId: string): Promise<string | undefined> {
-    const id = safeId("suid-binding", suid);
+    const id = safeId(SUID_ID_PREFIX, suid);
     const existing = await this.client.read<SuidBindingDocument>(this.containers.events, id, auxiliaryPk(serviceId));
     if (existing !== undefined) return existing.document.eventId;
     const document: SuidBindingDocument = {
@@ -996,7 +1019,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
 
   private async persistIncident(incident: DeliveryIncident): Promise<void> {
     const document: IncidentDocument = {
-      id: safeId("incident", incident.identityKey),
+      id: safeId(INCIDENT_ID_PREFIX, incident.identityKey),
       pk: auxiliaryPk(incident.serviceId),
       serviceId: incident.serviceId,
       kind: "delivery-incident",
@@ -1020,7 +1043,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
 
   private async projectIncident(incident: DeliveryIncident): Promise<void> {
     const document = {
-      id: safeId("incident", incident.identityKey),
+      id: safeId(INCIDENT_ID_PREFIX, incident.identityKey),
       serviceId: incident.serviceId,
       eventId: incident.eventId ?? incident.incomingEventId ?? incident.identityKey,
       path: incident.classification,
@@ -1084,7 +1107,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
   private async eventOps(serviceId: string, eventId: string): Promise<EventOpsDocument | undefined> {
     const row = await this.client.read<EventOpsDocument>(
       this.containers.events,
-      safeId("event-ops", eventId),
+      safeId(EVENT_OPS_ID_PREFIX, eventId),
       eventPk(serviceId, eventId),
     );
     return row?.document;
@@ -1144,7 +1167,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     arrivedAt: number,
     lagMs: number,
   ): Promise<EventOpsDocument> {
-    const id = safeId("event-ops", message.eventId);
+    const id = safeId(EVENT_OPS_ID_PREFIX, message.eventId);
     const pk = eventPk(message.serviceId, message.eventId);
     const nextArrival: DeliveryLagRecord = {
       serviceId: message.serviceId,

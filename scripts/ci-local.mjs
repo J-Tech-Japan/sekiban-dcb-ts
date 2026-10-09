@@ -591,10 +591,14 @@ function waitForCosmos(url) {
   fail("Cosmos emulator did not become ready within 120 seconds");
 }
 
-function startServices(manifest, lane, sha, receiptRoot, initialEnv = process.env) {
+function startServices(manifest, lane, sha, receiptRoot, initialEnv = process.env, seams = {}) {
   const services = new Set(lane.services);
   const cleanup = [];
   const containerProvenance = [];
+  const dockerCommand = seams.docker ?? docker;
+  const mapPort = seams.mappedPort ?? mappedPort;
+  const waitCosmosReady = seams.waitForCosmos ?? waitForCosmos;
+  const inspectProvenance = seams.inspectContainerProvenance ?? inspectContainerProvenance;
   const env = { ...initialEnv };
   delete env.COSMOS_KEY;
   try {
@@ -625,16 +629,16 @@ function startServices(manifest, lane, sha, receiptRoot, initialEnv = process.en
       const key = spawnSync("openssl", ["rand", "-base64", "64"], { encoding: "utf8" });
       if (key.status !== 0) fail("openssl could not create the Cosmos credential");
       writeFileSync(keyFile, String(key.stdout).replace(/\n/g, ""), { mode: 0o600 });
+      cleanup.push(() => deleteCosmosKeyFile(keyFile));
       chmodSync(keyFile, 0o600);
       const container = `sdt-g84-${sha.slice(0, 12)}-${process.pid}-${lane.name}-cosmos`;
       const configuredImage = manifest.services.cosmos.image;
-      docker(["run", "--detach", "--rm", "--name", container, "--publish", "127.0.0.1::8080", "--publish", "127.0.0.1::8081", "--publish", "127.0.0.1::1234", "--volume", `${keyFile}:/cosmos.key:ro`, configuredImage, "--key-file", "/cosmos.key"], "Cosmos container");
-      cleanup.push(() => deleteCosmosKeyFile(keyFile));
-      cleanup.push(() => cleanupCosmosContainer(container));
-      containerProvenance.push(inspectContainerProvenance(container, "cosmos", configuredImage));
-      const port8080 = mappedPort(container, 8080);
-      const port8081 = mappedPort(container, 8081);
-      waitForCosmos(`http://127.0.0.1:${port8080}/ready`);
+      dockerCommand(["run", "--detach", "--rm", "--name", container, "--publish", "127.0.0.1::8080", "--publish", "127.0.0.1::8081", "--publish", "127.0.0.1::1234", "--volume", `${keyFile}:/cosmos.key:ro`, configuredImage, "--key-file", "/cosmos.key"], "Cosmos container");
+      cleanup.push(() => cleanupCosmosContainer(container, dockerCommand));
+      containerProvenance.push(inspectProvenance(container, "cosmos", configuredImage));
+      const port8080 = mapPort(container, 8080);
+      const port8081 = mapPort(container, 8081);
+      waitCosmosReady(`http://127.0.0.1:${port8080}/ready`);
       env.COSMOS_ENDPOINT = `http://127.0.0.1:${port8081}/`;
       env.COSMOS_DATABASE = `sdt_g12_${sha.slice(0, 12)}_${lane.name.replace(/[^a-z0-9_]+/gi, "_")}`;
       env.COSMOS_KEY_FILE = keyFile;
@@ -997,6 +1001,52 @@ function runCleanupSelfTests() {
   };
 }
 
+function runCosmosStartupFailureSelfTests(manifest) {
+  const lane = { name: "cosmos-self-test", services: ["cosmos"] };
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const cases = [
+    {
+      name: "docker-unavailable",
+      docker() { throw new Error("docker unavailable"); },
+    },
+    {
+      name: "emulator-start-failure",
+      docker(args) {
+        if (args[0] === "run") throw new Error("emulator failed to start");
+        return { status: 0 };
+      },
+    },
+    {
+      name: "readiness-timeout",
+      docker() { return { status: 0 }; },
+      mappedPort: () => "49152",
+      waitForCosmos() { throw new Error("Cosmos emulator readiness timed out"); },
+      inspectContainerProvenance: (_container, service, configuredImage) => ({
+        service,
+        container: "self-test-cosmos",
+        configuredImage,
+        resolvedImageId: `sha256:${"a".repeat(64)}`,
+        repoDigests: [],
+      }),
+    },
+  ];
+  const results = [];
+  for (const scenario of cases) {
+    const receiptRoot = mkdtempSync(join(tmpdir(), `sdt-g122-${scenario.name}-`));
+    let error = null;
+    try {
+      startServices(manifest, lane, sha, receiptRoot, {}, scenario);
+    } catch (caught) {
+      error = errorMessage(caught);
+    }
+    const remaining = readdirSync(receiptRoot).filter((name) => name.endsWith(".cosmos.key"));
+    rmSync(receiptRoot, { recursive: true, force: true });
+    if (error === null || remaining.length !== 0) fail(`${scenario.name} failure proof did not go red and clean the key`);
+    results.push({ name: scenario.name, exitStatus: 1, reported: "red", keyFileGone: true, error });
+  }
+  return results;
+}
+
 function runLaneContinuationSelfTest() {
   const invoked = [];
   const results = executeLaneSequence([
@@ -1044,6 +1094,7 @@ function main() {
     let containerProof;
     let selfTestCleanup;
     let cleanupProof;
+    let startupFailureProof;
     let continuationProof;
     try {
       const detachedSha = currentSha(selfTestWorktree);
@@ -1081,13 +1132,14 @@ function main() {
         error: aliasMutationError,
       };
       cleanupProof = runCleanupSelfTests();
+      startupFailureProof = runCosmosStartupFailureSelfTests(manifest);
       continuationProof = runLaneContinuationSelfTest();
     } finally {
       removeNugetIsolation(nugetProof);
       selfTestCleanup = removeDetachedWorktree(selfTestWorktree, "self-test");
     }
     if (!selfTestCleanup.ok) fail("self-test worktree cleanup did not finish cleanly");
-    process.stdout.write(`${JSON.stringify({ schema: "sdt-ci-local-self-test/v1", manifest: manifest.lanes.length, globProof, worktreeProof, nugetProof: { variableCount: NUGET_ENV_NAMES.length, insideWorktree: true }, containerProof, cleanupProof, continuationProof, selfTestCleanup }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ schema: "sdt-ci-local-self-test/v1", manifest: manifest.lanes.length, globProof, worktreeProof, nugetProof: { variableCount: NUGET_ENV_NAMES.length, insideWorktree: true }, containerProof, cleanupProof, startupFailureProof, continuationProof, selfTestCleanup }, null, 2)}\n`);
     return;
   }
   const lanes = selectLanes(manifest, options);
