@@ -492,6 +492,18 @@ function dockerJson(args, label) {
   }
 }
 
+function cleanupCosmosContainer(container, remove = docker) {
+  const result = remove(["rm", "--force", container], "Cosmos cleanup", true);
+  if (result.error !== undefined || result.status !== 0) {
+    throw new Error(`Cosmos cleanup failed with status ${result.status ?? "unknown"}`);
+  }
+}
+
+function deleteCosmosKeyFile(keyFile, remove = rmSync) {
+  remove(keyFile);
+  if (existsSync(keyFile)) throw new Error("Cosmos key file still exists after cleanup");
+}
+
 function inspectContainerProvenance(container, service, configuredImage) {
   const inspectedContainers = dockerJson(["inspect", container], `${service} container inspect`);
   if (!Array.isArray(inspectedContainers) || inspectedContainers.length !== 1) {
@@ -584,6 +596,7 @@ function startServices(manifest, lane, sha, receiptRoot, initialEnv = process.en
   const cleanup = [];
   const containerProvenance = [];
   const env = { ...initialEnv };
+  delete env.COSMOS_KEY;
   try {
     if (services.has("postgres")) {
       const container = `sdt-g84-${sha.slice(0, 12)}-${process.pid}-${lane.name}-postgres`;
@@ -616,7 +629,8 @@ function startServices(manifest, lane, sha, receiptRoot, initialEnv = process.en
       const container = `sdt-g84-${sha.slice(0, 12)}-${process.pid}-${lane.name}-cosmos`;
       const configuredImage = manifest.services.cosmos.image;
       docker(["run", "--detach", "--rm", "--name", container, "--publish", "127.0.0.1::8080", "--publish", "127.0.0.1::8081", "--publish", "127.0.0.1::1234", "--volume", `${keyFile}:/cosmos.key:ro`, configuredImage, "--key-file", "/cosmos.key"], "Cosmos container");
-      cleanup.push(() => docker(["rm", "--force", container], "Cosmos cleanup", true));
+      cleanup.push(() => deleteCosmosKeyFile(keyFile));
+      cleanup.push(() => cleanupCosmosContainer(container));
       containerProvenance.push(inspectContainerProvenance(container, "cosmos", configuredImage));
       const port8080 = mappedPort(container, 8080);
       const port8081 = mappedPort(container, 8081);
@@ -626,8 +640,16 @@ function startServices(manifest, lane, sha, receiptRoot, initialEnv = process.en
       env.COSMOS_KEY_FILE = keyFile;
     }
   } catch (error) {
-    for (const cleanupAction of cleanup.reverse()) cleanupAction();
-    throw error;
+    const cleanupErrors = [];
+    for (const cleanupAction of cleanup.reverse()) {
+      try {
+        cleanupAction();
+      } catch (cleanupError) {
+        cleanupErrors.push(errorMessage(cleanupError));
+      }
+    }
+    const suffix = cleanupErrors.length === 0 ? "" : `; cleanup failed: ${cleanupErrors.join("; ")}`;
+    throw new Error(`${errorMessage(error)}${suffix}`);
   }
   return { env, cleanup, services: [...services], containerProvenance };
 }
@@ -862,6 +884,22 @@ function summarizeLaneResults(results) {
 }
 
 function runCleanupSelfTests() {
+  let containerCleanupError = null;
+  try {
+    cleanupCosmosContainer("self-test-cosmos", () => ({ status: 17, error: undefined }));
+  } catch (error) {
+    containerCleanupError = errorMessage(error);
+  }
+  if (containerCleanupError === null) fail("Cosmos container cleanup failure self-test passed unexpectedly");
+
+  let keyCleanupError = null;
+  try {
+    deleteCosmosKeyFile("/self-test-cosmos.key", () => { throw new Error("simulated key deletion refusal"); });
+  } catch (error) {
+    keyCleanupError = errorMessage(error);
+  }
+  if (keyCleanupError === null) fail("Cosmos key-file cleanup failure self-test passed unexpectedly");
+
   const fallbackState = { directoryExists: true, registered: true };
   const fallback = removeDetachedWorktree("/self-test/untracked-worktree", "cleanup-fallback", {
     removeWorktree() {
@@ -954,6 +992,8 @@ function runCleanupSelfTests() {
       pruneStatus: alias.pruneStatus,
       failureReason: alias.failureReason,
     },
+    cosmosContainerCleanup: { result: "red-lane", error: containerCleanupError },
+    cosmosKeyFileCleanup: { result: "red-lane", error: keyCleanupError },
   };
 }
 

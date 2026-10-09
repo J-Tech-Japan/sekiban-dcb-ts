@@ -150,6 +150,10 @@ if (selfTest) {
   await store.recordDelivery(message(targetServiceId, "same", 1, tags), 0);
   const targetDump = (await adapter.exportPage({ sourceServiceId: targetServiceId, sourceAllocatorLineageId: "g22-bootstrap-provider-lineage", targetServiceId, allocatorLineageId: "g22-bootstrap-provider-lineage", pageSize: 8 })).dump;
   await adapter.admitBootstrap({ importId: "g22-cosmos-replay", leaseEpoch: 1, manifest: targetDump.manifest, events: targetDump.events });
+  await adapter.verifyBootstrap({ importId: "g22-cosmos-replay", manifest: targetDump.manifest });
+  const initialTargetEvents = await store.readAllEvents(targetServiceId, "");
+  assert.equal(initialTargetEvents.length, 1, "Cosmos bootstrap target count after replay must be exact");
+  assert.deepEqual(initialTargetEvents.map((event) => event.eventId), [g32EventId("same")], "Cosmos bootstrap target ids after replay must be exact");
   const before = await snapshot(store, targetServiceId);
   await assert.rejects(
     adapter.admitBootstrap({ importId: "g22-cosmos-conflict", leaseEpoch: 2, manifest: targetDump.manifest, events: [{ ...targetDump.events[0], payload: JSON.stringify({ value: 3 }) }] }),
@@ -161,6 +165,15 @@ if (selfTest) {
   await store.recordDelivery(canonical, 0);
   const canonicalDump = (await adapter.exportPage({ sourceServiceId, sourceAllocatorLineageId: "g22-bootstrap-provider-lineage", targetServiceId, allocatorLineageId: "g22-bootstrap-provider-lineage", pageSize: 8 })).dump;
   await adapter.admitBootstrap({ importId: "g22-cosmos-canonical-replay", leaseEpoch: 3, manifest: canonicalDump.manifest, events: canonicalDump.events.filter((event) => event.eventId === g32EventId("canonical")) });
+  const finalTargetDump = (await adapter.exportPage({ sourceServiceId: targetServiceId, sourceAllocatorLineageId: "g22-bootstrap-provider-lineage", targetServiceId, allocatorLineageId: "g22-bootstrap-provider-lineage", pageSize: 8 })).dump;
+  await adapter.verifyBootstrap({ importId: "g22-cosmos-canonical-replay", manifest: finalTargetDump.manifest });
+  const finalTargetEvents = await store.readAllEvents(targetServiceId, "");
+  assert.equal(finalTargetEvents.length, 2, "Cosmos bootstrap target count after canonical replay must be exact");
+  assert.deepEqual(
+    finalTargetEvents.map((event) => event.eventId).sort(),
+    [g32EventId("canonical"), g32EventId("same")].sort(),
+    "Cosmos bootstrap target ids after canonical replay must be exact",
+  );
   const canonicalBefore = await snapshot(store, targetServiceId);
   const directDivergence = { ...canonical, serviceId: targetServiceId, eventType: "OrderPlacedRenamed" };
   await assert.rejects(

@@ -17,3 +17,8 @@ node packages/create-dcb/bin/create-dcb.mjs my-booking-app
 The CLI slugifies the project name to lowercase hyphenated form, writes into
 `./<slug>`, and refuses an existing non-empty directory. It does not publish
 the package or create Cloudflare resources.
+
+The generated project includes `cosmos.experimental.json` as an experimental,
+read-only layout and binding descriptor. It does not activate Cosmos: the
+generated worker and Wrangler configuration continue to use D1 until the
+consumer explicitly changes source composition.

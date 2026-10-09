@@ -6,6 +6,10 @@ import { bootstrapEventIdentityMatches, createBootstrapStoreAdapter, type Bootst
 export interface StoreProviderEnvironment {
   readonly POSTGRES_URL?: string;
   readonly HYPERDRIVE?: { readonly connectionString?: string };
+  /** Experimental Cosmos deployment values; the key is a secret binding. */
+  readonly COSMOS_ENDPOINT?: string;
+  readonly COSMOS_DATABASE?: string;
+  readonly COSMOS_KEY?: string;
   /** Explicit opt-in D1 binding; the default provider never requires it. */
   readonly D1?: D1Database;
   /** Separate opt-in MV D1 binding; never used by the PipelineStore provider. */

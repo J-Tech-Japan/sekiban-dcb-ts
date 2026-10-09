@@ -330,6 +330,11 @@ export interface Env {
   /** Local Docker/CI connection; deployed Workers normally use HYPERDRIVE. */
   POSTGRES_URL?: string;
   HYPERDRIVE?: Hyperdrive;
+  /** Experimental Cosmos endpoint and database deployment values. */
+  COSMOS_ENDPOINT?: string;
+  COSMOS_DATABASE?: string;
+  /** Experimental Cosmos account key; configure it as a Worker secret. */
+  COSMOS_KEY?: string;
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
   /** Only an authenticated deployment-verification lane may set this. */
   G11_VERIFICATION_ENABLED?: string;

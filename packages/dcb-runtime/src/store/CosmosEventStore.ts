@@ -4,6 +4,10 @@ import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
 import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
 import { decayedLagEstimateMs } from "../safeWindow";
 import {
+  COSMOS_CONTAINER_LAYOUT,
+  COSMOS_CONTAINER_NAMES,
+} from "../generated/cosmos-layout";
+import {
   CanonicalEventIdentityConflictError,
   type DeliveryLagRecord,
   type DeliveryIncident,
@@ -54,19 +58,13 @@ export interface CosmosContainerNames {
 }
 
 /** Sekiban.Dcb CosmosEvent's immutable logical-record partition. */
-export const COSMOS_EVENT_PARTITION_KEY_PATH = "/pk" as const;
+export const COSMOS_EVENT_PARTITION_KEY_PATH = COSMOS_CONTAINER_LAYOUT.events.partitionKeyPath;
 /** TS-only auxiliary documents retain a service-local partition. */
-export const COSMOS_AUXILIARY_PARTITION_KEY_PATH = "/serviceId" as const;
+export const COSMOS_AUXILIARY_PARTITION_KEY_PATH = COSMOS_CONTAINER_LAYOUT.lagEstimates.partitionKeyPath;
 /** @deprecated Kept as an alias for auxiliary-container callers. */
 export const COSMOS_PARTITION_KEY_PATH = COSMOS_AUXILIARY_PARTITION_KEY_PATH;
 
-export const DEFAULT_COSMOS_CONTAINERS: CosmosContainerNames = Object.freeze({
-  events: "dcb-events",
-  lagEstimates: "dcb-lag-estimates",
-  pendingArrivals: "dcb-pending-arrivals",
-  findings: "dcb-findings",
-  checkpoints: "dcb-projection-checkpoints",
-});
+export const DEFAULT_COSMOS_CONTAINERS: CosmosContainerNames = COSMOS_CONTAINER_NAMES;
 
 export interface CosmosContainerDefinition {
   readonly name: string;

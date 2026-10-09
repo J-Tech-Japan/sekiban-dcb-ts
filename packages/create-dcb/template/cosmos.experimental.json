@@ -1,0 +1,65 @@
+{
+  "stability": "experimental",
+  "provider": "cosmos",
+  "active": false,
+  "bindings": {
+    "endpoint": "COSMOS_ENDPOINT",
+    "database": "COSMOS_DATABASE",
+    "key": "COSMOS_KEY"
+  },
+  "containers": {
+    "events": {
+      "name": "dcb-events",
+      "partitionKeyPath": "/pk",
+      "partitionValueKinds": [
+        "{serviceId}|{eventId}",
+        "{serviceId}|__dcb_event_ops__"
+      ],
+      "documentIds": {
+        "logicalEvent": "canonical event id",
+        "eventSidecar": "safeId(eventId, ...)",
+        "serviceGuard": "safeId(kind, ... )"
+      }
+    },
+    "lagEstimates": {
+      "name": "dcb-lag-estimates",
+      "partitionKeyPath": "/serviceId",
+      "partitionValueKinds": [
+        "{serviceId}"
+      ],
+      "documentIds": {
+        "auxiliary": "safeId(serviceId, ... )"
+      }
+    },
+    "pendingArrivals": {
+      "name": "dcb-pending-arrivals",
+      "partitionKeyPath": "/serviceId",
+      "partitionValueKinds": [
+        "{serviceId}"
+      ],
+      "documentIds": {
+        "auxiliary": "safeId(serviceId, ... )"
+      }
+    },
+    "findings": {
+      "name": "dcb-findings",
+      "partitionKeyPath": "/serviceId",
+      "partitionValueKinds": [
+        "{serviceId}"
+      ],
+      "documentIds": {
+        "auxiliary": "safeId(serviceId, ... )"
+      }
+    },
+    "checkpoints": {
+      "name": "dcb-projection-checkpoints",
+      "partitionKeyPath": "/serviceId",
+      "partitionValueKinds": [
+        "{serviceId}"
+      ],
+      "documentIds": {
+        "auxiliary": "safeId(serviceId, ... )"
+      }
+    }
+  }
+}

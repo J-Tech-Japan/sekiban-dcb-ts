@@ -1,6 +1,6 @@
 # Sekiban DCB for TypeScript
 
-Sekiban DCB for TypeScript is a TypeScript event-sourcing runtime for Cloudflare Workers. It uses Durable Objects and Queues, stores events in Postgres by default or in opt-in D1 or Cosmos providers, and its generated starter uses two D1 databases. The [architecture guide](docs/architecture.md) explains the design.
+Sekiban DCB for TypeScript is a TypeScript event-sourcing runtime for Cloudflare Workers. It uses Durable Objects and Queues, stores events in Postgres by default or in opt-in D1 or the experimental Cosmos provider, and its generated starter uses two D1 databases. The [architecture guide](docs/architecture.md) explains the design.
 
 Its logical event shape interoperates with C# Sekiban.Dcb for offline export and import. It has no shared physical layout or mixed live service. You can define a domain, accept serialized event commands, query read models, and start from the meeting-room example; the [logical-event migration guide](docs/migration-sekiban-dcb.md) explains this compatibility boundary.
 
@@ -61,7 +61,7 @@ Choose a guide by the task you need to do.
 
 | Guide | Description |
 | --- | --- |
-| [Cosmos layout](docs/cosmos-layout.md) | Records the separate Cosmos mapping and its provider-specific contract. |
+| [Experimental Cosmos layout](docs/cosmos-layout.md) | Records the separate Cosmos mapping and its provider-specific contract. |
 | [Versioning contract](docs/versioning-contract.md) | Separates package, protocol, event, and read-side compatibility decisions. |
 | [D1 PipelineStore](docs/d1-pipeline-store.md) | Describes the opt-in D1 provider, schema, limits, and guarded writes. |
 | [D1 materialized views](docs/d1-materialized-views.md) | Describes the separate D1_MV backing, materializer, migrations, and catch-up. |
@@ -79,7 +79,7 @@ Choose a guide by the task you need to do.
 
 The `samples/meeting-room` project is the canonical Cloudflare getting-started sample and a consumer of the public packages. It authors its domain with the public `@sekiban/dcb-domain` event, state, projector, and command surface and bridges it with `toRuntimeDomain()`; the runtime's projector and query registries stay private. A consumer composes its domain into the runtime with `createRuntimeWorker({ domain, config })`. The sample exposes its application command API and keeps the raw V1 protocol routes behind the authenticated `/conformance/v1` lane. Its framework-free `public/` frontend calls only the application command and read API and uses the V1 sortable-id head to report pending, visible, conflict, rejected, and partial outcomes honestly. Follow the [sample getting-started guide](samples/meeting-room/docs/getting-started-cloudflare.md) for the full setup.
 
-The Cloudflare-only sample uses one D1 database for the PipelineStore and a separate D1 database for materialized-view rows and checkpoints. Durable Objects and the outbox Queue remain part of the composition. This variant has no Hyperdrive, Postgres, or Cosmos binding. Its reservation and room query UI reads the materialized-view D1 database after the SafeWindow-aware catch-up worker runs.
+The Cloudflare-only sample uses one D1 database for the PipelineStore and a separate D1 database for materialized-view rows and checkpoints. Durable Objects and the outbox Queue remain part of the composition. This variant has no Hyperdrive, Postgres, or experimental Cosmos binding. Its reservation and room query UI reads the materialized-view D1 database after the SafeWindow-aware catch-up worker runs.
 
 ```sh
 npx wrangler d1 create sekiban-dcb-meeting-room-cloudflare-pipeline

@@ -52,7 +52,7 @@ query caching is disabled before conformance and measurement runs.
 It has two independent D1 bindings (`D1` for the PipelineStore and `D1_MV` for
 materialized-view rows/checkpoints), the same Journal/Allocator/Tag Durable
 Objects, and a Queue for durable outbox delivery. It deliberately has no
-Hyperdrive, Postgres, or Cosmos binding. The Queue consumer applies each
+Hyperdrive, Postgres, or experimental Cosmos binding. The Queue consumer applies each
 *stored* outcome to the atomic unsafe port, so the reservation list and room
 query can show an immediate tentative winner from the composed `D1_MV` read.
 SafeWindow catch-up remains the definitive ordered fold; an unsafe failure is

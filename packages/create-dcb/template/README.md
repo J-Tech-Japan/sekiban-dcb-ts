@@ -58,6 +58,16 @@ npx wrangler secret put INCIDENT_MAINTAINER_TOKEN
 Never place the value of `INCIDENT_MAINTAINER_TOKEN` in `wrangler.jsonc`
 `vars`. The runtime redacts bearer values and does not return or persist them.
 
+## Experimental Cosmos descriptor
+
+This starter includes `cosmos.experimental.json`, a generated read-only
+descriptor of the experimental Cosmos layout and symbolic bindings. Its
+`active` value is `false`; the descriptor does not activate Cosmos. The active
+worker and `wrangler.jsonc` continue to use D1. To adopt Cosmos, change the
+Worker source explicitly, import the public `/cosmos` factory, and configure
+`COSMOS_ENDPOINT` and `COSMOS_DATABASE` as deployment values plus
+`COSMOS_KEY` with `wrangler secret put COSMOS_KEY`.
+
 ## cf CLI (beta)
 
 Use `npm run migrate` for D1 migrations and `npm run deploy` for the Worker.

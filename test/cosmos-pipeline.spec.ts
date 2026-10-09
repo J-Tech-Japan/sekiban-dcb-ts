@@ -12,6 +12,12 @@ import {
   DEFAULT_COSMOS_CONTAINERS,
 } from "../packages/dcb-runtime/src/cosmos";
 import {
+  COSMOS_BINDINGS,
+  COSMOS_CONTAINER_LAYOUT,
+  COSMOS_CONTAINER_NAMES,
+  COSMOS_LAYOUT_STABILITY,
+} from "../packages/dcb-runtime/src/generated/cosmos-layout";
+import {
   COSMOS_AUXILIARY_PARTITION_KEY_PATH,
   COSMOS_EVENT_PARTITION_KEY_PATH,
   COSMOS_PARTITION_KEY_PATH,
@@ -163,7 +169,10 @@ describe("SDT-G12 Cosmos provider pipeline composition", () => {
     expect(JSON.parse((await list.json<{ itemsJson: string }>()).itemsJson)).toHaveLength(1);
   });
 
-  it("pins the separate five-container, service-partitioned layout", () => {
+  it("pins the separate five-container, service-partitioned layout", async () => {
+    expect(COSMOS_LAYOUT_STABILITY).toBe("experimental");
+    expect(COSMOS_BINDINGS).toEqual({ endpoint: "COSMOS_ENDPOINT", database: "COSMOS_DATABASE", key: "COSMOS_KEY" });
+    expect(DEFAULT_COSMOS_CONTAINERS).toEqual(COSMOS_CONTAINER_NAMES);
     expect(DEFAULT_COSMOS_CONTAINERS).toEqual({
       events: "dcb-events",
       lagEstimates: "dcb-lag-estimates",
@@ -190,6 +199,19 @@ describe("SDT-G12 Cosmos provider pipeline composition", () => {
     expect(definitions.slice(1).map((definition) => definition.partitionKeyValue(SERVICE_ID))).toEqual(
       definitions.slice(1).map(() => SERVICE_ID),
     );
+
+    const client = new PipelineMemoryClient();
+    const store = createCosmosStoreProvider({ client }).create({});
+    await store.initialize();
+    await store.recordDelivery(testMessage(), 1_000);
+    const observedEventPartitions = client.observations
+      .filter((observation) => observation.container === DEFAULT_COSMOS_CONTAINERS.events)
+      .map((observation) => observation.partitionKey)
+      .filter((value): value is string => value !== undefined);
+    expect(observedEventPartitions).toContain(`${SERVICE_ID}|${testMessage().eventId}`);
+    expect(observedEventPartitions).toContain(`${SERVICE_ID}|__dcb_event_ops__`);
+    expect(COSMOS_CONTAINER_LAYOUT.events.partitionKeyPath).toBe(COSMOS_EVENT_PARTITION_KEY_PATH);
+    expect(COSMOS_CONTAINER_LAYOUT.findings.partitionKeyPath).toBe(COSMOS_AUXILIARY_PARTITION_KEY_PATH);
 
     // The historical .NET layout is a separate namespace, not an alias for a
     // TypeScript container. This negative contract catches a five-name rename
