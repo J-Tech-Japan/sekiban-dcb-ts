@@ -14,6 +14,9 @@ const starterPath = join(root, "packages/create-dcb/template/cosmos.experimental
 const guidePath = join(root, "docs/cosmos-layout.md");
 
 const expectedContainerKeys = ["events", "lagEstimates", "pendingArrivals", "findings", "checkpoints"];
+const expectedContainerNames = [
+  "dcb-events", "dcb-lag-estimates", "dcb-pending-arrivals", "dcb-findings", "dcb-projection-checkpoints",
+];
 const guidanceRequirements = [
   {
     id: "cosmos-live-tag-rebuild-exclusion",
@@ -60,6 +63,11 @@ function assertContractShape(contract) {
   assert.deepEqual(Object.keys(contract.bindings).sort(), ["database", "endpoint", "key"]);
   assert.deepEqual(Object.keys(contract.containers), expectedContainerKeys);
   assert.equal(Object.values(contract.containers).length, 5);
+  assert.deepEqual(
+    Object.values(contract.containers).map((container) => container.name).sort(),
+    [...expectedContainerNames].sort(),
+    "container names changed",
+  );
   assert.equal(contract.containers.events.partitionKeyPath, "/pk");
   const auxiliaryPartitionPath = contract.containers.lagEstimates.partitionKeyPath;
   assert.equal(auxiliaryPartitionPath, "/serviceId");
@@ -309,6 +317,21 @@ async function selfTest() {
   const auxiliaryPath = structuredClone(input.contract);
   auxiliaryPath.containers.findings.partitionKeyPath = "/pk";
   expectRed(() => assertContractShape(auxiliaryPath), "auxiliary partition path");
+  const coordinatedNameDrift = structuredClone(input.contract);
+  coordinatedNameDrift.containers.events.name = "dcb-events-mutated";
+  const coordinatedNameArtifacts = renderArtifacts(coordinatedNameDrift);
+  const coordinatedNameGuide = input.guide.replace("dcb-events", "dcb-events-mutated");
+  expectRed(
+    () => validateArtifacts(
+      coordinatedNameDrift,
+      coordinatedNameArtifacts.runtime,
+      coordinatedNameArtifacts.starter,
+      coordinatedNameGuide,
+      input.ddl,
+      input.entries,
+    ),
+    "coordinated container name drift",
+  );
   expectRed(
     () => validateArtifacts(input.contract, `${input.runtime}x`, input.starter, input.guide, input.ddl, input.entries),
     "runtime mutation",
@@ -363,7 +386,7 @@ async function selfTest() {
   ), guidanceRequirements[2].id);
   process.stdout.write(JSON.stringify({
     result: "cosmos-layout-self-test-passed",
-    mutations: 8 + labelInventory.length + exportInventory.length * 2 + guidanceRequirements.length,
+    mutations: 9 + labelInventory.length + exportInventory.length * 2 + guidanceRequirements.length,
   }) + "\n");
 }
 

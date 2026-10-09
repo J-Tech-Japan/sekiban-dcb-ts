@@ -113,6 +113,30 @@ describe("SDT-G122 experimental Cosmos selection and configuration", () => {
     expect(() => createCosmosStoreProvider({ database: "static-db", key: completeEnvironment.COSMOS_KEY })).toThrow(/COSMOS_ENDPOINT/);
   });
 
+  it("rejects key-only static configuration before using a complete environment or transport", () => {
+    let fetchCalls = 0;
+    const key = completeEnvironment.COSMOS_KEY;
+    const fetcher = (async () => {
+      fetchCalls += 1;
+      throw new Error("unexpected Cosmos network call");
+    }) as typeof fetch;
+    let error: unknown;
+    try {
+      const provider = createCosmosStoreProvider({ key, fetcher });
+      provider.create(completeEnvironment);
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(CosmosConfigurationError);
+    expect(error).toMatchObject({ missingBindings: ["COSMOS_ENDPOINT", "COSMOS_DATABASE"] });
+    expect((error as Error).message).toBe(
+      "Cosmos configuration is incomplete; missing bindings: COSMOS_ENDPOINT, COSMOS_DATABASE",
+    );
+    expect((error as Error).message).not.toContain(key);
+    expect(fetchCalls).toBe(0);
+  });
+
   it("keeps complete Cosmos bindings out of both default worker compositions", async () => {
     let fetchCalls = 0;
     const originalFetch = globalThis.fetch;
