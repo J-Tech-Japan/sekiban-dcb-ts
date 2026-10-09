@@ -7,6 +7,12 @@ export interface RebuildResult {
 }
 
 export declare function canonicalJson(value: unknown): string;
+export declare function validateContractValue(
+  value: unknown,
+  schemaName: string,
+  context?: string,
+  contract?: unknown,
+): unknown;
 export declare function eventDigestForRecord(
   record: Record<string, unknown>,
   digestInfo: Record<string, unknown>,
@@ -15,5 +21,22 @@ export declare function eventDigestForRecord(
 export declare function validateInput(buffer: Uint8Array, sourceName?: string): { input: unknown; fileSha256: string; contentDigest: string; text: string; buffer: Uint8Array };
 export declare function setReceiptWriteHookForTests(
   hook: ((context: { path: string; receipt: string }) => void | Promise<void>) | undefined,
+): void;
+export declare function setReceiptPublicationHooksForTests(
+  hooks:
+    | {
+        writeChunk?: (context: {
+          descriptor: number;
+          bytes: Uint8Array;
+          offset: number;
+          length: number;
+        }) => number;
+        afterStaging?: (context: {
+          path: string;
+          stagedPath: string;
+          bytes: Uint8Array;
+        }) => void;
+      }
+    | undefined,
 ): void;
 export declare function runCommand(argv: readonly string[]): Promise<string>;

@@ -9,7 +9,9 @@ import {
   canonicalJson,
   eventDigestForRecord,
   runCommand,
+  setReceiptPublicationHooksForTests,
   setReceiptWriteHookForTests,
+  validateContractValue,
 } from "../tools/derive-dcb-tags/postgres-rebuild.mjs";
 // @ts-expect-error Vitest raw fixture import.
 import inputSource from "./fixtures/postgres-tag-rebuild/partial-sealed.json?raw";
@@ -94,6 +96,42 @@ const temporaryFiles: string[] = [];
 function digestBytes(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
+
+function oracleByteCompare(left: string, right: string): number {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  const shared = Math.min(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < shared; index += 1) {
+    if (leftBytes[index] !== rightBytes[index]) {
+      return leftBytes[index] - rightBytes[index];
+    }
+  }
+  return leftBytes.length - rightBytes.length;
+}
+
+function oracleCanonical(value: unknown): string {
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(oracleCanonical).join(",")}]`;
+  }
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object)
+    .sort(oracleByteCompare)
+    .map((key) => `${JSON.stringify(key)}:${oracleCanonical(object[key])}`)
+    .join(",")}}`;
+}
+
+function oracleDigest(value: unknown): string {
+  return digestBytes(Buffer.from(oracleCanonical(value), "utf8"));
+}
+
+type OracleEvent = { eventId: string; eventDigest: string };
+type OracleMembership = OracleEvent & { tag: string };
 
 function adminUrl(value: string): string {
   const url = new URL(value);
@@ -234,6 +272,10 @@ async function expectRedCase(
   await expectRebuildWrites(label, unchanged);
   await expect(run(args), label).rejects.toThrow(expected);
   await expectRebuildWrites(`${label} leaves state unchanged`, unchanged);
+  const receiptIndex = args.indexOf("--receipt");
+  if (receiptIndex >= 0) {
+    expect(existsSync(args[receiptIndex + 1]), `${label} receipt is not published`).toBe(false);
+  }
 }
 
 async function expectRebuildWrites(
@@ -242,6 +284,20 @@ async function expectRebuildWrites(
 ): Promise<void> {
   const actual = await rebuildWrites();
   expect(actual, label).toEqual(expected);
+}
+
+async function expectFailedWithoutReceipt(
+  label: string,
+  args: string[],
+  expected: string | RegExp,
+  unchanged: { tags: number; provenance: number },
+): Promise<void> {
+  await expect(run(args), label).rejects.toThrow(expected);
+  await expectRebuildWrites(`${label} leaves state unchanged`, unchanged);
+  const receiptIndex = args.indexOf("--receipt");
+  if (receiptIndex >= 0) {
+    expect(existsSync(args[receiptIndex + 1]), `${label} receipt is not published`).toBe(false);
+  }
 }
 
 async function createProvenanceTable(): Promise<void> {
@@ -326,6 +382,7 @@ describe("SDT-G121 PostgreSQL tag rebuild", () => {
 
   afterAll(async () => {
     setReceiptWriteHookForTests(undefined);
+    setReceiptPublicationHooksForTests(undefined);
     for (const path of [fixture, correction, ...temporaryFiles]) {
       if (existsSync(path)) {
         unlinkSync(path);
@@ -352,6 +409,37 @@ describe("SDT-G121 PostgreSQL tag rebuild", () => {
     expect(contract.provenanceDdl).toContain("dcb_tag_rebuild_provenance");
   });
 
+  it("accepts the optional allocator lineage both when present and when absent", async () => {
+    await resetTarget();
+    await expect(run(["--input", fixture])).resolves.toContain('"membershipCount":0');
+
+    const withoutAllocator = makeInput((value) => {
+      Reflect.deleteProperty(value.events[0].digest, "allocatorLineageId");
+    });
+    await resetTarget();
+    await expect(run(["--input", withoutAllocator.path])).resolves.toContain(
+      '"membershipCount":0',
+    );
+  });
+
+  it("uses the contract recursively for emitted values and rejects a mutated output declaration", async () => {
+    await resetTarget();
+    const report = await run(["--input", fixture]);
+    validateContractValue(JSON.parse(report), "dryRunReport");
+
+    const mutated = structuredClone(contract) as Contract;
+    mutated.schemas.dryRunReport.nested!["proposedMembership[]"].requiredKeys![1] =
+      "tagFromContract";
+    expect(() =>
+      validateContractValue(
+        JSON.parse(report),
+        "dryRunReport",
+        "mutated dry-run report",
+        mutated,
+      ),
+    ).toThrow(/unknown or missing keys/);
+  });
+
   it("keeps a partial declared set partial in a read-only dry run", async () => {
     await resetTarget();
     const receipt = addReceiptPath();
@@ -369,6 +457,7 @@ describe("SDT-G121 PostgreSQL tag rebuild", () => {
     const args = applyArgs(fixture, inputSha, receipt);
     await run(args);
     const firstBytes = readFileSync(receipt);
+    validateContractValue(JSON.parse(firstBytes.toString()), "receipt");
     expect(JSON.parse(firstBytes.toString()).target.membershipCount).toBe(1);
     expect(firstBytes.toString()).not.toContain("reservation:res-1");
     console.log(`SDT-G121 default receipt ${digestBytes(firstBytes)}`);
@@ -404,6 +493,50 @@ describe("SDT-G121 PostgreSQL tag rebuild", () => {
       "reservation:res-1",
       "room:room-1",
     ]);
+  });
+
+  it("computes event and membership set digests from observed rows with uppercase UUID input", async () => {
+    const upper = makeInput((value) => {
+      value.events[0].record.id = value.events[0].record.id.toUpperCase();
+    });
+    await resetTarget();
+    await db`DELETE FROM dcb_events WHERE "ServiceId" = ${input.serviceId}`;
+    await insertEvent(upper.value.events[0].record);
+    const receipt = addReceiptPath();
+    await run(applyArgs(upper.path, digestBytes(upper.bytes), receipt));
+
+    const observed = await db`
+      SELECT "EventId"::text AS event_id, "Tag" AS tag
+      FROM dcb_tags
+      WHERE "ServiceId" = ${input.serviceId}
+      ORDER BY "EventId"::text, "Tag"
+    `;
+    const eventRows: OracleEvent[] = [
+      ...new Map<string, OracleEvent>(
+        observed.map((row: { event_id: string }) => [
+          row.event_id,
+          { eventId: row.event_id, eventDigest: upper.value.events[0].digest.eventDigest },
+        ]),
+      ).values(),
+    ].sort((left, right) => oracleByteCompare(left.eventId, right.eventId));
+    const membershipRows: OracleMembership[] = observed
+      .map((row: { event_id: string; tag: string }) => ({
+        eventId: row.event_id,
+        eventDigest: upper.value.events[0].digest.eventDigest,
+        tag: row.tag,
+      }))
+      .sort(
+        (left: OracleMembership, right: OracleMembership) =>
+          oracleByteCompare(left.eventId, right.eventId) ||
+          oracleByteCompare(left.eventDigest, right.eventDigest) ||
+          oracleByteCompare(left.tag, right.tag),
+      );
+    const receiptValue = JSON.parse(readFileSync(receipt, "utf8")) as {
+      target: { eventSetDigest: string; membershipSetDigest: string };
+    };
+    expect(receiptValue.target.eventSetDigest).toBe(oracleDigest(eventRows));
+    expect(receiptValue.target.membershipSetDigest).toBe(oracleDigest(membershipRows));
+    expect(eventRows[0].eventId).toBe(input.events[0].record.id.toLowerCase());
   });
 
   it("rejects the complete input validation matrix with specific errors and zero writes", async () => {
@@ -680,6 +813,65 @@ describe("SDT-G121 PostgreSQL tag rebuild", () => {
           : { tags: label === "membership count" ? 2 : 1, provenance: 1 };
       await expectRebuildWrites(`${label} retains row counts`, expectedCounts);
     }
+  }, 15000);
+
+  it("rejects target schema drift, payload-byte drift, orphan EventId, and tag-only partial state", async () => {
+    await resetTarget();
+    await db.unsafe('ALTER TABLE dcb_events ADD COLUMN "SdtG121Unexpected" text');
+    const schemaReceipt = addReceiptPath();
+    await expectFailedWithoutReceipt(
+      "target schema drift",
+      applyArgs(fixture, inputSha, schemaReceipt),
+      /target schema dcb_events has unexpected columns/,
+      { tags: 0, provenance: 0 },
+    );
+    await db.unsafe('ALTER TABLE dcb_events DROP COLUMN "SdtG121Unexpected"');
+
+    await resetTarget();
+    await db.unsafe(
+      `UPDATE dcb_events SET "Payload" = '{"roomId": "room-1"}'::json
+       WHERE "ServiceId" = '${input.serviceId}'`,
+    );
+    const payloadReceipt = addReceiptPath();
+    await expectFailedWithoutReceipt(
+      "target payload-byte drift",
+      applyArgs(fixture, inputSha, payloadReceipt),
+      /payload bytes/,
+      { tags: 0, provenance: 0 },
+    );
+
+    await resetTarget();
+    await db.unsafe(
+      `INSERT INTO dcb_tags
+        ("ServiceId", "Tag", "TagGroup", "EventType", "SortableUniqueId", "EventId", "CreatedAt")
+       VALUES
+        ('${input.serviceId}', 'room:room-1', 'room', 'RoomReserved',
+         '${input.events[0].record.sortableUniqueId}', '018f9c51-6b74-7f5e-8ca1-0123456789ac',
+         '${input.events[0].record.timestamp}')`,
+    );
+    await expectFailedWithoutReceipt(
+      "orphan EventId",
+      ["--input", fixture],
+      /orphan dcb_tags EventId/,
+      { tags: 1, provenance: 0 },
+    );
+
+    await resetTarget();
+    await db.unsafe(
+      `INSERT INTO dcb_tags
+        ("ServiceId", "Tag", "TagGroup", "EventType", "SortableUniqueId", "EventId", "CreatedAt")
+       VALUES
+        ('${input.serviceId}', 'room:room-1', 'room', 'RoomReserved',
+         '${input.events[0].record.sortableUniqueId}', '${input.events[0].record.id}',
+         '${input.events[0].record.timestamp}')`,
+    );
+    const partialReceipt = addReceiptPath();
+    await expectFailedWithoutReceipt(
+      "tag without provenance",
+      applyArgs(fixture, inputSha, partialReceipt),
+      /target tag rows exist without provenance/,
+      { tags: 1, provenance: 0 },
+    );
   });
 
   it("rejects malformed UTF-8 and duplicate object keys before opening PostgreSQL", async () => {
@@ -719,6 +911,75 @@ describe("SDT-G121 PostgreSQL tag rebuild", () => {
     await run(args);
     expect(existsSync(receipt)).toBe(true);
     await expect(rebuildWrites()).resolves.toEqual({ tags: 1, provenance: 1 });
+  });
+
+  it("rejects a trigger-mutated committed receipt before publication", async () => {
+    await resetTarget();
+    await createProvenanceTable();
+    await db.unsafe([
+      "CREATE EXTENSION IF NOT EXISTS pgcrypto;",
+      "CREATE OR REPLACE FUNCTION sdt_g121_mutate_receipt()",
+      "RETURNS trigger LANGUAGE plpgsql AS $$",
+      "BEGIN",
+      "  NEW.receipt_json := regexp_replace(",
+      "    NEW.receipt_json,",
+      "    '(\"eventSetDigest\":\"sha256:)[0-9a-f]{64}',",
+      "    chr(92) || '1' || repeat('a', 64)",
+      "  );",
+      "  NEW.receipt_sha256 := 'sha256:' || encode(digest(convert_to(NEW.receipt_json, 'UTF8'), 'sha256'), 'hex');",
+      "  RETURN NEW;",
+      "END;",
+      "$$;",
+      "CREATE TRIGGER sdt_g121_mutate_receipt_trigger",
+      "BEFORE INSERT ON dcb_tag_rebuild_provenance",
+      "FOR EACH ROW EXECUTE FUNCTION sdt_g121_mutate_receipt();",
+    ].join("\n"));
+    const receipt = addReceiptPath();
+    await expect(run(applyArgs(fixture, inputSha, receipt))).rejects.toThrow(
+      /committed provenance (receipt_json|receipt_sha256) differs|committed receipt target differs/,
+    );
+    expect(existsSync(receipt)).toBe(false);
+    await expect(rebuildWrites()).resolves.toEqual({ tags: 1, provenance: 1 });
+    await db.unsafe(
+      "DROP TRIGGER sdt_g121_mutate_receipt_trigger ON dcb_tag_rebuild_provenance",
+    );
+    await db.unsafe("DROP FUNCTION sdt_g121_mutate_receipt()");
+    await resetTarget();
+  });
+
+  it("uses the publication write loop for short writes", async () => {
+    await resetTarget();
+    setReceiptPublicationHooksForTests({
+      writeChunk: ({ length }) => Math.min(2, length),
+    });
+    const receipt = addReceiptPath();
+    await run(applyArgs(fixture, inputSha, receipt));
+    setReceiptPublicationHooksForTests(undefined);
+    const bytes = readFileSync(receipt);
+    expect(bytes.length).toBeGreaterThan(2);
+    expect(JSON.parse(bytes.toString()).format).toBe(
+      "sekiban-dcb-postgres-tag-rebuild-receipt",
+    );
+  });
+
+  it("cleans a staged publication failure and recovers the exact receipt on rerun", async () => {
+    await resetTarget();
+    const receipt = addReceiptPath();
+    const args = applyArgs(fixture, inputSha, receipt);
+    setReceiptPublicationHooksForTests({
+      afterStaging: () => {
+        setReceiptPublicationHooksForTests(undefined);
+        throw new Error("injected after-staging publication failure");
+      },
+    });
+    await expect(run(args)).rejects.toThrow(/after-staging publication failure/);
+    expect(existsSync(receipt)).toBe(false);
+    await expect(rebuildWrites()).resolves.toEqual({ tags: 1, provenance: 1 });
+    await run(args);
+    expect(existsSync(receipt)).toBe(true);
+    const recovered = readFileSync(receipt);
+    await run(args);
+    expect(readFileSync(receipt)).toEqual(recovered);
   });
 
   it("refuses a different same-path receipt without changing the committed state", async () => {

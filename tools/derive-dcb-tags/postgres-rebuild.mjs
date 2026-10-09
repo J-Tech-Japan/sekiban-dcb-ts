@@ -27,9 +27,14 @@ const SHA = /^sha256:[0-9a-f]{64}$/;
 const UTC = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{1,7})Z$/;
 const encoder = new TextEncoder();
 let receiptWriteHookForTests;
+let receiptPublicationHooksForTests = {};
 
 export function setReceiptWriteHookForTests(hook) {
   receiptWriteHookForTests = hook;
+}
+
+export function setReceiptPublicationHooksForTests(hooks) {
+  receiptPublicationHooksForTests = hooks ?? {};
 }
 
 function fail(message) {
@@ -44,26 +49,88 @@ function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function schemaKeys(schema) {
-  return [...schema.requiredKeys, ...schema.optionalKeys];
+function contractKeys(schema) {
+  return {
+    required: schema.requiredKeys ?? schema.requiredColumns ?? [],
+    optional: schema.optionalKeys ?? schema.optionalColumns ?? [],
+  };
 }
 
-function sameKeys(value, expected, context) {
+function validateContractObject(value, schema, context) {
   if (!isObject(value)) {
     fail(`${context} must be an object`);
   }
+  const { required, optional } = contractKeys(schema);
+  const allowed = new Set([...required, ...optional]);
   const actual = Object.keys(value).sort();
-  const wanted = [...expected].sort();
-  if (
-    actual.length !== wanted.length ||
-    actual.some((key, index) => key !== wanted[index])
-  ) {
+  const missing = required.filter((key) => !own(value, key));
+  const unknown = actual.filter((key) => !allowed.has(key));
+  if (missing.length > 0 || unknown.length > 0) {
     fail(
-      `${context} has unknown or missing keys (received ${
-        actual.join(",") || "<none>"
-      }; expected ${wanted.join(",")})`,
+      `${context} has unknown or missing keys (missing ${
+        missing.join(",") || "<none>"
+      }; unknown ${unknown.join(",") || "<none>"})`,
     );
   }
+}
+
+function contractTargets(value, path, context) {
+  let targets = [value];
+  for (const component of path.split(".")) {
+    const isArray = component.endsWith("[]");
+    const key = isArray ? component.slice(0, -2) : component;
+    const next = [];
+    for (const target of targets) {
+      if (!isObject(target) || !own(target, key)) {
+        fail(`${context}.${path} is missing`);
+      }
+      const child = target[key];
+      if (isArray) {
+        if (!Array.isArray(child)) {
+          fail(`${context}.${path} must be an array`);
+        }
+        next.push(...child);
+      } else {
+        next.push(child);
+      }
+    }
+    targets = next;
+  }
+  return targets;
+}
+
+function validateContractNode(value, schema, context) {
+  if (value === null) {
+    if (schema.nullable) {
+      return;
+    }
+    fail(`${context} must not be null`);
+  }
+  validateContractObject(value, schema, context);
+}
+
+export function validateContractValue(
+  value,
+  schemaName,
+  context = schemaName,
+  contract = CONTRACT,
+) {
+  const schema = contract.schemas?.[schemaName];
+  if (!schema) {
+    fail(`contract schema ${schemaName} is missing`);
+  }
+  validateContractNode(value, schema, context);
+  for (const [nestedPath, nestedSchema] of Object.entries(schema.nested ?? {})) {
+    const targets = contractTargets(value, nestedPath, context);
+    for (const [index, target] of targets.entries()) {
+      validateContractNode(
+        target,
+        nestedSchema,
+        `${context}.${nestedPath}${targets.length > 1 ? `[${index}]` : ""}`,
+      );
+    }
+  }
+  return value;
 }
 
 function sameSchemaKeys(value, schemaName, context, nestedName) {
@@ -73,7 +140,7 @@ function sameSchemaKeys(value, schemaName, context, nestedName) {
   if (!schema) {
     fail(`contract schema ${schemaName}${nestedName ? `.${nestedName}` : ""} is missing`);
   }
-  sameKeys(value, schemaKeys(schema), context);
+  validateContractNode(value, schema, context);
 }
 
 function nonEmptyString(value, context) {
@@ -573,7 +640,7 @@ function validateEventDigest(entry, declared, canonicalBytes, context) {
 }
 
 function validateInputObject(input) {
-  sameSchemaKeys(input, "input", "input");
+  validateContractValue(input, "input", "input");
   if (
     input.format !== INPUT_FORMAT ||
     input.version !== SCHEMAS.input.version
@@ -667,7 +734,7 @@ function validateCorrection(buffer, inputState, suppliedDigest, sourceName = "co
   }
   const parsed = parseJson(buffer, sourceName);
   const correction = parsed.value;
-  sameSchemaKeys(correction, "correction", "correction");
+  validateContractValue(correction, "correction", "correction");
   if (
     correction.format !== CORRECTION_FORMAT ||
     correction.version !== SCHEMAS.correction.version
@@ -1071,6 +1138,11 @@ function setDigests(rows, state) {
 
 function validateTargetTags(rows, state, correctionState, appliedAt) {
   const expected = sortedMembership(state, correctionState);
+  for (const row of rows) {
+    if (row.joined_event_id === null) {
+      fail(`orphan dcb_tags EventId ${row.event_id}`);
+    }
+  }
   const matchedRows = rows.filter((row) => row.joined_event_id !== null);
   if (rows.length !== matchedRows.length) {
     fail(
@@ -1196,12 +1268,13 @@ function receiptBytes(state, correctionState, inputFileSha256, appliedAt, target
       membershipSet: "equal",
     },
   };
+  validateContractValue(value, "receipt", "receipt");
   return `${canonicalJson(value)}\n`;
 }
 
 function validateStoredReceipt(text, prior, state, correctionState, rebuild) {
   const parsed = parseJson(Buffer.from(text, "utf8"), "stored receipt").value;
-  sameSchemaKeys(parsed, "receipt", "stored receipt");
+  validateContractValue(parsed, "receipt", "stored receipt");
   if (
     parsed.format !== RECEIPT_FORMAT ||
     parsed.version !== SCHEMAS.receipt.version ||
@@ -1274,7 +1347,17 @@ function validateStoredReceipt(text, prior, state, correctionState, rebuild) {
 function writeAll(descriptor, bytes) {
   let offset = 0;
   while (offset < bytes.length) {
-    const written = writeSync(descriptor, bytes, offset, bytes.length - offset);
+    const length = bytes.length - offset;
+    const requested =
+      receiptPublicationHooksForTests.writeChunk?.({
+        descriptor,
+        bytes,
+        offset,
+        length,
+      }) ?? length;
+    const writeLength = Math.min(requested, length);
+    const chunk = bytes.subarray(offset, offset + writeLength);
+    const written = writeSync(descriptor, Buffer.from(chunk));
     if (written <= 0) {
       fail("receipt write made no progress");
     }
@@ -1303,6 +1386,11 @@ function writeReceipt(path, text) {
     closeSync(descriptor);
     descriptor = undefined;
     renameSync(temporaryPath, readyPath);
+    receiptPublicationHooksForTests.afterStaging?.({
+      path,
+      stagedPath: readyPath,
+      bytes,
+    });
     // link is the no-replace publication primitive; rename never overwrites
     // a different receipt path.
     try {
@@ -1391,7 +1479,33 @@ async function inspectTarget(sql, state, correctionState, appliedAt) {
   };
 }
 
-async function storedReceiptAfterCommit(sql, state, correctionState, rebuild) {
+function compareCommittedProvenance(stored, expected) {
+  const fields = [
+    ["rebuild_id", expected.rebuildId],
+    ["service_id", expected.serviceId],
+    ["contract_version", expected.contractVersion],
+    ["input_file_sha256", expected.inputFileSha256],
+    ["input_content_digest", expected.inputContentDigest],
+    ["correction_manifest_sha256", expected.correctionManifestSha256],
+    ["correction_manifest_json", expected.correctionManifestJson],
+    ["applied_at", expected.appliedAt],
+    ["receipt_sha256", expected.receiptSha256],
+    ["receipt_json", expected.receiptJson],
+  ];
+  for (const [field, value] of fields) {
+    if ((stored[field] ?? null) !== (value ?? null)) {
+      fail(`committed provenance ${field} differs from transaction-computed value`);
+    }
+  }
+}
+
+async function storedReceiptAfterCommit(
+  sql,
+  state,
+  correctionState,
+  rebuild,
+  expected,
+) {
   const rows = await sql`
     SELECT
       rebuild_id,
@@ -1411,10 +1525,20 @@ async function storedReceiptAfterCommit(sql, state, correctionState, rebuild) {
     fail("committed provenance row could not be read back");
   }
   const stored = rows[0];
+  compareCommittedProvenance(stored, expected);
   if (sha256(Buffer.from(stored.receipt_json, "utf8")) !== stored.receipt_sha256) {
     fail("stored receipt digest is invalid after commit");
   }
-  validateStoredReceipt(stored.receipt_json, stored, state, correctionState, rebuild);
+  const parsed = validateStoredReceipt(
+    stored.receipt_json,
+    stored,
+    state,
+    correctionState,
+    rebuild,
+  );
+  if (canonicalJson(parsed.target) !== canonicalJson(expected.target)) {
+    fail("committed receipt target differs from transaction-computed target");
+  }
   return stored.receipt_json;
 }
 
@@ -1422,6 +1546,7 @@ async function apply(options, state, correctionState) {
   const receiptAlreadyExists = existsSync(options.receipt);
   const sql = postgres(process.env.POSTGRES_URL, { max: 1, fetch_types: false });
   const rebuild = rebuildId(state.serviceId, state.fileSha256, correctionState?.fileSha256);
+  let committedProvenance;
   try {
     await sql.begin("isolation level read committed", async (transaction) => {
       await transaction`SELECT pg_advisory_xact_lock(${LOCK_KEY})`;
@@ -1491,6 +1616,19 @@ async function apply(options, state, correctionState) {
         ) {
           fail("stored receipt target differs from the observed target");
         }
+        committedProvenance = {
+          rebuildId: prior.rebuild_id,
+          serviceId: prior.service_id,
+          contractVersion: prior.contract_version,
+          inputFileSha256: prior.input_file_sha256,
+          inputContentDigest: prior.input_content_digest,
+          correctionManifestSha256: prior.correction_manifest_sha256,
+          correctionManifestJson: prior.correction_manifest_json,
+          appliedAt: prior.applied_at,
+          receiptSha256: prior.receipt_sha256,
+          receiptJson: prior.receipt_json,
+          target: stored.target,
+        };
         return;
       }
       if (receiptAlreadyExists) {
@@ -1502,7 +1640,7 @@ async function apply(options, state, correctionState) {
         WHERE "ServiceId" = ${state.serviceId}
       `;
       if (Number(existingTags[0].count) !== 0) {
-        fail("first apply requires zero target tag rows for the service");
+        fail("target tag rows exist without provenance");
       }
       const appliedAtRow = await transaction`
         SELECT to_char(transaction_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS applied_at
@@ -1529,6 +1667,24 @@ async function apply(options, state, correctionState) {
         rebuild,
       );
       const receiptSha256 = sha256(Buffer.from(receiptText, "utf8"));
+      committedProvenance = {
+        rebuildId: rebuild,
+        serviceId: state.serviceId,
+        contractVersion: CONTRACT_VERSION,
+        inputFileSha256: state.fileSha256,
+        inputContentDigest: state.contentDigest,
+        correctionManifestSha256: correctionState?.fileSha256 ?? null,
+        correctionManifestJson: correctionState?.text ?? null,
+        appliedAt,
+        receiptSha256,
+        receiptJson: receiptText,
+        target: {
+          eventCount: state.events.length,
+          membershipCount: observed.length,
+          eventSetDigest: target.eventSetDigest,
+          membershipSetDigest: target.membershipSetDigest,
+        },
+      };
       await transaction`
         INSERT INTO dcb_tag_rebuild_provenance
           (rebuild_id, service_id, contract_version, input_file_sha256, input_content_digest,
@@ -1539,7 +1695,13 @@ async function apply(options, state, correctionState) {
            transaction_timestamp(), ${receiptSha256}, ${receiptText})
       `;
     });
-    const receipt = await storedReceiptAfterCommit(sql, state, correctionState, rebuild);
+    const receipt = await storedReceiptAfterCommit(
+      sql,
+      state,
+      correctionState,
+      rebuild,
+      committedProvenance,
+    );
     if (receiptWriteHookForTests) {
       await receiptWriteHookForTests({ path: options.receipt, receipt });
     }
@@ -1584,6 +1746,7 @@ async function dryRun(options, state, correctionState) {
       target: { eventCount: eventRows.length, membershipCount: tagRows.length },
       proposedMembership: proposed.map(({ event, tag }) => ({ eventId: event.record.id, tag })),
     };
+    validateContractValue(report, "dryRunReport", "dry-run report");
     return `${canonicalJson(report)}\n`;
   } finally {
     await sql.end({ timeout: 5 });
