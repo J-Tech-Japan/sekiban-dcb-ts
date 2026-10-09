@@ -22,51 +22,20 @@ node packages/create-dcb/bin/create-dcb.mjs {{PROJECT_NAME}}
 
 ## Cloudflare setup
 
-Create two D1 databases for this project, then replace the two
-`database_id` placeholders in `wrangler.jsonc` with the IDs Cloudflare gives
-you. The database names, queue name, and dead-letter queue name are already
-derived from this project name. No live resources are created by the starter
-or by its proof check.
+Follow [DEPLOYMENT.md](./DEPLOYMENT.md) for the complete standalone topology,
+the offline `npm run deploy:check` gate, future resource creation, migrations,
+deployment, smoke, and teardown. The gate and the starter create no live
+resources.
 
 ```sh
 npx wrangler d1 create {{PIPELINE_DB}}
 npx wrangler d1 create {{MV_DB}}
-```
-
-After filling in both IDs and authenticating Wrangler, the project-local SQL
-can be applied and the Worker deployed through the helper:
-
-```sh
 npm run migrate
 npm run deploy
 ```
 
-The same commands are available as `scripts/migrate.sh` and
-`scripts/deploy.sh`. Both use only this project's `wrangler.jsonc`.
-
-The Worker needs a non-secret `SDT_SERVICE_ID` (already present in the
-generated config) and the normal Cloudflare Queue/D1/ Durable Object bindings.
-Set any operator-only secrets with Wrangler secrets rather than committing
-them to this file.
-
-For incident maintenance, configure the bearer secret with:
-
-```sh
-npx wrangler secret put INCIDENT_MAINTAINER_TOKEN
-```
-
-Never place the value of `INCIDENT_MAINTAINER_TOKEN` in `wrangler.jsonc`
-`vars`. The runtime redacts bearer values and does not return or persist them.
-
-## Experimental Cosmos descriptor
-
-This starter includes `cosmos.experimental.json`, a generated read-only
-descriptor of the experimental Cosmos layout and symbolic bindings. Its
-`active` value is `false`; the descriptor does not activate Cosmos. The active
-worker and `wrangler.jsonc` continue to use D1. To adopt Cosmos, change the
-Worker source explicitly, import the public `/cosmos` factory, and configure
-`COSMOS_ENDPOINT` and `COSMOS_DATABASE` as deployment values plus
-`COSMOS_KEY` with `wrangler secret put COSMOS_KEY`.
+The optional incident-maintenance secret setup is documented in the
+[DEPLOYMENT.md secret section](./DEPLOYMENT.md#9-optional-incident-maintenance-secret).
 
 ## cf CLI (beta)
 
@@ -91,3 +60,13 @@ would require a reviewed `migrations_dir`, review of every Durable Object
 binding, and replacement of Durable Object migrations with an `exports`
 lifecycle. cf is beta; Wrangler remains supported for 18 months after the beta
 ends.
+
+## Experimental Cosmos descriptor
+
+This starter includes `cosmos.experimental.json`, a generated read-only
+descriptor of the experimental Cosmos layout and symbolic bindings. Its
+`active` value is `false`; the descriptor does not activate Cosmos. The active
+worker and `wrangler.jsonc` continue to use D1. To adopt Cosmos, change the
+Worker source explicitly, import the public `/cosmos` factory, and configure
+`COSMOS_ENDPOINT` and `COSMOS_DATABASE` as deployment values plus
+`COSMOS_KEY` with `wrangler secret put COSMOS_KEY`.

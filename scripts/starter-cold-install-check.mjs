@@ -6,6 +6,7 @@ import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateDeployCheckReceipt } from "./g103-create-starter.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const registry = "https://registry.npmjs.org/";
@@ -49,6 +50,7 @@ export function cleanEnvironment(source, work) {
       "NODE_AUTH_TOKEN",
       "NPM_TOKEN",
       "CLOUDFLARE_API_TOKEN",
+      "CLOUDFLARE_ACCOUNT_ID",
       "NODE_ENV",
     ].includes(key)) delete env[key];
   }
@@ -74,10 +76,6 @@ function walkFiles(directory, prefix = "") {
     else if (entry.isFile()) files.push(name);
   }
   return files.sort();
-}
-
-function templateFiles() {
-  return walkFiles(join(root, "packages/create-dcb/template"));
 }
 
 function canonical(path) {
@@ -245,32 +243,52 @@ function registryMode(work, env) {
     assertViewResult(result, name, version);
   }
   run("npm", ["exec", "--yes", "--package", `${createPackage}@${creatorVersion}`, "--", "create-dcb", "Cold Start Booking"], { cwd: work, env });
+  const packDirectory = join(work, "registry-pack");
+  mkdirSync(packDirectory, { recursive: true });
+  const packed = JSON.parse(run("npm", ["pack", "--json", "--silent", "--pack-destination", packDirectory, `${createPackage}@${creatorVersion}`], { cwd: work, env }).stdout)[0];
+  const files = packed.files.map((file) => file.path.replace(/^package\//, ""));
+  assertTarballFiles(createPackage, files);
   return {
     helper: { name: helperPackage, version: helperVersion },
-    creator: { name: createPackage, version: creatorVersion, files: templateFiles() },
-    createdExpected: templateFiles(),
+    creator: { name: createPackage, version: creatorVersion, files },
+    createdExpected: files.filter((path) => path.startsWith("template/")).map((path) => path.slice("template/".length)),
   };
+}
+
+function parseLastJson(output, label) {
+  const start = output.lastIndexOf("\n{");
+  assert(start >= 0, `${label} did not print a JSON receipt`);
+  try {
+    return JSON.parse(output.slice(start + 1));
+  } catch (error) {
+    fail(`${label} printed invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function finishInstall(work, env, mode, artifact, receipt) {
   const project = join(work, "cold-start-booking");
   assert(existsSync(project), "create-dcb did not create cold-start-booking");
   assertGeneratedFileSet(walkFiles(project), artifact.createdExpected);
-  const authority = packageJson(join(root, "contracts/cosmos-layout.json"));
-  const descriptor = packageJson(join(project, "cosmos.experimental.json"));
-  const descriptorBytes = readFileSync(join(project, "cosmos.experimental.json"));
-  const templateDescriptorBytes = readFileSync(join(root, "packages/create-dcb/template/cosmos.experimental.json"));
-  assert(Buffer.compare(descriptorBytes, templateDescriptorBytes) === 0, "starter Cosmos descriptor is not byte-identical to the template");
-  assert(descriptor.stability === "experimental" && descriptor.provider === "cosmos", "starter Cosmos descriptor lost its experimental marker");
-  assert(descriptor.active === false, "starter Cosmos descriptor must remain inactive");
-  assert(JSON.stringify(descriptor.bindings) === JSON.stringify(authority.bindings), "starter Cosmos bindings differ from the authority");
-  const expectedContainers = Object.fromEntries(Object.entries(authority.containers).map(([key, entry]) => [key, {
-    name: entry.name,
-    partitionKeyPath: entry.partitionKeyPath,
-    partitionValueKinds: entry.partitionValueKinds,
-    documentIds: entry.documentIds,
-  }]));
-  assert(JSON.stringify(descriptor.containers) === JSON.stringify(expectedContainers), "starter Cosmos descriptor differs from the authority");
+  const descriptorPath = join(project, "cosmos.experimental.json");
+  if (existsSync(descriptorPath)) {
+    const authority = packageJson(join(root, "contracts/cosmos-layout.json"));
+    const descriptor = packageJson(descriptorPath);
+    const descriptorBytes = readFileSync(descriptorPath);
+    const templateDescriptorBytes = readFileSync(join(root, "packages/create-dcb/template/cosmos.experimental.json"));
+    assert(Buffer.compare(descriptorBytes, templateDescriptorBytes) === 0, "starter Cosmos descriptor is not byte-identical to the template");
+    assert(descriptor.stability === "experimental" && descriptor.provider === "cosmos", "starter Cosmos descriptor lost its experimental marker");
+    assert(descriptor.active === false, "starter Cosmos descriptor must remain inactive");
+    assert(JSON.stringify(descriptor.bindings) === JSON.stringify(authority.bindings), "starter Cosmos bindings differ from the authority");
+    const expectedContainers = Object.fromEntries(Object.entries(authority.containers).map(([key, entry]) => [key, {
+      name: entry.name,
+      partitionKeyPath: entry.partitionKeyPath,
+      partitionValueKinds: entry.partitionValueKinds,
+      documentIds: entry.documentIds,
+    }]));
+    assert(JSON.stringify(descriptor.containers) === JSON.stringify(expectedContainers), "starter Cosmos descriptor differs from the authority");
+  } else {
+    assert(mode === "registry", "packed starter lost its Cosmos descriptor");
+  }
   const starterWorker = readFileSync(join(project, "src/worker.ts"), "utf8");
   assert(!starterWorker.includes("@sekiban/dcb-runtime/cosmos"), "generated worker activated Cosmos");
   const starterWrangler = readFileSync(join(project, "wrangler.jsonc"), "utf8");
@@ -299,13 +317,41 @@ function finishInstall(work, env, mode, artifact, receipt) {
   run("npm", ["run", "typecheck"], { cwd: project, env });
   assert(existsSync(join(project, "node_modules/.bin/dcb-cloudflare")), "generated project is missing dcb-cloudflare bin");
   assert(existsSync(join(project, "node_modules/wrangler/bin/wrangler.js")), "generated project is missing project-local Wrangler");
-  const outdir = join(work, "dry-run");
-  mkdirSync(outdir, { recursive: true });
-  run(process.execPath, ["node_modules/wrangler/bin/wrangler.js", "deploy", "--config", "wrangler.jsonc", "--dry-run", "--outdir", outdir], { cwd: project, env });
-  const bundles = walkFiles(outdir).filter((path) => /\.js$/.test(path));
-  assert(bundles.length > 0, "Wrangler dry-run did not write a bundle");
-  const bundle = bundles.map((path) => readFileSync(join(outdir, path), "utf8")).join("\n");
-  assert(bundle.includes("create-room") && bundle.includes("reserve-room"), "Wrangler dry-run bundle omitted the booking commands");
+  const gate = manifest.scripts?.["deploy:check"];
+  if (gate === "node scripts/deploy-check.mjs") {
+    const result = run("npm", ["run", "deploy:check"], { cwd: project, env });
+    const gateReceipt = parseLastJson(result.stdout, "deploy:check");
+    const authority = packageJson(join(project, "deployment-topology.json"));
+    try {
+      validateDeployCheckReceipt(gateReceipt, authority);
+    } catch (error) {
+      fail(`deploy:check receipt is invalid: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const receiptMutant = structuredClone(gateReceipt);
+    const d1 = receiptMutant.topology.find((entry) => entry.kind === "d1");
+    assert(d1 !== undefined, "deploy:check receipt mutation fixture is missing a D1 row");
+    d1.binding = "RECEIPT_DRIFT";
+    const location = receiptMutant.placeholders.locations.find((entry) => entry.binding === "D1");
+    assert(location !== undefined, "deploy:check receipt mutation fixture is missing the D1 placeholder");
+    location.binding = "RECEIPT_DRIFT";
+    let mutantRejected = false;
+    try {
+      validateDeployCheckReceipt(receiptMutant, authority);
+    } catch {
+      mutantRejected = true;
+    }
+    assert(mutantRejected, "deploy:check receipt accepted a D1 binding mutant");
+    receipt.gate = "public-deploy-check";
+  } else {
+    const outdir = join(work, "legacy-dry-run");
+    mkdirSync(outdir, { recursive: true });
+    run(process.execPath, ["node_modules/wrangler/bin/wrangler.js", "deploy", "--config", "wrangler.jsonc", "--dry-run", "--outdir", outdir], { cwd: project, env });
+    const bundles = walkFiles(outdir).filter((path) => /\.js$/.test(path));
+    assert(bundles.length > 0, "Wrangler dry-run did not write a bundle");
+    const bundle = bundles.map((path) => readFileSync(join(outdir, path), "utf8")).join("\n");
+    assert(bundle.includes("create-room") && bundle.includes("reserve-room"), "Wrangler dry-run bundle omitted the booking commands");
+    receipt.gate = "legacy-project-local-wrangler-fallback";
+  }
   receipt.project = { files: walkFiles(project).length, typecheck: "passed", dryRun: "passed", bookingMarkers: ["create-room", "reserve-room"] };
   receipt.lockfile = lockSummary;
 }
@@ -386,6 +432,7 @@ function selfTest() {
 
   assertTarballFiles(helperPackage, ["dist/cli.js", "dist/index.js"]);
   expectFailure(() => assertTarballFiles(helperPackage, ["dist/cli.js", "dist/index.js", "src/index.ts"]), `tarball ${helperPackage} contains source path src/index.ts`);
+  assertTarballFiles(createPackage, ["bin/create-dcb.mjs", "template/package.json", "template/DEPLOYMENT.md", "template/deployment-topology.json", "template/scripts/deploy-check.mjs"]);
   assertGeneratedFileSet(["package.json", "src/index.ts"], ["package.json", "src/index.ts"]);
   expectFailure(() => assertGeneratedFileSet(["package.json", "src/index.ts", "README.md"], ["package.json", "src/index.ts"]), "generated project files differ from the packed template");
   console.log(JSON.stringify({ result: "starter-cold-install-self-test-passed", checks: 11 }));

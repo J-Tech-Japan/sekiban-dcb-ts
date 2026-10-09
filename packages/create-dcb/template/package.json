@@ -7,6 +7,7 @@
   "scripts": {
     "migrate": "dcb-cloudflare migrate --config wrangler.jsonc",
     "deploy": "dcb-cloudflare deploy --config wrangler.jsonc",
+    "deploy:check": "node scripts/deploy-check.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

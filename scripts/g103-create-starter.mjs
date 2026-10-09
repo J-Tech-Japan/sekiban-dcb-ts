@@ -2,7 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -29,12 +29,14 @@ const matchedSet = [
 ];
 const requiredFiles = [
   "README.md",
+  "DEPLOYMENT.md",
   "REPLACE.md",
   "AGENTS.md",
   "cloudflare.config.ts",
   "package.json",
   "cosmos.experimental.json",
   "wrangler.jsonc",
+  "deployment-topology.json",
   "src/worker.ts",
   "src/booking-domain.ts",
   "src/booking-transport.ts",
@@ -203,8 +205,15 @@ function assertInventory(project) {
   const cosmosDescriptorProof = assertCosmosDescriptor(project);
   assert(cosmosDescriptorProof.byteParity, "generated Cosmos descriptor is not byte-identical to the template");
   const readme = readFileSync(join(project, "README.md"), "utf8");
-  assert(readme.includes("wrangler secret put INCIDENT_MAINTAINER_TOKEN"), "starter README omitted incident secret setup");
-  assert(readme.includes("Never place") && readme.includes("vars"), "starter README omitted secret vars guidance");
+  const topology = JSON.parse(readFileSync(join(project, "deployment-topology.json"), "utf8"));
+  const secretName = topology.secrets[0].name;
+  const deployment = readFileSync(join(project, "DEPLOYMENT.md"), "utf8");
+  assert(!readme.includes(secretName), "starter README leaked the incident secret name");
+  assert(deployment.includes(`wrangler secret put ${secretName}`), "DEPLOYMENT.md omitted incident secret setup");
+  assert(
+    readme.includes("DEPLOYMENT.md") && deployment.includes("Do not") && deployment.includes("vars"),
+    "starter secret boundary guidance is incomplete",
+  );
 
   const allText = files.map((file) => readFileSync(join(project, file), "utf8")).join("\n");
   assert(!allText.includes("sekiban-dcb-meeting-room"), "meeting-room resource name leaked into generated project");
@@ -300,6 +309,7 @@ function assertPackage(project) {
   assert(manifest.devDependencies?.["@cloudflare/workers-types"] === "5.20260820.1", "starter must pin Workers types 5.20260820.1 for standalone typecheck");
   assert(manifest.scripts?.migrate === "dcb-cloudflare migrate --config wrangler.jsonc", "migrate script is not helper-only");
   assert(manifest.scripts?.deploy === "dcb-cloudflare deploy --config wrangler.jsonc", "deploy script is not helper-only");
+  assert(manifest.scripts?.["deploy:check"] === "node scripts/deploy-check.mjs", "deploy:check script is not registered");
   assert(manifest.scripts?.typecheck === "tsc --noEmit", "typecheck script is not standalone");
   assert(!JSON.stringify(manifest).includes("file:") && !JSON.stringify(manifest).includes("workspace:"), "starter package has a monorepo runtime dependency");
   return {
@@ -385,30 +395,120 @@ async function helperPlans(project, configText, names) {
   return { migrate, deploy, config: "wrangler.jsonc", derivedNames: [names.pipeline, names.mv, names.queue, names.dlq] };
 }
 
-function dryRun(project, proofRoot, config) {
-  const outdir = join(proofRoot, "dry-run");
-  mkdirSync(outdir, { recursive: true });
-  const args = ["deploy", "--config", join(project, "wrangler.jsonc"), "--dry-run", "--outdir", outdir, "--outfile", join(outdir, "worker.js")];
-  assert(!args.includes(liveWorker), "dry-run command named the live Worker");
-  const env = { ...process.env, CI: "true" };
+function cloudflareSafeEnvironment() {
+  const env = { ...process.env };
   delete env.CLOUDFLARE_API_TOKEN;
-  delete env.G32_DEPLOY_LIVE;
-  const wrangler = join(project, "node_modules", "wrangler", "bin", "wrangler.js");
-  assert(existsSync(wrangler), "generated project did not install wrangler");
-  assert(existsSync(join(project, "node_modules", ".bin", "wrangler")), "generated project missing wrangler bin");
-  run(process.execPath, [wrangler, ...args], { cwd: project, env });
-  const bundlePath = join(outdir, "worker.js");
-  assert(existsSync(bundlePath), "wrangler dry-run did not write a Worker bundle");
-  const bundle = readFileSync(bundlePath, "utf8");
-  assert(bundle.includes("create-room") && bundle.includes("reserve-room"), "dry-run bundle omitted the booking command surface");
-  assert(config.name !== liveWorker, "generated config used the live Worker name");
-  return {
-    command: ["wrangler", "deploy", "--config", "wrangler.jsonc", "--dry-run"],
-    worker: config.name,
-    bundleBytes: Buffer.byteLength(bundle),
-    bookingMarkers: ["create-room", "reserve-room"],
-    wranglerSource: "project-local",
+  delete env.CLOUDFLARE_ACCOUNT_ID;
+  return env;
+}
+
+function parseLastJson(output, label) {
+  const start = output.lastIndexOf("\n{");
+  assert(start >= 0, `${label} did not print a JSON receipt`);
+  try {
+    return JSON.parse(output.slice(start + 1));
+  } catch (error) {
+    fail(`${label} printed invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function canonical(value) {
+  return JSON.stringify(value);
+}
+
+function receiptTopology(authority) {
+  return [
+    ...authority.d1.map((entry) => ({
+      kind: "d1", binding: entry.binding, databaseName: entry.databaseName, migrationsDir: entry.migrationsDir,
+    })),
+    ...authority.queues.producers.map((entry) => ({
+      kind: "queue-producer", binding: entry.binding, queue: entry.queue,
+    })),
+    ...authority.queues.consumers.map((entry) => ({
+      kind: "queue-consumer",
+      queue: entry.queue,
+      maxBatchTimeout: entry.maxBatchTimeout,
+      maxRetries: entry.maxRetries,
+      deadLetterQueue: entry.deadLetterQueue,
+    })),
+    ...authority.durableObjects.bindings.map((entry) => ({
+      kind: "durable-object", name: entry.name, className: entry.className,
+    })),
+    ...authority.durableObjects.migrations.map((entry) => ({
+      kind: "durable-migration", tag: entry.tag, newSqliteClasses: entry.newSqliteClasses,
+    })),
+    { kind: "assets", directory: authority.assets.directory },
+    ...authority.triggers.crons.map((cron) => ({ kind: "cron", cron })),
+    ...Object.entries(authority.vars).map(([name, value]) => ({ kind: "var", name, value })),
+  ].sort((left, right) => canonical(left).localeCompare(canonical(right)));
+}
+
+export function validateDeployCheckReceipt(receipt, authority) {
+  const receiptAssert = (condition, message) => {
+    if (!condition) throw new Error(message);
   };
+  receiptAssert(receipt.bundle?.projectLocalWrangler === true, "project-local Wrangler proof is missing");
+  receiptAssert(receipt.bundle?.dryRun === true, "dry-run proof is missing");
+  receiptAssert(
+    receipt.bundle?.createRoom === true && receipt.bundle?.reserveRoom === true,
+    "booking markers are missing",
+  );
+  receiptAssert(receipt.placeholders?.status === "fresh-template", "fresh-template placeholder proof is missing");
+  const locations = receipt.placeholders.locations;
+  const expectedLocations = authority.d1.map((entry) => ({
+    binding: entry.binding,
+    path: entry.placeholderPath,
+    databaseName: entry.databaseName,
+    creationCommand: entry.creationCommand,
+    replacement: entry.replacement,
+  })).sort((left, right) => left.binding.localeCompare(right.binding));
+  receiptAssert(
+    canonical(locations) === canonical(expectedLocations),
+    "placeholder records do not match generated authority",
+  );
+  receiptAssert(
+    canonical(receipt.topology) === canonical(receiptTopology(authority)),
+    "receipt topology does not match generated authority",
+  );
+  receiptAssert(
+    Array.isArray(receipt.migrationFileCounts) && receipt.migrationFileCounts.every((entry) => entry.files > 0),
+    "migration counts are not measured",
+  );
+  receiptAssert(
+    !JSON.stringify(receipt).match(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i),
+    "receipt exposed a configured resource ID",
+  );
+}
+
+function assertDeployCheckReceipt(receipt, authority) {
+  try {
+    validateDeployCheckReceipt(receipt, authority);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+  const locations = receipt.placeholders.locations;
+  return {
+    status: "passed",
+    placeholders: locations.map((entry) => entry.binding),
+    markers: ["create-room", "reserve-room"],
+  };
+}
+
+function assertReceiptBindingMutationFails(receipt, authority) {
+  const mutant = structuredClone(receipt);
+  const d1 = mutant.topology.find((entry) => entry.kind === "d1");
+  assert(d1 !== undefined, "receipt mutation fixture is missing a D1 row");
+  d1.binding = "RECEIPT_DRIFT";
+  const location = mutant.placeholders.locations.find((entry) => entry.binding === "D1");
+  assert(location !== undefined, "receipt mutation fixture is missing the D1 placeholder");
+  location.binding = "RECEIPT_DRIFT";
+  let failed = false;
+  try {
+    validateDeployCheckReceipt(mutant, authority);
+  } catch {
+    failed = true;
+  }
+  assert(failed, "receipt binding mutant unexpectedly passed");
 }
 
 function applyLocalPipelineMigration(project, proofRoot, pipelineName) {
@@ -425,7 +525,7 @@ function applyLocalPipelineMigration(project, proofRoot, pipelineName) {
     join(project, "wrangler.jsonc"),
     "--persist-to",
     persistTo,
-  ], { cwd: project, env: { ...process.env, CI: "true" } });
+  ], { cwd: project, env: { ...cloudflareSafeEnvironment(), CI: "true" } });
   return { command: ["wrangler", "d1", "migrations", "apply", pipelineName, "--local"], persistTo: "proof-local-state" };
 }
 
@@ -458,7 +558,13 @@ async function main() {
     const installs = await registryAndHelperInstall(project, join(packRoot, helperPack));
     const plans = await helperPlans(project, configText, configProof.names);
     const localMigration = applyLocalPipelineMigration(project, proofRoot, configProof.names.pipeline);
-    const dry = dryRun(project, proofRoot, parseJsonc(configText));
+    const selfTest = run("npm", ["run", "deploy:check", "--", "--self-test"], { cwd: project, env: cloudflareSafeEnvironment() });
+    assert(selfTest.stdout.includes("deploy-check-self-test-passed"), "generated deploy-check self-test did not pass");
+    const deployCheckOutput = run("npm", ["run", "deploy:check"], { cwd: project, env: cloudflareSafeEnvironment() });
+    const deployReceipt = parseLastJson(deployCheckOutput.stdout, "deploy:check");
+    const authority = packageJson(join(project, "deployment-topology.json"));
+    const deployCheck = assertDeployCheckReceipt(deployReceipt, authority);
+    assertReceiptBindingMutationFails(deployReceipt, authority);
 
     process.stdout.write(`${JSON.stringify({
       result: "g103-create-starter-check-passed",
@@ -472,7 +578,7 @@ async function main() {
       installs,
       helperPlans: plans,
       localMigration,
-      dryRun: dry,
+      deployCheck,
       safety: {
         liveWorkerRefused: true,
         liveDatabaseIdsAbsent: true,
@@ -486,7 +592,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  main().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}

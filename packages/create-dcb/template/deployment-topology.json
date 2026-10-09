@@ -1,0 +1,78 @@
+{
+  "schema": "sekiban-create-dcb/deployment-topology/v1",
+  "worker": {
+    "name": "{{WORKER_NAME}}",
+    "entrypoint": "src/worker.ts"
+  },
+  "d1": [
+    {
+      "binding": "D1",
+      "databaseName": "{{PIPELINE_DB}}",
+      "idPlaceholder": "REPLACE_WITH_PIPELINE_D1_ID",
+      "placeholderPath": "d1_databases[binding=D1].database_id",
+      "migrationsDir": "migrations/d1/g32",
+      "creationCommand": "npx wrangler d1 create {{PIPELINE_DB}}",
+      "replacement": "Replace the returned id in d1_databases[binding=D1].database_id."
+    },
+    {
+      "binding": "D1_MV",
+      "databaseName": "{{MV_DB}}",
+      "idPlaceholder": "REPLACE_WITH_MV_D1_ID",
+      "placeholderPath": "d1_databases[binding=D1_MV].database_id",
+      "migrationsDir": "migrations/mv",
+      "creationCommand": "npx wrangler d1 create {{MV_DB}}",
+      "replacement": "Replace the returned id in d1_databases[binding=D1_MV].database_id."
+    }
+  ],
+  "queues": {
+    "producers": [
+      { "binding": "DOWNSTREAM_QUEUE", "queue": "{{QUEUE_NAME}}" }
+    ],
+    "consumers": [
+      {
+        "queue": "{{QUEUE_NAME}}",
+        "maxBatchTimeout": 1,
+        "maxRetries": 3,
+        "deadLetterQueue": "{{DLQ_NAME}}"
+      }
+    ],
+    "creation": [
+      { "kind": "work", "name": "{{QUEUE_NAME}}", "command": "npx wrangler queues create {{QUEUE_NAME}}" },
+      { "kind": "dead-letter", "name": "{{DLQ_NAME}}", "command": "npx wrangler queues create {{DLQ_NAME}}" }
+    ]
+  },
+  "durableObjects": {
+    "bindings": [
+      { "name": "ALLOCATOR", "className": "AllocatorDurableObject" },
+      { "name": "BOOTSTRAP", "className": "BootstrapCoordinatorDurableObject" },
+      { "name": "JOURNAL", "className": "JournalDurableObject" },
+      { "name": "TAG", "className": "TagDurableObject" },
+      { "name": "TAG_STATE", "className": "TagStateDurableObject" }
+    ],
+    "migrations": [
+      { "tag": "v1", "newSqliteClasses": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"] },
+      { "tag": "v2", "newSqliteClasses": ["BootstrapCoordinatorDurableObject"] },
+      { "tag": "v3", "newSqliteClasses": ["TagStateDurableObject"] }
+    ]
+  },
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "bindingStatus": "unused"
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "vars": {
+    "DOMAIN_DELIVERY_CLASS": "immediate-preferred",
+    "SDT_SERVICE_ID": "{{SERVICE_ID}}"
+  },
+  "secrets": [
+    {
+      "name": "INCIDENT_MAINTAINER_TOKEN",
+      "optional": true,
+      "ownership": "runtime-owned",
+      "forbiddenIn": "vars"
+    }
+  ]
+}

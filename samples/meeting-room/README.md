@@ -68,5 +68,5 @@ versioned migrations before the first deployment (see
 
 ```sh
 ./samples/meeting-room/scripts/migrate-remote.sh
-npx wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --keep-vars
+npx wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc
 ```

@@ -80,7 +80,7 @@ function main(argv) {
   mkdirSync(target, { recursive: true });
   copyTree(sourceTemplate(), target, replacements(slug));
   process.stdout.write(`Created ${target}\n`);
-  process.stdout.write("Next: create the two D1 databases, fill database_id values in wrangler.jsonc, then npm install.\n");
+  process.stdout.write("Next: npm install, run npm run deploy:check, then follow DEPLOYMENT.md; no resources are created.\n");
 }
 
 try {
