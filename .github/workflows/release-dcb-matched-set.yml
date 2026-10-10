@@ -62,18 +62,14 @@ jobs:
           UNSET_NODE_AUTH_TOKEN: ${{ steps.publish-selection.outputs.unset_node_auth_token }}
         run: |
           set -euo pipefail
-          publish_args=(--access public)
-          publish_env=()
-          if [[ "${PROVENANCE_ENABLED}" == "true" ]]; then
-            publish_args+=(--provenance)
-          elif [[ "${PRIVATE_REPOSITORY}" == "true" ]]; then
+          if [[ "${PROVENANCE_ENABLED}" != "true" && "${PRIVATE_REPOSITORY}" == "true" ]]; then
             # npm may auto-enable provenance in GitHub Actions even when the
             # flag is omitted. The package manifests also carry the public
             # release policy, so remove that publish-only provenance field
             # from this isolated checkout before the private publish. Private
             # source repositories are rejected by the registry for that
             # bundle; the public branch keeps the field and explicit flag.
-            publish_env+=(NPM_CONFIG_PROVENANCE=false)
+            export NPM_CONFIG_PROVENANCE=false
             for package in packages/dcb-core packages/dcb-domain packages/dcb-client packages/dcb-runtime; do
               echo "private publish metadata: remove publishConfig.provenance from ${package}"
               (
@@ -90,11 +86,8 @@ jobs:
                 exit 1
               fi
               echo "authentication branch: trusted-publishing (GitHub Actions OIDC; NPM_TOKEN omitted)"
-              for package in packages/dcb-core packages/dcb-domain packages/dcb-client packages/dcb-runtime; do
-                echo "publish: ${package}"
-                echo "command: npm publish ${publish_args[*]}"
-                (cd "${package}" && env -u NODE_AUTH_TOKEN "${publish_env[@]}" npm publish "${publish_args[@]}")
-              done
+              env -u NODE_AUTH_TOKEN PRIVATE_REPOSITORY="${PRIVATE_REPOSITORY}" \
+                node scripts/dcb-matched-set-publish.mjs
               ;;
             token)
               if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
@@ -102,11 +95,7 @@ jobs:
                 exit 1
               fi
               echo "authentication branch: token (NPM_TOKEN)"
-              for package in packages/dcb-core packages/dcb-domain packages/dcb-client packages/dcb-runtime; do
-                echo "publish: ${package}"
-                echo "command: npm publish ${publish_args[*]}"
-                (cd "${package}" && env "${publish_env[@]}" npm publish "${publish_args[@]}")
-              done
+              PRIVATE_REPOSITORY="${PRIVATE_REPOSITORY}" node scripts/dcb-matched-set-publish.mjs
               ;;
             credential-free-dry-run)
               echo "authentication branch: credential-free-dry-run"

@@ -4,28 +4,33 @@
  * packages (no file:/workspace: deps). Fail-closed cheap guard.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sampleManifestPath = resolve(root, "samples/meeting-room/package.json");
-const requiredPackages = Object.freeze([
+const matchedPackages = Object.freeze([
   "@sekiban/dcb-core",
   "@sekiban/dcb-domain",
   "@sekiban/dcb-client",
   "@sekiban/dcb-runtime",
 ]);
-const expectedVersion = "0.2.0";
+const helperPackage = "@sekiban/dcb-cloudflare";
+const expectedVersions = Object.fromEntries([
+  ...matchedPackages.map((name) => [name, JSON.parse(readFileSync(resolve(root, "packages", name.slice("@sekiban/".length), "package.json"), "utf8")).version]),
+  [helperPackage, JSON.parse(readFileSync(resolve(root, "packages/dcb-cloudflare/package.json"), "utf8")).version],
+]);
 
 function assertRegistrySemver(dependencies, label) {
   assert.equal(dependencies === null || typeof dependencies !== "object" || Array.isArray(dependencies), false, `${label} dependencies must be an object`);
-  for (const name of requiredPackages) {
+  for (const name of [...matchedPackages, helperPackage]) {
     const value = dependencies[name];
     assert.equal(typeof value, "string", `${label} missing dependency ${name}`);
     assert.equal(value.includes("file:"), false, `${label} ${name} must not use file:`);
     assert.equal(value.includes("workspace:"), false, `${label} ${name} must not use workspace:`);
-    assert.equal(value, expectedVersion, `${label} ${name} must be registry semver ${expectedVersion}`);
+    assert.equal(value, expectedVersions[name], `${label} ${name} must be registry semver ${expectedVersions[name]}`);
   }
 }
 
@@ -34,7 +39,7 @@ function evaluateManifest(manifest, label = "samples/meeting-room/package.json")
   assertRegistrySemver(manifest.dependencies, label);
   return Object.freeze({
     name: manifest.name,
-    dependencies: Object.fromEntries(requiredPackages.map((name) => [name, manifest.dependencies[name]])),
+    dependencies: Object.fromEntries([...matchedPackages, helperPackage].map((name) => [name, manifest.dependencies[name]])),
   });
 }
 
@@ -42,10 +47,11 @@ function selfTest() {
   const baseline = {
     name: "@sekiban/meeting-room-sample",
     dependencies: {
-      "@sekiban/dcb-client": "0.2.0",
-      "@sekiban/dcb-core": "0.2.0",
-      "@sekiban/dcb-domain": "0.2.0",
-      "@sekiban/dcb-runtime": "0.2.0",
+      "@sekiban/dcb-client": expectedVersions["@sekiban/dcb-client"],
+      "@sekiban/dcb-core": expectedVersions["@sekiban/dcb-core"],
+      "@sekiban/dcb-domain": expectedVersions["@sekiban/dcb-domain"],
+      "@sekiban/dcb-runtime": expectedVersions["@sekiban/dcb-runtime"],
+      "@sekiban/dcb-cloudflare": expectedVersions[helperPackage],
     },
   };
   evaluateManifest(baseline, "self-test baseline");
@@ -53,8 +59,8 @@ function selfTest() {
   const mutants = [
     ["file dep", { ...baseline, dependencies: { ...baseline.dependencies, "@sekiban/dcb-runtime": "file:../../packages/dcb-runtime" } }],
     ["workspace dep", { ...baseline, dependencies: { ...baseline.dependencies, "@sekiban/dcb-core": "workspace:*" } }],
-    ["wrong version", { ...baseline, dependencies: { ...baseline.dependencies, "@sekiban/dcb-client": "0.1.0" } }],
-    ["missing runtime", { ...baseline, dependencies: { "@sekiban/dcb-client": "0.2.0", "@sekiban/dcb-core": "0.2.0", "@sekiban/dcb-domain": "0.2.0" } }],
+    ["wrong version", { ...baseline, dependencies: { ...baseline.dependencies, "@sekiban/dcb-client": "0.0.0" } }],
+    ["missing runtime", { ...baseline, dependencies: { "@sekiban/dcb-client": expectedVersions["@sekiban/dcb-client"], "@sekiban/dcb-core": expectedVersions["@sekiban/dcb-core"], "@sekiban/dcb-domain": expectedVersions["@sekiban/dcb-domain"], "@sekiban/dcb-cloudflare": expectedVersions[helperPackage] } }],
   ];
   for (const [label, mutant] of mutants) {
     let failed = false;
