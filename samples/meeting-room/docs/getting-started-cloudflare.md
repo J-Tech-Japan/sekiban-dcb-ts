@@ -16,7 +16,7 @@ Worker module graph.
 |---|---|---|
 | Workspace | this repo's `packages/` via npm workspaces | developing in this repository |
 | Packed tip | `./scripts/deploy/npm-consumer-deploy.sh` (`npm pack` of the current commit) | tip Cloudflare speed/latency deploys |
-| Registry | `@sekiban/dcb-{core,domain,client,runtime}@0.2.0` from registry.npmjs.org | `npm run test:sample:registry-consumer` dry-run. This does not deploy the live sample worker |
+| Registry | the common published version of `@sekiban/dcb-{core,domain,client,runtime}` from registry.npmjs.org | `npm run test:sample:registry-consumer` dry-run. This does not deploy the live sample worker |
 
 In-repo `npm ci` workspace-links the sample. Do not treat that as a registry install.
 
@@ -147,11 +147,11 @@ To reuse short demo IDs after verify seed / conflicts:
 
 | Package | npm | Sample dependency |
 |---------|-----|-------------------|
-| `@sekiban/dcb-core` | `0.2.0` | workspace link while developing in this repo |
-| `@sekiban/dcb-domain` | `0.2.0` | via domain authoring / client |
-| `@sekiban/dcb-client` | `0.2.0` | workspace link while developing in this repo |
-| `@sekiban/dcb-runtime` | `0.2.0` | workspace link while developing in this repo |
-| `@sekiban/dcb-cloudflare` | `0.1.2` | workspace link while developing in this repo; composition helper, not the application |
+| `@sekiban/dcb-core` | `0.2.1` | workspace link while developing in this repo |
+| `@sekiban/dcb-domain` | `0.2.1` | via domain authoring / client |
+| `@sekiban/dcb-client` | `0.2.1` | workspace link while developing in this repo |
+| `@sekiban/dcb-runtime` | `0.2.1` | workspace link while developing in this repo |
+| `@sekiban/dcb-cloudflare` | `0.1.3` | workspace link while developing in this repo; composition helper, not the application |
 
 The sample must not copy package `src` trees. Sample-local files are domain,
 Worker composition, and UI only.

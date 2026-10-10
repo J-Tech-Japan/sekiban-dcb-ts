@@ -15,17 +15,16 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  matchedSet,
+  rewriteStarterDependencies,
+  assertExactLocalDependencyGraph,
+} from "./starter-pack-helpers.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const registry = "https://registry.npmjs.org";
 const helperPackage = "@sekiban/dcb-cloudflare";
 const expectedHelperVersion = packageJson(join(root, "packages/dcb-cloudflare/package.json")).version;
-const matchedSet = [
-  "@sekiban/dcb-core",
-  "@sekiban/dcb-domain",
-  "@sekiban/dcb-client",
-  "@sekiban/dcb-runtime",
-];
 const guardHeader = `/*
  * This is a deliberate cf CLI guard, not an unfinished cf migration.
  * Do not edit, complete, or delete this guard. If cf migrate asks you to
@@ -174,7 +173,9 @@ function assertGuardChild(guardPath, marker) {
 }
 
 async function buildHelper() {
-  run("npm", ["run", "build", "-w", helperPackage]);
+  for (const name of [...matchedSet, helperPackage]) {
+    run("npm", ["run", "build", "-w", name]);
+  }
 }
 
 async function createProject(parent, label) {
@@ -458,43 +459,33 @@ function installedPackage(project, name) {
   return packageJson(manifestPath);
 }
 
-async function registryAndHelperInstall(project, helperPack) {
+function packPackage(name, destination) {
+  const directory = join(root, "packages", name.slice("@sekiban/".length));
+  const result = run("npm", ["pack", "--json", "--pack-destination", destination], { cwd: directory });
+  const report = JSON.parse(result.stdout)[0];
+  return { name, version: report.version, filename: report.filename, path: join(destination, report.filename) };
+}
+
+async function localTargetInstall(project, artifacts) {
   const manifestPath = join(project, "package.json");
   const original = await readFile(manifestPath, "utf8");
   const generated = JSON.parse(original);
-  const registryManifest = {
-    name: generated.name,
-    version: generated.version,
-    private: true,
-    dependencies: Object.fromEntries(matchedSet.map((name) => [name, "0.2.0"])),
-  };
-  await writeFile(manifestPath, `${JSON.stringify(registryManifest, null, 2)}\n`);
-  let registryTree;
+  const localManifest = rewriteStarterDependencies(generated, artifacts);
+  await writeFile(manifestPath, `${JSON.stringify(localManifest, null, 2)}\n`);
   try {
-    run("npm", ["install", "--no-package-lock", "--ignore-scripts", "--no-audit", "--no-fund", "--registry", registry], { cwd: project });
-    registryTree = npmTree(project);
+    run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--registry", registry], { cwd: project });
+    const tree = npmTree(project);
+    const graph = assertExactLocalDependencyGraph(JSON.parse(readFileSync(join(project, "package-lock.json"), "utf8")), project, artifacts);
+    for (const artifact of artifacts.filter(({ name }) => name !== "@sekiban/create-dcb")) {
+      check(installedPackage(project, artifact.name).version === artifact.version, `installed ${artifact.name} has the wrong version`);
+    }
+    check(tree.dependencies?.[helperPackage] !== undefined, "packed helper was not installed");
+    check(existsSync(join(project, "node_modules/.bin/dcb-cloudflare")), "helper bin was not installed");
+    check(existsSync(join(project, "node_modules/wrangler/bin/wrangler.js")), "project wrangler was not installed");
+    return { matchedSet: { source: "local npm pack" }, helper: { source: "local npm pack", version: expectedHelperVersion }, graph, wrangler: { version: installedPackage(project, "wrangler").version } };
   } finally {
     await writeFile(manifestPath, original);
   }
-  const registryPackages = {};
-  for (const name of matchedSet) {
-    const resolved = registryTree.dependencies?.[name]?.resolved ?? "";
-    check(resolved.startsWith(`${registry}/`) && !resolved.startsWith("file:"), `${name} did not resolve from npm registry`);
-    check(installedPackage(project, name).version === "0.2.0", `${name} did not resolve to 0.2.0`);
-    registryPackages[name] = { version: "0.2.0", resolved };
-  }
-  run("npm", ["install", "--no-package-lock", "--ignore-scripts", "--no-audit", "--no-fund", "--registry", registry, helperPack], { cwd: project });
-  const helperTree = npmTree(project);
-  check(helperTree.dependencies?.[helperPackage] !== undefined, "packed helper was not installed");
-  const installedHelperVersion = installedPackage(project, helperPackage).version;
-  assertHelperVersion(installedHelperVersion);
-  check(existsSync(join(project, "node_modules/.bin/dcb-cloudflare")), "helper bin was not installed");
-  check(existsSync(join(project, "node_modules/wrangler/bin/wrangler.js")), "project wrangler was not installed");
-  return {
-    matchedSet: { source: registry, packages: registryPackages },
-    helper: { source: "local npm pack", version: installedPackage(project, helperPackage).version },
-    wrangler: { version: installedPackage(project, "wrangler").version },
-  };
 }
 
 function projectWrangler(project) {
@@ -596,6 +587,7 @@ async function subdirectoryProbe(project, parent, kind) {
 }
 
 async function runWithCf() {
+  await buildHelper();
   const probeRoot = await mkdtemp(join(tmpdir(), "sdt-g104-with-cf-"));
   const packRoot = await mkdtemp(join(tmpdir(), "sdt-g104-pack-"));
   const persistDirs = [];
@@ -603,10 +595,8 @@ async function runWithCf() {
     const { project, created } = await createProject(probeRoot, "G104 CF CLI Project");
     const version = await rootCfCall(project, ["--version"]);
     check(version.status === 0 && version.output.includes("1.0.0-beta.5"), `cf 1.0.0-beta.5 is required: ${excerpt(version.output)}`);
-    const pack = run("npm", ["pack", "--pack-destination", packRoot, "--silent"], { cwd: join(root, "packages/dcb-cloudflare") });
-    const helperPackName = readdirSync(packRoot).find((name) => name.endsWith(".tgz"));
-    check(helperPackName !== undefined, `helper npm pack produced no archive: ${pack.stdout}`);
-    const installs = await registryAndHelperInstall(project, join(packRoot, helperPackName));
+    const artifacts = [...matchedSet, helperPackage].map((name) => packPackage(name, packRoot));
+    const installs = await localTargetInstall(project, artifacts);
 
     const pinnedWranglerCalls = [];
     for (const [label, args] of [

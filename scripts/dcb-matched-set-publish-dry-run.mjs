@@ -87,8 +87,9 @@ function assertCommandShape() {
   );
 
   const workflow = readFileSync(resolve(root, ".github/workflows/release-dcb-matched-set.yml"), "utf8");
-  assert.match(workflow, /publish_args\+=\(--provenance\)/, "public workflow branch must add provenance");
-  assert.match(workflow, /publish_env\+=\(NPM_CONFIG_PROVENANCE=false\)/, "private workflow branch must disable implicit provenance");
+  assert.match(workflow, /publishMatchedSet|dcb-matched-set-publish\.mjs/, "authenticated workflow must use the resumable publisher");
+  assert.match(workflow, /PROVENANCE_ENABLED/, "workflow must retain provenance selection");
+  assert.match(workflow, /NPM_CONFIG_PROVENANCE=false|export NPM_CONFIG_PROVENANCE=false/, "private workflow branch must disable implicit provenance");
   assert.match(
     workflow,
     /npm pkg delete publishConfig\.provenance/,
@@ -101,6 +102,7 @@ function assertCommandShape() {
     publicMutation: "npm publish --provenance --access public",
     privateEnvironment: "NPM_CONFIG_PROVENANCE=false",
     privateManifestPreparation: "npm pkg delete publishConfig.provenance",
+    resumablePublisher: "scripts/dcb-matched-set-publish.mjs",
     privateMutationRejected: true,
   };
 }

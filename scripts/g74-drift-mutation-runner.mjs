@@ -26,6 +26,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const extractor = resolve(root, "scripts/g74-release-surface.mjs");
 const guard = resolve(root, "scripts/g74-surface-guard.mjs");
 const baseline = JSON.parse(readFileSync(resolve(root, "contracts/g74-surface-baseline.json"), "utf8"));
+const matchedVersion = JSON.parse(readFileSync(resolve(root, "packages/dcb-core/package.json"), "utf8")).version;
 
 const CLIENT_DTS = "dist/index.d.ts";
 const preflight = "export declare function preflightCommit(input: PreflightInput): void;";
@@ -65,7 +66,7 @@ const MUTANTS = [
   { id: "side-effects-removal", category: "package-fact", expectedSections: ["packages"], edits: [
     { package: "dcb-client", file: "package.json", search: '  "sideEffects": false,\n', replace: "", expectedMatches: 1 }] },
   { id: "internal-dependency-loosened", category: "package-fact", expectedSections: ["packages"], edits: [
-    { package: "dcb-client", file: "package.json", search: '"@sekiban/dcb-core": "0.2.0"', replace: '"@sekiban/dcb-core": "^0.2.0"', expectedMatches: 1 }] },
+    { package: "dcb-client", file: "package.json", search: `"@sekiban/dcb-core": "${matchedVersion}"`, replace: `"@sekiban/dcb-core": "^${matchedVersion}"`, expectedMatches: 1 }] },
   { id: "reference-lib-directive", category: "declaration-file", expectedSections: ["declarationFiles"], edits: [
     { package: "dcb-client", file: CLIENT_DTS, search: "import type { AppendedEvent, EventDefinition, JsonValue, TagDefinition, TagInput } from \"@sekiban/dcb-core\";", replace: "/// <reference lib=\"dom\" />\nimport type { AppendedEvent, EventDefinition, JsonValue, TagDefinition, TagInput } from \"@sekiban/dcb-core\";", expectedMatches: 1 }] },
   { id: "global-augmentation", category: "declaration-file", expectedSections: ["declarationFiles"], edits: [

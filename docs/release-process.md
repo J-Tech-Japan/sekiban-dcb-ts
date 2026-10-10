@@ -117,31 +117,32 @@ For a later starter release, use this procedure:
    `@sekiban/create-dcb`, and release both packages. The pre-publish check
    rejects a generated dependency range that the packed helper version does
    not satisfy.
-2. After the pull request is merged, dispatch
-   `.github/workflows/publish-dcb-unpublished.yml` with the `packages` input
-   naming the package directories to release, for example
-   `dcb-cloudflare create-dcb`.
-3. Verify that the workflow builds, runs the pack-mode starter cold-install
-   check before any publish command, and publishes in allowlist order:
-   `dcb-cloudflare` before `create-dcb`. A version already on npm is skipped
-   rather than republished, so a dispatch without a version bump publishes
-   nothing. After publishing, the workflow waits up to about three minutes for
-   each new version to be readable from the npm registry. A failure there comes
-   after the publish step completed: the version may still be propagating or
-   the registry read may have failed, so check
-   `npm view <package>@<version> version` and re-dispatch only if the version is
-   absent.
-4. Verify that the log contains
-   `authentication branch: trusted-publishing (GitHub Actions OIDC; NPM_TOKEN omitted)`
-   and that each newly published version, not `0.1.0`, shows provenance on its
-   npm page. Then run:
+2. After the pull request is merged and all four matched-set versions are
+   visible on npm, dispatch
+   `.github/workflows/publish-dcb-unpublished.yml` with `packages=dcb-cloudflare`
+   only. Verify the helper with `npm view @sekiban/dcb-cloudflare version`.
+3. Dispatch the same workflow again with `packages=create-dcb` only. Verify
+   the creator with `npm view @sekiban/create-dcb version`, then run:
 
    ```sh
    npm run test:starter-cold-install -- --source registry
    ```
 
-Starter-package releases use manual workflow dispatch with the `packages`
-input; there is no starter-package tag procedure.
+   Each dispatch builds and runs the pack-mode starter cold-install check
+   before any publish command. A version already on npm is skipped rather than
+   republished, so a dispatch without a version bump publishes nothing. After
+   publishing, the workflow waits up to about three minutes for the selected
+   version to be readable from the npm registry. A failure there comes after
+   the publish step completed: check `npm view <package>@<version> version` and
+   re-dispatch only if the version is absent.
+4. Verify that the log contains
+   `authentication branch: trusted-publishing (GitHub Actions OIDC; NPM_TOKEN omitted)`
+   and that each newly published version, not `0.1.0`, shows provenance on its
+   npm page.
+
+Starter-package releases use two manual workflow dispatches with the `packages`
+input; there is no starter-package tag procedure. The creator is never
+dispatched until the helper's exact version is registry-visible.
 
 ## Visibility-driven provenance policy
 
@@ -159,8 +160,9 @@ After registration and the variable change, the maintainer may perform the
 normal tag-triggered release using the existing matched-set tag procedure:
 
 ```sh
-git tag dcb-v0.2.0
-git push origin dcb-v0.2.0
+version="$(node -p 'require("./packages/dcb-core/package.json").version')"
+git tag "dcb-v${version}"
+git push origin "dcb-v${version}"
 ```
 
 Before treating that run as trusted publishing, verify all of the following in
