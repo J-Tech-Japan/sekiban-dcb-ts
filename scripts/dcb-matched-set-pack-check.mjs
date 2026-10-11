@@ -5,7 +5,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const version = "0.2.0";
 const packageNames = ["dcb-core", "dcb-domain", "dcb-client", "dcb-runtime"];
 const packageRoots = Object.fromEntries(packageNames.map((name) => [name, resolve(root, "packages", name)]));
 const maxUnpackedBytes = {
@@ -41,7 +40,6 @@ for (const name of packageNames) {
   manifests[name] = manifest;
   expect(!/(?:workspace:|file:|link:)/.test(JSON.stringify(manifest)), `${name} manifest contains a workspace/file/link dependency specifier`);
   expect(manifest.name === `@sekiban/${name}`, `${name} package name is incorrect`);
-  expect(manifest.version === version, `${name} version must be ${version}`);
   expect(manifest.private === false, `${name} package must be public`);
   expect(manifest.license === "Elastic-2.0", `${name} license must be Elastic-2.0`);
   expect(manifest.type === "module" && manifest.sideEffects === false, `${name} must be side-effect-free ESM`);
@@ -59,6 +57,10 @@ for (const name of packageNames) {
     const contents = await readFile(resolve(packageRoot, required), "utf8");
     expect(contents.trim().length > 0, `${name} is missing a non-empty ${required}`);
   }
+}
+const version = manifests["dcb-core"].version;
+for (const name of packageNames) {
+  expect(manifests[name].version === version, `${name} version ${manifests[name].version} is not the matched manifest version ${version}`);
 }
 
 const domain = manifests["dcb-domain"];

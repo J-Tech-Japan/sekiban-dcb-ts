@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classifyPublishFailure } from "./npm-publish-dry-run-classifier.mjs";
+import { publishArguments as productionPublishArguments } from "./dcb-matched-set-publish.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packages = [
@@ -14,18 +15,8 @@ const packages = [
   ["@sekiban/dcb-runtime", "packages/dcb-runtime"],
 ];
 
-export function publishArguments({ privateRepository, dryRun = true }) {
-  return [
-    "publish",
-    ...(dryRun ? ["--dry-run"] : []),
-    ...(privateRepository ? [] : ["--provenance"]),
-    "--access",
-    "public",
-  ];
-}
-
 export function commandFor(options) {
-  return ["npm", ...publishArguments(options)].join(" ");
+  return ["npm", ...productionPublishArguments({ dryRun: true, ...options })].join(" ");
 }
 
 export function publishEnvironment({ privateRepository }) {
@@ -48,10 +39,10 @@ function parseRepositoryVisibility(argv, env) {
 }
 
 function assertCommandShape() {
-  const publicDryRun = publishArguments({ privateRepository: false });
-  const privateDryRun = publishArguments({ privateRepository: true });
-  const publicPublish = publishArguments({ privateRepository: false, dryRun: false });
-  const privatePublish = publishArguments({ privateRepository: true, dryRun: false });
+  const publicDryRun = productionPublishArguments({ privateRepository: false, dryRun: true });
+  const privateDryRun = productionPublishArguments({ privateRepository: true, dryRun: true });
+  const publicPublish = productionPublishArguments({ privateRepository: false, dryRun: false });
+  const privatePublish = productionPublishArguments({ privateRepository: true, dryRun: false });
 
   const assertPublicCommand = (args) => {
     assert(args.includes("--provenance"), "public publish must request provenance");
@@ -86,9 +77,17 @@ function assertCommandShape() {
     "private provenance mutation must be red",
   );
 
+  const publicProvenanceMutation = publicPublish.filter((argument) => argument !== "--provenance");
+  assert.throws(
+    () => assertPublicCommand(publicProvenanceMutation),
+    /public publish must request provenance/,
+    "removing public provenance must be red",
+  );
+
   const workflow = readFileSync(resolve(root, ".github/workflows/release-dcb-matched-set.yml"), "utf8");
-  assert.match(workflow, /publish_args\+=\(--provenance\)/, "public workflow branch must add provenance");
-  assert.match(workflow, /publish_env\+=\(NPM_CONFIG_PROVENANCE=false\)/, "private workflow branch must disable implicit provenance");
+  assert.match(workflow, /publishMatchedSet|dcb-matched-set-publish\.mjs/, "authenticated workflow must use the resumable publisher");
+  assert.match(workflow, /PROVENANCE_ENABLED/, "workflow must retain provenance selection");
+  assert.match(workflow, /NPM_CONFIG_PROVENANCE=false|export NPM_CONFIG_PROVENANCE=false/, "private workflow branch must disable implicit provenance");
   assert.match(
     workflow,
     /npm pkg delete publishConfig\.provenance/,
@@ -98,9 +97,11 @@ function assertCommandShape() {
   return {
     public: commandFor({ privateRepository: false }),
     private: commandFor({ privateRepository: true }),
-    publicMutation: "npm publish --provenance --access public",
+    publicMutation: "remove --provenance from the production public command",
+    publicMutationRejected: true,
     privateEnvironment: "NPM_CONFIG_PROVENANCE=false",
     privateManifestPreparation: "npm pkg delete publishConfig.provenance",
+    resumablePublisher: "scripts/dcb-matched-set-publish.mjs",
     privateMutationRejected: true,
   };
 }
@@ -215,7 +216,7 @@ if (argv.includes("--self-test")) {
 }
 
 const privateRepository = parseRepositoryVisibility(argv, process.env);
-const publishArgs = publishArguments({ privateRepository });
+const publishArgs = productionPublishArguments({ privateRepository, dryRun: true });
 const command = commandFor({ privateRepository });
 const receipts = [];
 

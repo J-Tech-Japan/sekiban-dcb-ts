@@ -6,12 +6,12 @@ Start here: [`docs/getting-started-cloudflare.md`](docs/getting-started-cloudfla
 (migrate both D1s → deploy → smoke → C-0 notes).
 
 This Worker is a small consumer of the matched npm packages
-(`@sekiban/dcb-{core,domain,client,runtime}@0.2.0`) plus the published npm
+(`@sekiban/dcb-{core,domain,client,runtime}@0.2.1`) plus the published npm
 helper `@sekiban/dcb-cloudflare`, linked from the workspace while developing in
 this repository. The helper mounts storage beside
 a caller's own Worker; this sample is not that caller's only application.
 For tip Cloudflare speed/latency deploys use `./scripts/deploy/npm-consumer-deploy.sh`
-(it packs this worktree). The registry `0.2.0` dry-run is `npm run test:sample:registry-consumer`.
+(it packs this worktree). The registry matched-set dry-run is `npm run test:sample:registry-consumer`.
 Domain definitions live in `src/domain.ts`; the sample does not deep-import a
 package `src` directory.
 

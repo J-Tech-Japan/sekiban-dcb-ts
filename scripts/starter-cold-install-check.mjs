@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import * as nodeAssert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
@@ -7,6 +8,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateDeployCheckReceipt } from "./g103-create-starter.mjs";
+import {
+  matchedSet,
+  starterPackages,
+  rewriteStarterDependencies,
+  assertExactLocalDependencyGraph,
+} from "./starter-pack-helpers.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const registry = "https://registry.npmjs.org/";
@@ -133,6 +140,12 @@ export function assertTarballFiles(name, paths) {
     assert(!files.some((path) => path.startsWith("src/")), `tarball ${name} contains source path ${files.find((path) => path.startsWith("src/"))}`);
     return;
   }
+  if (matchedSet.includes(name)) {
+    const allowed = (path) => path === "package.json" || path === "README.md" || path === "LICENSE" || path.startsWith("dist/");
+    assert(files.includes("dist/index.js") && files.includes("dist/index.d.ts"), `tarball ${name} is missing its built entrypoints`);
+    assert(files.every(allowed), `tarball ${name} contains an unexpected path ${files.find((path) => !allowed(path))}`);
+    return;
+  }
   const allowed = (path) => path === "package.json" || path === "README.md" || path === "LICENSE" || path.startsWith("bin/") || path.startsWith("template/");
   assert(files.includes("bin/create-dcb.mjs") && files.includes("template/package.json"), `tarball ${name} is missing the CLI or template`);
   assert(files.every(allowed), `tarball ${name} contains an unexpected path ${files.find((path) => !allowed(path))}`);
@@ -155,6 +168,11 @@ export function assertLockfile(lockfile, mode, options = {}) {
   }
 
   if (mode === "pack") {
+    if (options.artifacts) {
+      const graph = assertExactLocalDependencyGraph(lockfile, options.lockfileDirectory, options.artifacts);
+      if (options.installedPackages) assertOutsideRepository(options.installedPackages);
+      return { ...graph, lockEntries: entries.length, nodeModulesEntries: nodeModulesEntries(lockfile).length };
+    }
     const helperTarball = resolve(options.helperTarball);
     const rootSpecifier = lockfile.packages?.[""]?.dependencies?.[helperPackage] ?? "";
     if (rootSpecifier !== `file:${helperTarball}`) {
@@ -226,13 +244,16 @@ function packPackage(name, work, env) {
 }
 
 function packMode(work, env) {
-  run("npm", ["run", "build", "-w", helperPackage], { cwd: root, env });
+  for (const name of [...matchedSet, helperPackage]) {
+    run("npm", ["run", "build", "-w", name], { cwd: root, env });
+  }
   mkdirSync(join(work, "packs"), { recursive: true });
-  const helper = packPackage(helperPackage, work, env);
-  const creator = packPackage(createPackage, work, env);
+  const artifacts = starterPackages.map((name) => packPackage(name, work, env));
+  const helper = artifacts.find((artifact) => artifact.name === helperPackage);
+  const creator = artifacts.find((artifact) => artifact.name === createPackage);
   const createdExpected = creator.files.filter((path) => path.startsWith("template/")).map((path) => path.slice("template/".length));
   run("npm", ["exec", "--yes", "--package", creator.path, "--", "create-dcb", "Cold Start Booking"], { cwd: work, env });
-  return { helper, creator, createdExpected };
+  return { artifacts, helper, creator, createdExpected };
 }
 
 function registryMode(work, env) {
@@ -299,7 +320,7 @@ function finishInstall(work, env, mode, artifact, receipt) {
   const helperRange = manifest.dependencies?.[helperPackage];
   assertHelperRange(helperRange, artifact.helper.version);
   if (mode === "pack") {
-    manifest.dependencies[helperPackage] = `file:${artifact.helper.path}`;
+    Object.assign(manifest, rewriteStarterDependencies(manifest, artifact.artifacts));
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   }
 
@@ -310,6 +331,7 @@ function finishInstall(work, env, mode, artifact, receipt) {
   const lockSummary = assertLockfile(lockfile, mode, {
     helperTarball: mode === "pack" ? artifact.helper.path : undefined,
     helperVersion: mode === "pack" ? artifact.helper.version : undefined,
+    artifacts: mode === "pack" ? artifact.artifacts : undefined,
     lockfileDirectory: project,
     installedPackages,
   });
@@ -430,12 +452,74 @@ function selfTest() {
   duplicate.packages[`node_modules/other/node_modules/${runtimePackage}`] = { version: "0.2.0", resolved: `${registry}@sekiban/dcb-runtime/-/dcb-runtime-0.2.0.tgz` };
   expectFailure(() => assertLockfile(duplicate, "pack", { helperTarball: "/tmp/dcb-cloudflare.tgz", helperVersion: "0.1.0", lockfileDirectory: "/tmp", installedPackages: installed }), `${runtimePackage} is installed more than once`);
 
+  const graphArtifacts = [...matchedSet, helperPackage].map((name) => ({
+    name,
+    version: "1.0.0",
+    path: `/tmp/sdt-g132-${name.replaceAll("/", "-")}.tgz`,
+  }));
+  const graphLock = {
+    packages: Object.fromEntries([
+      ["", {
+        dependencies: Object.fromEntries(
+          graphArtifacts.map((artifact) => [artifact.name, `file:${artifact.path}`]),
+        ),
+      }],
+      ...graphArtifacts.map((artifact) => [
+        `node_modules/${artifact.name}`,
+        { version: artifact.version, resolved: `file:${artifact.path}` },
+      ]),
+    ]),
+  };
+  assertExactLocalDependencyGraph(graphLock, "/tmp", graphArtifacts);
+  const graphFailure = (label, mutate, message) => {
+    const mutant = structuredClone(graphLock);
+    mutate(mutant);
+    nodeAssert.throws(
+      () => assertExactLocalDependencyGraph(mutant, "/tmp", graphArtifacts),
+      new RegExp(message),
+      label,
+    );
+  };
+  graphFailure(
+    "missing local tarball",
+    (mutant) => { delete mutant.packages[`node_modules/${matchedSet[0]}`]; },
+    "local tarball",
+  );
+  graphFailure(
+    "duplicate local tarball",
+    (mutant) => {
+      mutant.packages[`node_modules/nested/node_modules/${matchedSet[0]}`] =
+        mutant.packages[`node_modules/${matchedSet[0]}`];
+    },
+    "duplicate local tarball",
+  );
+  graphFailure(
+    "wrong tarball version",
+    (mutant) => { mutant.packages[`node_modules/${matchedSet[0]}`].version = "2.0.0"; },
+    "wrong tarball version",
+  );
+  graphFailure(
+    "workspace link",
+    (mutant) => { mutant.packages[`node_modules/${matchedSet[0]}`].link = true; },
+    "workspace link",
+  );
+  graphFailure(
+    "registry target substitution",
+    (mutant) => { mutant.packages[`node_modules/${matchedSet[0]}`].resolved = `${registry}target.tgz`; },
+    "registry resolution of target",
+  );
+  nodeAssert.throws(
+    () => rewriteStarterDependencies({ dependencies: {} }, graphArtifacts.slice(0, -1)),
+    /missing local tarball/,
+    "missing local tarball artifact must be rejected before installation",
+  );
+
   assertTarballFiles(helperPackage, ["dist/cli.js", "dist/index.js"]);
   expectFailure(() => assertTarballFiles(helperPackage, ["dist/cli.js", "dist/index.js", "src/index.ts"]), `tarball ${helperPackage} contains source path src/index.ts`);
   assertTarballFiles(createPackage, ["bin/create-dcb.mjs", "template/package.json", "template/DEPLOYMENT.md", "template/deployment-topology.json", "template/scripts/deploy-check.mjs"]);
   assertGeneratedFileSet(["package.json", "src/index.ts"], ["package.json", "src/index.ts"]);
   expectFailure(() => assertGeneratedFileSet(["package.json", "src/index.ts", "README.md"], ["package.json", "src/index.ts"]), "generated project files differ from the packed template");
-  console.log(JSON.stringify({ result: "starter-cold-install-self-test-passed", checks: 11 }));
+  console.log(JSON.stringify({ result: "starter-cold-install-self-test-passed", checks: 18 }));
 }
 
 function main() {
@@ -455,13 +539,13 @@ function main() {
     assert(workReal !== repoReal && !workReal.startsWith(`${repoReal}${sep}`), "temporary work directory is inside the repository");
     const env = childEnvironment(work);
     const artifact = source === "pack" ? packMode(work, env) : registryMode(work, env);
+    const packageVersions = source === "pack"
+      ? Object.fromEntries(artifact.artifacts.map(({ name, version }) => [name, version]))
+      : { [createPackage]: artifact.creator.version, [helperPackage]: artifact.helper.version };
     const receipt = {
       mode: source,
-      packages: {
-        [createPackage]: artifact.creator.version,
-        [helperPackage]: artifact.helper.version,
-      },
-      tarballs: source === "pack" ? [artifact.creator.filename, artifact.helper.filename] : [],
+      packages: packageVersions,
+      tarballs: source === "pack" ? artifact.artifacts.map(({ name, filename, version }) => ({ name, filename, version })) : [],
     };
     finishInstall(work, env, source, artifact, receipt);
     console.log(JSON.stringify(receipt));

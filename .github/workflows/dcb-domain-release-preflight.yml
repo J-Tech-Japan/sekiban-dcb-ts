@@ -40,8 +40,14 @@ jobs:
         run: npm run test:domain-release
       - run: node scripts/dcb-domain-pack-check.mjs
       - run: node scripts/dcb-domain-consumer-check.mjs
-      - run: node scripts/dcb-domain-release-check.mjs dcb-domain-v0.2.0
-      - run: node scripts/dcb-domain-release-notes.mjs dcb-domain-v0.2.0 "$RUNNER_TEMP/dcb-domain-release-notes.md"
+      - name: Derive the domain release tag from its manifest
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./packages/dcb-domain/package.json').version")"
+          [ -n "$version" ]
+          printf 'DOMAIN_RELEASE_TAG=dcb-domain-v%s\n' "$version" >> "$GITHUB_ENV"
+      - run: node scripts/dcb-domain-release-check.mjs "$DOMAIN_RELEASE_TAG"
+      - run: node scripts/dcb-domain-release-notes.mjs "$DOMAIN_RELEASE_TAG" "$RUNNER_TEMP/dcb-domain-release-notes.md"
       - name: Credential-free release-path dry-run proof
         run: |
           set -euo pipefail

@@ -10,10 +10,10 @@
     "test": "vitest run --config ../../vitest.config.ts"
   },
   "dependencies": {
-    "@sekiban/dcb-client": "0.2.0",
-    "@sekiban/dcb-core": "0.2.0",
-    "@sekiban/dcb-domain": "0.2.0",
-    "@sekiban/dcb-cloudflare": "0.1.2",
-    "@sekiban/dcb-runtime": "0.2.0"
+    "@sekiban/dcb-client": "0.2.1",
+    "@sekiban/dcb-core": "0.2.1",
+    "@sekiban/dcb-domain": "0.2.1",
+    "@sekiban/dcb-cloudflare": "0.1.3",
+    "@sekiban/dcb-runtime": "0.2.1"
   }
 }

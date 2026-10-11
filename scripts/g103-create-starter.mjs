@@ -7,10 +7,14 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  matchedSet,
+  rewriteStarterDependencies,
+  assertExactLocalDependencyGraph,
+} from "./starter-pack-helpers.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const registry = "https://registry.npmjs.org";
-const expectedHelperVersion = packageJson(join(root, "packages/dcb-cloudflare/package.json")).version;
 const liveWorker = "sekiban-dcb-meeting-room-cloudflare-only";
 // Keep the forbidden-resource check independent of the literal IDs. The
 // values are intentionally represented only by digests so the guard cannot
@@ -21,12 +25,6 @@ const liveDatabaseIdDigests = new Set([
   "06c3a6da88a09bf01c2e4d6130b57880b4a920bdf3d6fac41d968c983ec36d89",
   "f595955dabe1d23dd6c505629633d17a066e320681ca8dece81bf089493c3b6a",
 ]);
-const matchedSet = [
-  "@sekiban/dcb-core",
-  "@sekiban/dcb-domain",
-  "@sekiban/dcb-client",
-  "@sekiban/dcb-runtime",
-];
 const requiredFiles = [
   "README.md",
   "DEPLOYMENT.md",
@@ -302,8 +300,12 @@ function assertReplaceManifest(project) {
 function assertPackage(project) {
   const manifest = packageJson(join(project, "package.json"));
   const dependencies = manifest.dependencies ?? {};
-  for (const name of matchedSet) assert(dependencies[name] === "0.2.0", `${name} is not pinned to 0.2.0 in the starter`);
-  assert(dependencies["@sekiban/dcb-cloudflare"] === "^0.1.0", "starter helper dependency is not ^0.1.0");
+  const expectedMatchedVersion = packageJson(join(root, "packages/dcb-core/package.json")).version;
+  const expectedHelperMinimum = packageJson(join(root, "packages/dcb-cloudflare/package.json")).version;
+  for (const name of matchedSet) {
+    assert(dependencies[name] === expectedMatchedVersion, `${name} is not pinned to ${expectedMatchedVersion} in the starter`);
+  }
+  assert(dependencies["@sekiban/dcb-cloudflare"] === `^${expectedHelperMinimum}`, `starter helper dependency is not ^${expectedHelperMinimum}`);
   assert(dependencies.wrangler === "4.125.0", "starter must pin wrangler for standalone migrate/deploy");
   assert(manifest.devDependencies?.typescript === "5.9.3", "starter must pin TypeScript 5.9.3 for standalone typecheck");
   assert(manifest.devDependencies?.["@cloudflare/workers-types"] === "5.20260820.1", "starter must pin Workers types 5.20260820.1 for standalone typecheck");
@@ -333,51 +335,35 @@ function installedPackage(project, name) {
   return { version: packageJson(manifestPath).version, path: relative(project, path) };
 }
 
-async function registryAndHelperInstall(project, helperPack) {
+async function localTargetInstall(project, artifacts) {
   const generatedManifestPath = join(project, "package.json");
   const generatedManifestText = await readFile(generatedManifestPath, "utf8");
   const generatedManifest = JSON.parse(generatedManifestText);
-  const registryManifest = {
-    name: generatedManifest.name,
-    version: generatedManifest.version,
-    private: true,
-    dependencies: Object.fromEntries(matchedSet.map((name) => [name, "0.2.0"])),
-  };
-  await writeFile(generatedManifestPath, `${JSON.stringify(registryManifest, null, 2)}\n`);
-  let registryTree;
+  const localManifest = rewriteStarterDependencies(generatedManifest, artifacts);
+  await writeFile(generatedManifestPath, `${JSON.stringify(localManifest, null, 2)}\n`);
+  let tree;
   try {
-    run("npm", ["install", "--no-package-lock", "--ignore-scripts", "--no-audit", "--no-fund", "--registry", registry], { cwd: project });
-    registryTree = npmTree(project);
+    run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--registry", registry], { cwd: project });
+    tree = npmTree(project);
+    const lockfile = packageJson(join(project, "package-lock.json"));
+    const graph = assertExactLocalDependencyGraph(lockfile, project, artifacts);
+    for (const artifact of artifacts.filter(({ name }) => name !== "@sekiban/create-dcb")) {
+      const info = installedPackage(project, artifact.name);
+      assert(info.version === artifact.version, `installed ${artifact.name} at ${info.version}; expected ${artifact.version}`);
+    }
+    assert(tree.dependencies?.["@sekiban/dcb-cloudflare"] !== undefined, "packed helper was not installed");
+    assert(existsSync(join(project, "node_modules", ".bin", "dcb-cloudflare")), "packed helper did not install its CLI bin");
+    assert(existsSync(join(project, "node_modules", "wrangler", "bin", "wrangler.js")), "project-local wrangler was not installed");
+    assert(existsSync(join(project, "node_modules", ".bin", "wrangler")), "project-local wrangler bin is missing");
+    return {
+      matchedSet: { source: "local npm pack", packages: Object.fromEntries(matchedSet.map((name) => [name, artifacts.find((artifact) => artifact.name === name)])) },
+      helper: { source: "local npm pack", version: artifacts.find((artifact) => artifact.name === "@sekiban/dcb-cloudflare").version, bin: "dcb-cloudflare" },
+      graph,
+      wrangler: { source: "project dependency", version: installedPackage(project, "wrangler").version },
+    };
   } finally {
     await writeFile(generatedManifestPath, generatedManifestText);
   }
-  const installed = {};
-  for (const name of matchedSet) {
-    const resolved = registryTree.dependencies?.[name]?.resolved ?? "";
-    assert(resolved.startsWith(`${registry}/`) && !resolved.startsWith("file:"), `${name} did not resolve from the npm registry: ${resolved}`);
-    const packageInfo = installedPackage(project, name);
-    assert(packageInfo.version === "0.2.0", `${name} resolved to ${packageInfo.version}`);
-    installed[name] = { version: packageInfo.version, resolved, insideWorktree: false };
-  }
-
-  run("npm", ["install", "--no-package-lock", "--ignore-scripts", "--no-audit", "--no-fund", "--registry", registry, helperPack], { cwd: project });
-  const helperTree = npmTree(project);
-  const helper = helperTree.dependencies?.["@sekiban/dcb-cloudflare"];
-  assert(helper !== undefined, "packed helper was not installed");
-  const helperInfo = installedPackage(project, "@sekiban/dcb-cloudflare");
-  assert(helperInfo.version === expectedHelperVersion, `packed helper resolved to ${helperInfo.version}; expected ${expectedHelperVersion}`);
-  assert(existsSync(join(project, "node_modules", ".bin", "dcb-cloudflare")), "packed helper did not install its CLI bin");
-  assert(existsSync(join(project, "node_modules", "wrangler", "bin", "wrangler.js")), "project-local wrangler was not installed");
-  assert(existsSync(join(project, "node_modules", ".bin", "wrangler")), "project-local wrangler bin is missing");
-  for (const name of matchedSet) {
-    const resolved = helperTree.dependencies?.[name]?.resolved ?? "";
-    assert(!resolved.startsWith("file:") && !resolved.includes(`${sep}packages${sep}`), `${name} changed to an unexpected local dependency after helper install`);
-  }
-  return {
-    matchedSet: { source: registry, packages: installed },
-    helper: { source: "local npm pack", version: helperInfo.version, resolved: helper.resolved ?? "local-pack", bin: "dcb-cloudflare" },
-    wrangler: { source: "project dependency", version: installedPackage(project, "wrangler").version },
-  };
 }
 
 async function helperPlans(project, configText, names) {
@@ -400,6 +386,19 @@ function cloudflareSafeEnvironment() {
   delete env.CLOUDFLARE_API_TOKEN;
   delete env.CLOUDFLARE_ACCOUNT_ID;
   return env;
+}
+
+function packPackage(name, destination) {
+  const directory = join(root, "packages", name.slice("@sekiban/".length));
+  const result = run("npm", ["pack", "--json", "--pack-destination", destination], { cwd: directory });
+  const report = JSON.parse(result.stdout)[0];
+  return {
+    name,
+    version: report.version,
+    filename: report.filename,
+    path: join(destination, report.filename),
+    files: report.files.map((file) => file.path),
+  };
 }
 
 function parseLastJson(output, label) {
@@ -534,15 +533,18 @@ async function main() {
   assert(process.env.G32_DEPLOY_LIVE !== "1", "refusing to run while G32_DEPLOY_LIVE=1");
   assertNoLiveDatabaseIdMutants();
 
-  run("npm", ["run", "build", "-w", "@sekiban/dcb-runtime"]);
-  run("npm", ["run", "build", "-w", "@sekiban/dcb-cloudflare"]);
+  for (const name of [...matchedSet, "@sekiban/dcb-cloudflare"]) {
+    run("npm", ["run", "build", "-w", name]);
+  }
 
   const proofRoot = await mkdtemp(join(tmpdir(), "sdt-g103-"));
   const packRoot = await mkdtemp(join(tmpdir(), "sdt-g103-pack-"));
   try {
     assert(readdirSync(proofRoot).length === 0, "proof directory was not clean");
     const projectName = "g103-starter-booking";
-    const create = run(process.execPath, [join(root, "packages/create-dcb/bin/create-dcb.mjs"), "G103 Starter Booking"], { cwd: proofRoot });
+    const artifacts = [...matchedSet, "@sekiban/dcb-cloudflare", "@sekiban/create-dcb"].map((name) => packPackage(name, packRoot));
+    const creator = artifacts.find((artifact) => artifact.name === "@sekiban/create-dcb");
+    const create = run("npm", ["exec", "--yes", "--package", creator.path, "--", "create-dcb", "G103 Starter Booking"], { cwd: proofRoot });
     const project = join(proofRoot, projectName);
     assert(existsSync(project), "create CLI did not write the slugified project directory");
     const inventory = assertInventory(project);
@@ -552,10 +554,7 @@ async function main() {
     const packageProof = assertPackage(project);
     const configText = readFileSync(join(project, "wrangler.jsonc"), "utf8");
 
-    const packOutput = run("npm", ["pack", "--pack-destination", packRoot, "--silent"], { cwd: join(root, "packages/dcb-cloudflare") });
-    const helperPack = readdirSync(packRoot).find((file) => file.endsWith(".tgz"));
-    assert(helperPack !== undefined, `npm pack did not produce a helper archive: ${packOutput.stdout}`);
-    const installs = await registryAndHelperInstall(project, join(packRoot, helperPack));
+    const installs = await localTargetInstall(project, artifacts);
     const plans = await helperPlans(project, configText, configProof.names);
     const localMigration = applyLocalPipelineMigration(project, proofRoot, configProof.names.pipeline);
     const selfTest = run("npm", ["run", "deploy:check", "--", "--self-test"], { cwd: project, env: cloudflareSafeEnvironment() });

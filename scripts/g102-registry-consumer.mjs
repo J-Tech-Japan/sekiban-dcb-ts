@@ -35,6 +35,35 @@ function run(command, args, options = {}) {
   return result;
 }
 
+function compareVersions(left, right) {
+  const parse = (value) => String(value).split(".").map((part) => Number.parseInt(part, 10));
+  const a = parse(left);
+  const b = parse(right);
+  for (let index = 0; index < 3; index += 1) {
+    if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) - (b[index] ?? 0);
+  }
+  return 0;
+}
+
+function publishedVersions(name) {
+  const result = spawnSync("npm", ["view", name, "versions", "--json", "--registry", "https://registry.npmjs.org"], {
+    cwd: root,
+    env: process.env,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) fail(`could not read published versions for ${name}: ${result.stderr}`);
+  const parsed = JSON.parse(result.stdout);
+  return Array.isArray(parsed) ? parsed : [parsed];
+}
+
+function resolvePublishedMatchedVersion() {
+  const sets = published.map((name) => new Set(publishedVersions(name)));
+  const common = [...sets[0]].filter((version) => sets.every((set) => set.has(version)));
+  common.sort(compareVersions);
+  if (common.length === 0) fail("matched packages have no common published version");
+  return common.at(-1);
+}
+
 function walk(dir) {
   const files = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -216,11 +245,12 @@ async function registryProof() {
   if (wranglerText.includes(liveWorker)) fail("fixture must not name the live worker");
   if (!workerSource.includes('pathname === "/app"')) fail("fixture is missing its own /app route");
   const dir = await mkdtemp(join(tmpdir(), "sdt-g102-"));
+  const commonVersion = resolvePublishedMatchedVersion();
   try {
     await writeFile(join(dir, "package.json"), JSON.stringify({
       name: "sdt-g102-registry-consumer",
       private: true,
-      dependencies: Object.fromEntries(published.map((name) => [name, "0.2.0"])),
+      dependencies: Object.fromEntries(published.map((name) => [name, commonVersion])),
     }));
     run("npm", ["install", "--no-package-lock", "--ignore-scripts", "--registry", "https://registry.npmjs.org"], { cwd: dir });
     const listed = JSON.parse(run("npm", ["ls", "--json", "--prefix", dir], { cwd: dir }).stdout);
@@ -235,6 +265,8 @@ async function registryProof() {
       if (manifestPath.startsWith(packagesRoot) || !manifestPath.startsWith(realpathSync(dir))) {
         fail(`${name} resolved inside the repo: ${manifestPath}`);
       }
+      const installedVersion = JSON.parse(readFileSync(manifestPath, "utf8")).version;
+      if (installedVersion !== commonVersion) fail(`${name} installed at ${installedVersion}, expected the common published version ${commonVersion}`);
       resolved[name] = fromRegistry;
     }
     await writeFile(join(dir, "worker.ts"), workerSource);
@@ -256,7 +288,7 @@ async function registryProof() {
     }
     const bundle = await readFile(join(outdir, "worker.js"), "utf8");
     if (!bundle.includes("g102-app-marker")) fail("dry-run bundle is missing the fixture route marker");
-    return { resolved, marker: "g102-app-marker", worker: "sdt-g102-registry-consumer" };
+    return { version: commonVersion, resolved, marker: "g102-app-marker", worker: "sdt-g102-registry-consumer" };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
