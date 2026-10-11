@@ -118,13 +118,49 @@ For a later starter release, use this procedure:
    rejects a generated dependency range that the packed helper version does
    not satisfy.
 2. After the pull request is merged and all four matched-set versions are
-   visible on npm, dispatch
-   `.github/workflows/publish-dcb-unpublished.yml` with `packages=dcb-cloudflare`
-   only. Verify the helper with `npm view @sekiban/dcb-cloudflare version`.
-3. Dispatch the same workflow again with `packages=create-dcb` only. Verify
-   the creator with `npm view @sekiban/create-dcb version`, then run:
+   visible on npm, derive the exact versions from the manifests and use bounded
+   exact-version polling:
 
    ```sh
+   matched_version="$(node -p "require('./packages/dcb-core/package.json').version")"
+   cloudflare_version="$(node -p "require('./packages/dcb-cloudflare/package.json').version")"
+   create_version="$(node -p "require('./packages/create-dcb/package.json').version")"
+
+   wait_for_exact() {
+     name="$1"
+     version="$2"
+     for attempt in $(seq 1 36); do
+       if [ "$(npm view "${name}@${version}" version 2>/dev/null)" = "$version" ]; then
+         return 0
+       fi
+       if [ "$attempt" -eq 36 ]; then
+         echo "${name}@${version} was not visible after 36 attempts" >&2
+         return 1
+       fi
+       sleep 5
+     done
+   }
+
+   for name in @sekiban/dcb-core @sekiban/dcb-domain @sekiban/dcb-client @sekiban/dcb-runtime; do
+     wait_for_exact "$name" "$matched_version"
+   done
+   ```
+
+   Do not dispatch a starter package until all four exact matched-set versions
+   pass those checks. Then dispatch
+   `.github/workflows/publish-dcb-unpublished.yml` with `packages=dcb-cloudflare`
+   only. After that dispatch, wait for the exact helper version before
+   continuing:
+
+   ```sh
+   wait_for_exact @sekiban/dcb-cloudflare "$cloudflare_version"
+   ```
+
+3. Dispatch the same workflow again with `packages=create-dcb` only. After
+   that dispatch, wait for the exact creator version, then run:
+
+   ```sh
+   wait_for_exact @sekiban/create-dcb "$create_version"
    npm run test:starter-cold-install -- --source registry
    ```
 
@@ -143,6 +179,15 @@ For a later starter release, use this procedure:
 Starter-package releases use two manual workflow dispatches with the `packages`
 input; there is no starter-package tag procedure. The creator is never
 dispatched until the helper's exact version is registry-visible.
+
+If the matched-set workflow partially publishes before a later package becomes
+visible, do not begin either starter dispatch. Re-run the same tag-triggered
+workflow for `dcb-v<version>`. The publisher verifies the exact published
+prefix and skips each already-published package whose tag provenance or packed
+integrity matches, then continues with the first absent package. It fails on a
+mismatch rather than republishing an immutable version; resolve that mismatch
+before retrying. Wait until all four exact matched-set versions are visible
+again before dispatching `dcb-cloudflare`.
 
 ## Visibility-driven provenance policy
 

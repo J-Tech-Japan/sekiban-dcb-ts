@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const packageDirectories = Object.freeze([
@@ -61,8 +62,14 @@ function localPackIntegrity(record) {
   }
 }
 
-function publishArguments(privateRepository) {
-  return ["publish", ...(privateRepository ? [] : ["--provenance"]), "--access", "public"];
+export function publishArguments({ privateRepository, dryRun = false } = {}) {
+  return [
+    "publish",
+    ...(dryRun ? ["--dry-run"] : []),
+    ...(privateRepository ? [] : ["--provenance"]),
+    "--access",
+    "public",
+  ];
 }
 
 async function waitForVisible(query, record, { maxAttempts, delayMs, sleep }) {
@@ -118,7 +125,7 @@ export async function publishMatchedSet({
       const proof = await verifyExisting(record, existing, { tagCommit, privateRepository, packRunner });
       receipts.push({ package: record.name, version: record.version, action: "skip-verified", proof });
     } else {
-      await publishRunner(record, publishArguments(privateRepository));
+      await publishRunner(record, publishArguments({ privateRepository }));
       receipts.push({ package: record.name, version: record.version, action: "published" });
     }
     const visible = await waitForVisible(registryRunner, record, { maxAttempts, delayMs, sleep });
@@ -241,20 +248,22 @@ async function selfTest() {
   return { status: "PASS", selfTest: true, checks };
 }
 
-const args = process.argv.slice(2);
-if (args.includes("--self-test")) {
-  console.log(JSON.stringify(await selfTest(), null, 2));
-} else {
-  const tag = process.env.GITHUB_REF_NAME ?? "";
-  const tagMatch = /^dcb-v(.+)$/.exec(tag);
-  const records = loadReleaseRecords();
-  if (!tagMatch || records.some((record) => record.version !== tagMatch[1])) {
-    error(`tag ${tag} does not match all manifest versions`);
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const args = process.argv.slice(2);
+  if (args.includes("--self-test")) {
+    console.log(JSON.stringify(await selfTest(), null, 2));
+  } else {
+    const tag = process.env.GITHUB_REF_NAME ?? "";
+    const tagMatch = /^dcb-v(.+)$/.exec(tag);
+    const records = loadReleaseRecords();
+    if (!tagMatch || records.some((record) => record.version !== tagMatch[1])) {
+      error(`tag ${tag} does not match all manifest versions`);
+    }
+    const result = await publishMatchedSet({
+      records,
+      tagCommit: process.env.GITHUB_SHA,
+      privateRepository: process.env.PRIVATE_REPOSITORY === "true",
+    });
+    console.log(JSON.stringify(result, null, 2));
   }
-  const result = await publishMatchedSet({
-    records,
-    tagCommit: process.env.GITHUB_SHA,
-    privateRepository: process.env.PRIVATE_REPOSITORY === "true",
-  });
-  console.log(JSON.stringify(result, null, 2));
 }
