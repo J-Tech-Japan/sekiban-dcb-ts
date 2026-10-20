@@ -3,9 +3,11 @@
 Use `npm run migrate` for D1 migrations and `npm run deploy` for the Worker.
 Wrangler remains this starter's build and deploy path.
 
-Keep `deployment-topology.json`, `DEPLOYMENT.md`, `scripts/deploy-check.mjs`,
+Keep `deployment-topology.json`, `DEPLOYMENT.md`,
+`scripts/deploy-check.mjs`, `scripts/offline-provider-validation.mjs`,
 `wrangler.jsonc`, and both migration directories as deployment infrastructure
-when replacing the booking application.
+when replacing the booking application. The topology JSON remains the sole
+starter data authority; the sibling validation core is offline-only.
 
 The deliberate `cloudflare.config.ts` guard refuses cf commands run from the
 project root when they load this project's config. It does not cover

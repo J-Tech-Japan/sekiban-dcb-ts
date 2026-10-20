@@ -217,12 +217,19 @@ function assertTemplateAndStarter(project) {
   }
   const replace = readFileSync(join(root, "packages/create-dcb/template/REPLACE.md"), "utf8");
   for (const phrase of ["`cloudflare.config.ts`", "`public/.assetsignore`", "`AGENTS.md`"]) check(replace.includes(phrase), `REPLACE.md omitted ${phrase}`);
+  const sourceCore = readFileSync(join(root, "scripts/lib/offline-provider-validation.mjs"));
+  const templateCore = readFileSync(join(root, "packages/create-dcb/template/scripts/offline-provider-validation.mjs"));
+  const generatedCorePath = join(project, "scripts/offline-provider-validation.mjs");
+  check(existsSync(generatedCorePath), "generated project is missing offline-provider-validation.mjs");
+  check(Buffer.compare(sourceCore, templateCore) === 0, "repository and template offline cores drifted");
+  check(Buffer.compare(templateCore, readFileSync(generatedCorePath)) === 0, "template and generated offline cores drifted");
   return {
     generatedGuard: true,
     noCloudflareDirectory: true,
     noGitignore: true,
     assetsIgnore,
     guidance: true,
+    offlineCore: "byte-identical",
   };
 }
 

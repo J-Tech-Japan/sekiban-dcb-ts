@@ -13,6 +13,15 @@ an authority claim. A **safe view** is exposed only through a proven frontier;
 an **unsafe view** is an explicit, tentative read that never advances that
 frontier.
 
+## Offline composition validation
+
+The meeting-room provider composition and generated starters share one
+Node-built-in-only offline validation core. It supplies JSON/JSONC parsing,
+duplicate-safe collection identities, canonical comparisons, and typed
+diagnostics, while each caller keeps its own authority and provider-specific
+rules. The core validates declared files only; it is not a declared-versus-live
+Cloudflare reconciler and it performs no remote operation.
+
 The design has four rules:
 
 1. Serialize the event and its tag-local obligations where the tag is owned.

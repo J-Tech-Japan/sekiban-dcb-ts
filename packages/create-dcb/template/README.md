@@ -27,6 +27,12 @@ the offline `npm run deploy:check` gate, future resource creation, migrations,
 deployment, smoke, and teardown. The gate and the starter create no live
 resources.
 
+`deployment-topology.json` is the sole deployment data authority. The local
+`scripts/offline-provider-validation.mjs` supplies the shared offline parsing,
+identity, comparison, and diagnostic machinery used by the gate; it is kept
+with this generated project so the check remains standalone. It validates
+declared files only and does not reconcile live Cloudflare state.
+
 ```sh
 npx wrangler d1 create {{PIPELINE_DB}}
 npx wrangler d1 create {{MV_DB}}

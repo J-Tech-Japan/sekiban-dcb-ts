@@ -18,6 +18,13 @@ The starter packages require Node.js 20 or newer. The generated project's
 [`DEPLOYMENT.md`](packages/create-dcb/template/DEPLOYMENT.md) is the standalone
 guide for its topology, offline gate, and future deployment steps.
 
+The meeting-room composition check and each generated starter use the same
+offline validation core for parsing, duplicate-safe identities, canonical
+comparisons, and diagnostics. Their authorities remain separate: the sample
+validates its provider-composition contract, while a starter validates
+`deployment-topology.json`. This shared mechanism performs no live
+Cloudflare reconciliation or resource changes.
+
 ## Packages
 
 The core, domain, client, and runtime packages (`@sekiban/dcb-core`, `@sekiban/dcb-domain`, `@sekiban/dcb-client`, and `@sekiban/dcb-runtime`) are released together as one matched set. `@sekiban/create-dcb` generates a starter project, and `@sekiban/dcb-cloudflare` is an optional composition helper for an existing Worker. The starter template lives in `packages/create-dcb/template`.

@@ -101,6 +101,12 @@ is selected, the workflow runs `npm run test:starter-cold-install` before any
 publish command. The gate proves creation, installation, typechecking, and a
 Wrangler dry-run from packed artifacts outside the repository.
 
+The creator template carries the byte-checked copy of the shared offline
+validation core through its existing `template/` package allowlist. A later
+creator release therefore ships that file without a new
+`@sekiban/dcb-cloudflare` export or helper release; this change itself bumps
+no package version and publishes nothing.
+
 Both starter packages exist on npm. Their first versions, `0.1.0`, were
 published by a maintainer from a local checkout, carry no provenance, and stay
 unchanged because published versions are immutable. The normalized bin paths
