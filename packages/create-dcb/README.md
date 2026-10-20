@@ -22,6 +22,11 @@ After generation, follow the project's [DEPLOYMENT.md](template/DEPLOYMENT.md)
 for the complete topology, offline `npm run deploy:check`, and future
 deployment steps. The generated check creates no Cloudflare resources.
 
+The sample composition proof and generated `deploy:check` share one copied,
+byte-checked offline validation core. The starter imports only its local copy
+and keeps `deployment-topology.json` as its sole deployment data authority;
+the shared core does not reconcile declared files with live Cloudflare state.
+
 The generated project includes `cosmos.experimental.json` as an experimental,
 read-only layout and binding descriptor. It does not activate Cosmos: the
 generated worker and Wrangler configuration continue to use D1 until the

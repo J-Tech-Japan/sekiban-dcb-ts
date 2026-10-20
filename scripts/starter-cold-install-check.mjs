@@ -290,6 +290,15 @@ function finishInstall(work, env, mode, artifact, receipt) {
   const project = join(work, "cold-start-booking");
   assert(existsSync(project), "create-dcb did not create cold-start-booking");
   assertGeneratedFileSet(walkFiles(project), artifact.createdExpected);
+  const corePath = "scripts/offline-provider-validation.mjs";
+  if (mode === "pack") {
+    assert(artifact.createdExpected.includes(corePath), "creator pack omitted the offline validation core");
+    const sourceCore = readFileSync(join(root, "scripts/lib/offline-provider-validation.mjs"));
+    const templateCore = readFileSync(join(root, "packages/create-dcb/template", corePath));
+    const generatedCore = readFileSync(join(project, corePath));
+    assert(Buffer.compare(sourceCore, templateCore) === 0, "repository and packed template offline cores drifted");
+    assert(Buffer.compare(templateCore, generatedCore) === 0, "packed template and generated offline cores drifted");
+  }
   const descriptorPath = join(project, "cosmos.experimental.json");
   if (existsSync(descriptorPath)) {
     const authority = packageJson(join(root, "contracts/cosmos-layout.json"));

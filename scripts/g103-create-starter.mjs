@@ -35,6 +35,7 @@ const requiredFiles = [
   "cosmos.experimental.json",
   "wrangler.jsonc",
   "deployment-topology.json",
+  "scripts/offline-provider-validation.mjs",
   "src/worker.ts",
   "src/booking-domain.ts",
   "src/booking-transport.ts",
@@ -226,6 +227,15 @@ function assertInventory(project) {
     forbiddenFilesAbsent: true,
     forbiddenWorkerImportsAbsent: true,
   };
+}
+
+function assertOfflineCoreParity(project) {
+  const source = readFileSync(join(root, "scripts/lib/offline-provider-validation.mjs"));
+  const template = readFileSync(join(root, "packages/create-dcb/template/scripts/offline-provider-validation.mjs"));
+  const generated = readFileSync(join(project, "scripts/offline-provider-validation.mjs"));
+  assert(Buffer.compare(source, template) === 0, "repository and template offline cores drifted");
+  assert(Buffer.compare(template, generated) === 0, "template and generated offline cores drifted");
+  return { sourceTemplateByteIdentical: true, templateGeneratedByteIdentical: true, path: "scripts/offline-provider-validation.mjs" };
 }
 
 function assertConfig(project, projectName) {
@@ -548,6 +558,7 @@ async function main() {
     const project = join(proofRoot, projectName);
     assert(existsSync(project), "create CLI did not write the slugified project directory");
     const inventory = assertInventory(project);
+    const offlineCore = assertOfflineCoreParity(project);
     const configProof = assertConfig(project, projectName);
     const migrationParity = assertIncidentMigrationParity(project);
     const replaceProof = assertReplaceManifest(project);
@@ -570,6 +581,7 @@ async function main() {
       project: projectName,
       create: { cleanTempDirectory: true, slugifiedDirectory: true, stdout: create.stdout.trim() },
       inventory,
+      offlineCore,
       config: configProof,
       migrationParity,
       replace: replaceProof,

@@ -15,6 +15,9 @@ The offline check removes Cloudflare credential variables, checks this guide
 against `deployment-topology.json` and `wrangler.jsonc`, and then performs a
 project-local Wrangler deploy dry-run. It does not log in, create resources,
 apply remote migrations, deploy, call smoke endpoints, or tear anything down.
+The sibling `scripts/offline-provider-validation.mjs` is the standalone copy
+of the shared offline parser, identity, comparison, and diagnostic core. It
+does not perform declared-versus-live reconciliation.
 
 ## 2. Declared deployment topology
 

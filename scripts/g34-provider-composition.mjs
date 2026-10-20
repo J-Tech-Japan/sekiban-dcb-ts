@@ -1,12 +1,21 @@
-import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertUniqueBy,
+  canonicalJson,
+  compareExactOrdered,
+  compareExactSet,
+  domainSeparatedSha256,
+  parseJsonc,
+} from "./lib/offline-provider-validation.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const manifestPath = "contracts/provider-composition.json";
 export const mappingPath = "contracts/provider-composition.local-mapping.json";
 export const generatedPath = "samples/meeting-room/src/generated/provider-composition.ts";
+export const sharedCorePath = "scripts/lib/offline-provider-validation.mjs";
+export const templateCorePath = "packages/create-dcb/template/scripts/offline-provider-validation.mjs";
 export const DOMAIN = "sekiban-dcb-ts/provider-composition-manifest/v1";
 export const CANONICALIZATION_VERSION = "rfc8785";
 
@@ -79,20 +88,11 @@ function fail(code, path, reason) {
 }
 
 export function jcs(value) {
-  if (value === null) return "null";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new Error("JCS number is not finite");
-    return JSON.stringify(value);
-  }
-  if (typeof value === "string") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(jcs).join(",")}]`;
-  if (typeof value !== "object") throw new Error("JCS value is not a JSON type");
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${jcs(value[key])}`).join(",")}}`;
+  return canonicalJson(value, "jcs");
 }
 
 export function digestBytes(payload, domain = DOMAIN) {
-  return createHash("sha256").update(domain, "utf8").update("\0").update(jcs(payload), "utf8").digest("hex");
+  return domainSeparatedSha256(payload, domain);
 }
 
 function byId(left, right) {
@@ -131,7 +131,9 @@ export function manifestDigest(manifest, domain = DOMAIN) {
 }
 
 export function loadJson(path) {
-  return JSON.parse(readFileSync(join(root, path), "utf8"));
+  return parseJsonc(readFileSync(join(root, path), "utf8"), path, (value) => {
+    fail("CARDINALITY", value.path, "cardinality");
+  });
 }
 
 export function loadManifest() { return loadJson(manifestPath); }
@@ -147,6 +149,38 @@ function bindingNames(config) {
     ...(config?.queues?.producers ?? []).map((entry) => entry.binding),
     ...(config?.services ?? []).map((entry) => entry.binding),
   ];
+}
+
+function copyCore() {
+  writeFileSync(join(root, templateCorePath), readFileSync(join(root, sharedCorePath)));
+}
+
+export function checkTemplateCore(
+  source = readFileSync(join(root, sharedCorePath)),
+  copy = readFileSync(join(root, templateCorePath)),
+) {
+  if (!Buffer.from(source).equals(Buffer.from(copy))) fail("GENERATED_DRIFT", templateCorePath, "generated-drift");
+  return true;
+}
+
+function assertManifestIdentities(manifest) {
+  assertUniqueBy(manifest.resources, (resource) => resource?.id, "resources", (value) =>
+    fail("CARDINALITY", value.path, "cardinality"));
+  assertUniqueBy(manifest.edges, (edge) => edge?.id, "edges", (value) =>
+    fail("CARDINALITY", value.path, "cardinality"));
+}
+
+function assertConfigIdentities(config) {
+  for (const [entries, identity, path] of [
+    [config?.d1_databases ?? [], (entry) => entry?.binding, "d1_databases.binding"],
+    [config?.d1_databases ?? [], (entry) => entry?.database_name, "d1_databases.database_name"],
+    [config?.queues?.producers ?? [], (entry) => entry?.binding, "queues.producers.binding"],
+    [config?.queues?.producers ?? [], (entry) => entry?.queue, "queues.producers.queue"],
+    [config?.queues?.consumers ?? [], (entry) => entry?.queue, "queues.consumers.queue"],
+    [config?.durable_objects?.bindings ?? [], (entry) => entry?.name, "durable_objects.bindings.name"],
+    [config?.durable_objects?.bindings ?? [], (entry) => entry?.class_name, "durable_objects.bindings.class_name"],
+    [config?.migrations ?? [], (entry) => entry?.tag, "migrations.tag"],
+  ]) assertUniqueBy(entries, identity, path, (value) => fail("CARDINALITY", value.path, "cardinality"));
 }
 
 export function generateSource(manifest) {
@@ -237,14 +271,21 @@ function requireMappingEntries(mapping) {
 }
 
 function assertExact(actual, expected, code, path, reason) {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) fail(code, path, reason);
+  compareExactOrdered(actual, expected, path, (value) => fail(code, value.path, reason), reason);
 }
 
 export function validateManifest(manifest, mapping) {
+  assertManifestIdentities(manifest);
   requireMappingEntries(mapping);
   if (manifest.schemaVersion !== 1 || manifest.canonicalizationVersion !== CANONICALIZATION_VERSION || manifest.profileId !== "meeting-room-cloudflare") fail("CARDINALITY", "profileId", "cardinality");
   if (manifest.tenantRef !== "tnrf-c4e91a70b2d85f36a18e") fail("SCOPE_PROOF_UNAVAILABLE", "tenantRef", "scope-proof-unavailable");
-  assertExact(manifest.scopeAxes, ["logicalServiceScope", "deploymentComponentScope", "providerTenantScope", "physicalResourceScope"], "CARDINALITY", "scopeAxes", "cardinality");
+  compareExactOrdered(
+    manifest.scopeAxes,
+    ["logicalServiceScope", "deploymentComponentScope", "providerTenantScope", "physicalResourceScope"],
+    "scopeAxes",
+    (value) => fail("CARDINALITY", value.path, "cardinality"),
+    "cardinality",
+  );
   assertExact(manifest.components.map((component) => component.id), ["worker"], "CARDINALITY", "components", "cardinality");
   const component = manifest.components[0];
   for (const key of ["workerName", "config", "deploymentComponentScope", "physicalResourceScope"]) if (component[key] !== ({ workerName: "sekiban-dcb-meeting-room-cloudflare-only", config: "samples/meeting-room/wrangler.cloudflare-only.jsonc", deploymentComponentScope: "worker", physicalResourceScope: "opaque-ref" }[key])) fail("CARDINALITY", `worker.${key}`, "cardinality");
@@ -254,7 +295,13 @@ export function validateManifest(manifest, mapping) {
     { kind: "default", operation: "fetch", requiredBindings: REQUIRED_BINDINGS, forbiddenBindings: [] },
     { kind: "named", name: "MeetingRoomDownstreamDoorbell", operation: "deliver", requiredBindings: REQUIRED_BINDINGS, forbiddenBindings: [] },
   ], "CARDINALITY", "worker.entrypoints", "cardinality");
-  assertExact([...new Set(component.entrypoints.flatMap((entrypoint) => [...entrypoint.requiredBindings, ...entrypoint.forbiddenBindings]))].sort(), [...REQUIRED_BINDINGS].sort(), "CARDINALITY", "bindings", "cardinality");
+  compareExactSet(
+    component.entrypoints.flatMap((entrypoint) => [...entrypoint.requiredBindings, ...entrypoint.forbiddenBindings]),
+    REQUIRED_BINDINGS,
+    "bindings",
+    (value) => fail("CARDINALITY", value.path, "cardinality"),
+    "cardinality",
+  );
   const pipelineResources = manifest.resources.filter((resource) => resource.role === "pipeline-D1");
   if (pipelineResources.length !== 1) fail("SECOND_SHARD", "resources.pipeline-D1", "second-shard");
   assertExact(manifest.resources.map((resource) => resource.id), REQUIRED_RESOURCE_IDS, "CARDINALITY", "resources", "cardinality");
@@ -301,6 +348,7 @@ function assertEntrypointSource(source, receiverSource) {
 }
 
 export function validateConfig(manifest, component, config, mapping, source = readFileSync(join(root, "samples/meeting-room/src/worker.cloudflare-only.ts"), "utf8"), receiverSource = readFileSync(join(root, "samples/meeting-room/src/worker.g38-receiver.ts"), "utf8")) {
+  assertConfigIdentities(config);
   requireMappingEntries(mapping);
   if (config.name !== component.workerName) fail("CARDINALITY", `${component.id}.workerName`, "cardinality");
   if (config.main !== "src/worker.cloudflare-only.ts") fail("CARDINALITY", `${component.id}.main`, "cardinality");
@@ -396,10 +444,19 @@ export function runSelfTest() {
       if (!(error instanceof CompositionDiagnostic) || JSON.stringify(error.diagnostic) !== JSON.stringify(expected)) throw error;
     }
   };
+  const parseSelfTestJsonc = (text) => parseJsonc(text, "self-test.jsonc", (value) => fail("CARDINALITY", value.path, "cardinality"));
+  if (parseSelfTestJsonc("// line comment\n{\"value\": 1}").value !== 1) throw new Error("line comments were not accepted");
+  if (parseSelfTestJsonc("/* block comment */ {\"value\": 1}").value !== 1) throw new Error("block comments were not accepted");
+  expect("jsonc-object-trailing-comma", () => parseSelfTestJsonc("{\"value\": 1,}"), "CARDINALITY", "$", "cardinality");
+  expect("jsonc-array-trailing-comma", () => parseSelfTestJsonc("[1,]"), "CARDINALITY", "$[1]", "cardinality");
   expect("second-producer", () => validateConfig(manifest, manifest.components[0], { ...worker, queues: { ...worker.queues, producers: [...worker.queues.producers, { binding: "EXTRA", queue: "extra" }] } }, mapping), "CARDINALITY", "worker.bindings", "cardinality");
+  expect("duplicate-manifest-resource", () => validateManifest({ ...manifest, resources: [...manifest.resources, { ...manifest.resources[0] }] }, mapping), "CARDINALITY", "resources[9]", "cardinality");
+  expect("duplicate-config-binding", () => validateConfig(manifest, manifest.components[0], { ...worker, d1_databases: [...worker.d1_databases, { ...worker.d1_databases[0] }] }, mapping), "CARDINALITY", "d1_databases.binding[2]", "cardinality");
   expect("second-shard", () => validateManifest({ ...manifest, resources: [...manifest.resources, { ...manifest.resources[0], id: "pipeline-d1-b" }] }, mapping), "SECOND_SHARD", "resources.pipeline-D1", "second-shard");
   expect("second-manifest", () => assertSingleSource([manifestPath, "contracts/provider-composition.copy.json"]), "SECOND_MANIFEST", "contracts/provider-composition.copy.json", "second-manifest");
   const committed = readFileSync(join(root, generatedPath), "utf8");
+  const core = readFileSync(join(root, sharedCorePath));
+  expect("core-byte-drift", () => checkTemplateCore(core, Buffer.concat([core, Buffer.from("\n")])), "GENERATED_DRIFT", templateCorePath, "generated-drift");
   expect("json-only", () => checkGenerated({ ...manifest, tenantRef: "tnrf-ffffffffffffffffffffffffffffffff" }, committed), "GENERATED_DRIFT", generatedPath, "generated-drift");
   expect("generated-only", () => checkGenerated(manifest, `${committed}\n`), "GENERATED_DRIFT", generatedPath, "generated-drift");
   expect("accessor-only", () => checkGenerated(manifest, committed.replace('return env["D1"] as NonNullable<E["D1"]>;', 'return env["D1_MV"] as NonNullable<E["D1_MV"]>;')), "GENERATED_DRIFT", generatedPath, "generated-drift");
@@ -454,7 +511,11 @@ export function runSelfTest() {
 
 function main() {
   const write = process.argv.includes("--write");
-  if (write) writeFileSync(join(root, generatedPath), generateSource(loadManifest()));
+  if (write) {
+    writeFileSync(join(root, generatedPath), generateSource(loadManifest()));
+    copyCore();
+  }
+  if (process.argv.includes("--check")) checkTemplateCore();
   if (process.argv.includes("--self-test") || process.argv.includes("--check")) process.stdout.write(`${JSON.stringify(runSelfTest())}\n`);
 }
 

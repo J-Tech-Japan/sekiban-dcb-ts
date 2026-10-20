@@ -464,6 +464,9 @@ function runSelfTest() {
     const deploymentMarkdownRepo = makeSelfTestRepo([["packages/create-dcb/template/DEPLOYMENT.md", "G44"]]);
     repos.push(deploymentMarkdownRepo);
     expectFailure(deploymentMarkdownRepo, "internal-unit-vocabulary", selfTestOptions);
+    const copiedCoreRepo = makeSelfTestRepo([["packages/create-dcb/template/scripts/offline-provider-validation.mjs", markers[0]]]);
+    repos.push(copiedCoreRepo);
+    expectFailure(copiedCoreRepo, "forbidden-marker", selfTestOptions);
     const privateHostPathRepo = makeSelfTestRepo([["path.txt", internalHostPath]]);
     repos.push(privateHostPathRepo);
     expectFailure(privateHostPathRepo, "private-host-path", selfTestOptions);
@@ -552,6 +555,7 @@ function runSelfTest() {
         "internal-unit-vocabulary-doc-path",
         "private-host-path",
         "mixed-case-private-host-path",
+        "copied-template-core-scanned",
         "legacy-pin-path",
         "legacy-pin-text",
         "legacy-bundle-fields",

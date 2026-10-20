@@ -70,3 +70,8 @@ versioned migrations before the first deployment (see
 ./samples/meeting-room/scripts/migrate-remote.sh
 npx wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc
 ```
+
+The offline composition and deploy-gate checks use the repository's shared
+validation core. It checks the checked-in sample authority, local mapping, and
+generated accessors before any deploy continuation; it does not query live
+Cloudflare state or create resources.

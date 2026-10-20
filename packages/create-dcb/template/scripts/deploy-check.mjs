@@ -16,6 +16,16 @@ import {
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertArray,
+  assertClosedObject,
+  assertNonEmptyString,
+  assertUnique,
+  assertUniqueBy,
+  canonicalJson,
+  compareNormalizedRows,
+  parseJsonc as parseSharedJsonc,
+} from "./offline-provider-validation.mjs";
 
 const project = process.cwd();
 const topologyPath = join(project, "deployment-topology.json");
@@ -33,161 +43,29 @@ function assert(condition, reason, detail = "") {
   if (!condition) fail(reason, detail);
 }
 
-function stripJsonc(source) {
-  let result = "";
-  let inString = false;
-  let escaped = false;
-  for (let index = 0; index < source.length; index += 1) {
-    const current = source[index];
-    const next = source[index + 1];
-    if (inString) {
-      result += current;
-      if (escaped) escaped = false;
-      else if (current === "\\") escaped = true;
-      else if (current === '"') inString = false;
-      continue;
-    }
-    if (current === '"') {
-      inString = true;
-      result += current;
-    } else if (current === "/" && next === "/") {
-      const newline = source.indexOf("\n", index + 2);
-      if (newline < 0) break;
-      result += "\n";
-      index = newline;
-    } else if (current === "/" && next === "*") {
-      const closing = source.indexOf("*/", index + 2);
-      assert(closing >= 0, "jsonc-parse", "unterminated block comment");
-      result += " ";
-      index = closing + 1;
-    } else {
-      result += current;
-    }
-  }
-  return result;
-}
-
-function scanDuplicateKeys(source, label) {
-  const text = stripJsonc(source);
-  let index = 0;
-
-  function whitespace() {
-    while (/\s/.test(text[index] ?? "")) index += 1;
-  }
-
-  function string() {
-    const start = index;
-    index += 1;
-    let escaped = false;
-    while (index < text.length) {
-      const current = text[index++];
-      if (escaped) escaped = false;
-      else if (current === "\\") escaped = true;
-      else if (current === '"') return JSON.parse(text.slice(start, index));
-    }
-    fail("jsonc-parse", `${label} has an unterminated string`);
-  }
-
-  function value(path) {
-    whitespace();
-    const current = text[index];
-    if (current === "{") {
-      index += 1;
-      const keys = new Set();
-      whitespace();
-      if (text[index] === "}") {
-        index += 1;
-        return;
-      }
-      while (index < text.length) {
-        whitespace();
-        assert(text[index] === '"', "jsonc-parse", `${label}${path} expected an object key`);
-        const key = string();
-        const keyPath = `${path}.${key}`;
-        if (keys.has(key)) fail("duplicate-collection-key", path);
-        keys.add(key);
-        whitespace();
-        assert(text[index] === ":", "jsonc-parse", `${keyPath} is missing a colon`);
-        index += 1;
-        value(keyPath);
-        whitespace();
-        if (text[index] === "}") {
-          index += 1;
-          return;
-        }
-        assert(text[index] === ",", "jsonc-parse", `${path} expected a comma`);
-        index += 1;
-      }
-    } else if (current === "[") {
-      index += 1;
-      let item = 0;
-      whitespace();
-      if (text[index] === "]") {
-        index += 1;
-        return;
-      }
-      while (index < text.length) {
-        value(`${path}[${item}]`);
-        item += 1;
-        whitespace();
-        if (text[index] === "]") {
-          index += 1;
-          return;
-        }
-        assert(text[index] === ",", "jsonc-parse", `${path} expected a comma`);
-        index += 1;
-      }
-    } else if (current === '"') {
-      string();
-    } else {
-      const start = index;
-      while (index < text.length && !/[\s,}\]]/.test(text[index])) index += 1;
-      assert(index > start, "jsonc-parse", `${path} has an empty value`);
-    }
-  }
-
-  value("$");
-  whitespace();
-  assert(index === text.length, "jsonc-parse", `${label} has trailing content`);
-}
 
 function parseJsonc(source, label) {
-  scanDuplicateKeys(source, label);
-  try {
-    return JSON.parse(stripJsonc(source).replace(/,\s*([}\]])/g, "$1"));
-  } catch (error) {
-    fail("jsonc-parse", `${label}: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  return parseSharedJsonc(source, label, (value) => fail(value.reason, value.path));
 }
 
 function object(value, path, keys) {
-  assert(value !== null && typeof value === "object" && !Array.isArray(value), "authority-shape", `${path} must be an object`);
-  const actual = Object.keys(value).sort();
-  const allowed = [...keys].sort();
-  assert(JSON.stringify(actual) === JSON.stringify(allowed), "authority-key", `${path} keys are ${actual.join(",")}`);
-  return value;
+  return assertClosedObject(value, path, keys, (diagnostic) => fail(diagnostic.reason, diagnostic.path));
 }
 
 function string(value, path) {
-  assert(typeof value === "string" && value.length > 0, "authority-shape", `${path} must be a non-empty string`);
-  return value;
+  return assertNonEmptyString(value, path, (diagnostic) => fail(diagnostic.reason, diagnostic.path));
 }
 
 function array(value, path) {
-  assert(Array.isArray(value), "authority-shape", `${path} must be an array`);
-  return value;
+  return assertArray(value, path, (diagnostic) => fail(diagnostic.reason, diagnostic.path));
 }
 
 function unique(values, path) {
-  const seen = new Set();
-  values.forEach((value, index) => {
-    if (seen.has(value)) fail("duplicate-collection-key", `${path}[${index}]`);
-    seen.add(value);
-  });
+  assertUnique(values, path, (diagnostic) => fail(diagnostic.reason, diagnostic.path));
 }
 
 function uniqueEntries(entries, identity, path) {
-  unique(entries.map(identity), path);
+  assertUniqueBy(entries, identity, path, (diagnostic) => fail(diagnostic.reason, diagnostic.path));
 }
 
 function validateCollectionIdentities(authority, config) {
@@ -351,7 +229,7 @@ function validateAuthority(authority) {
 }
 
 function canonical(value) {
-  return JSON.stringify(value);
+  return canonicalJson(value, "row-key");
 }
 
 function normalizedTopology(authority, config) {
@@ -412,11 +290,7 @@ function compareTopology(authority, config) {
     ["cron", "cron-parity"],
     ["var", "var-parity"],
   ];
-  for (const [kind, reason] of kinds) {
-    const expectedRows = expected.filter((row) => row.kind === kind).sort((a, b) => canonical(a).localeCompare(canonical(b)));
-    const actualRows = actual.filter((row) => row.kind === kind).sort((a, b) => canonical(a).localeCompare(canonical(b)));
-    assert(canonical(expectedRows) === canonical(actualRows), reason);
-  }
+  compareNormalizedRows(actual, expected, kinds, "wrangler.topology", (diagnostic) => fail(diagnostic.reason, diagnostic.path));
   assert(canonical(config.vars) === canonical(authority.vars), "vars-parity");
   assert(canonical(config.triggers?.crons ?? []) === canonical(authority.triggers.crons), "cron-parity");
   assert(config.assets?.directory === authority.assets.directory && !Object.hasOwn(config.assets, "binding"), "assets-parity");
@@ -891,6 +765,11 @@ function expectFailure(name, action) {
 function selfTest() {
   const baseline = readProject();
   const checks = [];
+  assert(parseJsonc("// line comment\n{\"value\": 1}", "line-comment").value === 1, "jsonc-parse", "line comments are not accepted");
+  assert(parseJsonc("/* block comment */ {\"value\": 1}", "block-comment").value === 1, "jsonc-parse", "block comments are not accepted");
+  checks.push(expectFailure("jsonc-parse", () => parseJsonc("{\"value\": 1,}", "object-trailing-comma")));
+  checks.push(expectFailure("jsonc-parse", () => parseJsonc("[1,]", "array-trailing-comma")));
+  checks.push(expectFailure("duplicate-collection-key", () => parseJsonc("{\"value\": 1,\"value\": 2}", "duplicate-object-key")));
   const mutate = (change) => {
     const candidate = { authority: structuredClone(baseline.authority), config: structuredClone(baseline.config), runbook: baseline.runbook };
     change(candidate);
