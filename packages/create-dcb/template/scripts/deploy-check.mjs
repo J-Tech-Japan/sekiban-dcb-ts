@@ -23,6 +23,7 @@ import {
   assertUnique,
   assertUniqueBy,
   canonicalJson,
+  compareNormalizedRows,
   parseJsonc as parseSharedJsonc,
 } from "./offline-provider-validation.mjs";
 
@@ -289,11 +290,7 @@ function compareTopology(authority, config) {
     ["cron", "cron-parity"],
     ["var", "var-parity"],
   ];
-  for (const [kind, reason] of kinds) {
-    const expectedRows = expected.filter((row) => row.kind === kind).sort((a, b) => canonical(a).localeCompare(canonical(b)));
-    const actualRows = actual.filter((row) => row.kind === kind).sort((a, b) => canonical(a).localeCompare(canonical(b)));
-    assert(canonical(expectedRows) === canonical(actualRows), reason);
-  }
+  compareNormalizedRows(actual, expected, kinds, "wrangler.topology", (diagnostic) => fail(diagnostic.reason, diagnostic.path));
   assert(canonical(config.vars) === canonical(authority.vars), "vars-parity");
   assert(canonical(config.triggers?.crons ?? []) === canonical(authority.triggers.crons), "cron-parity");
   assert(config.assets?.directory === authority.assets.directory && !Object.hasOwn(config.assets, "binding"), "assets-parity");

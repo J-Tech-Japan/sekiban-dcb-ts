@@ -233,6 +233,18 @@ export function rowKey(value) {
   return JSON.stringify(value);
 }
 
+export function compareNormalizedRows(actual, expected, kinds, path, onError) {
+  for (const [kind, reason] of kinds) {
+    const expectedRows = expected
+      .filter((row) => row.kind === kind)
+      .sort((left, right) => rowKey(left).localeCompare(rowKey(right)));
+    const actualRows = actual
+      .filter((row) => row.kind === kind)
+      .sort((left, right) => rowKey(left).localeCompare(rowKey(right)));
+    compareExactOrdered(actualRows, expectedRows, `${path}.${kind}`, onError, reason);
+  }
+}
+
 function jcs(value) {
   if (value === null) return "null";
   if (typeof value === "boolean") return value ? "true" : "false";
