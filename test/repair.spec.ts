@@ -1,7 +1,17 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleOperatorRepair, type OperatorRepairEnv } from "../packages/dcb-runtime/src/cli/OperatorRepairCli";
+import { createRuntimeWorker } from "../packages/dcb-runtime/src/index";
+import { createCloudflareOnlyRuntimeWorker } from "../packages/dcb-runtime/src/cloudflare";
+import { RepairWorker } from "../packages/dcb-runtime/src/repair/RepairWorker";
+import {
+  injectableServiceIdentity,
+  TEST_SERVICE_ID_HEADER,
+  type ServiceIdentityProvider,
+  type ServiceIdentityRequestOptions,
+} from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
+import type { NativeTracing } from "../packages/dcb-runtime/src/trace/CommitTrace";
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import type { JournalRecord } from "../packages/dcb-runtime/src/journal/types";
 import type { RepairScopeItem, TagRecord } from "../packages/dcb-runtime/src/tag/types";
@@ -372,7 +382,12 @@ describe("SDT-G6 operator repair vertical slice", () => {
     await installPartial(prepared.missingTag, unrelatedAttempt);
     const before = await tagState(prepared.missingTag);
     const journalBefore = await journalState(prepared.attemptId);
-    expect((await SELF.fetch("https://repair.test/operator/repair", { method: "POST" })).status).toBe(401);
+    const unconfigured = await SELF.fetch("https://repair.test/operator/repair", { method: "POST" });
+    expect(unconfigured.status).toBe(404);
+    expect(await responseJson<{ code: string; error: string }>(unconfigured)).toEqual({
+      code: "operator_repair_route_not_found",
+      error: "Operator repair route not found",
+    });
     const base = env as unknown as Pick<WorkerEnv, "JOURNAL" | "TAG">;
     const unauthenticated = await handleOperatorRepair(new Request("https://repair.test/operator/repair", { method: "POST" }), {
       ...base,
@@ -547,5 +562,260 @@ describe("SDT-G6 operator repair vertical slice", () => {
     });
     expect(clear.status).toBe(409);
     expect((await tagFacts(target)).fences).toContainEqual(expect.objectContaining({ reason: "partial_write", attemptId }));
+  });
+});
+
+const REPAIR_DOWNSTREAM = ["BOOTSTRAP", "ALLOCATOR", "JOURNAL", "TAG", "TAG_STATE", "D1", "D1_MV", "REPAIR_EXCLUSION_LOOKUP", "DOWNSTREAM_QUEUE"] as const;
+
+function repairIdentity(configured: string | undefined) {
+  const calls = { forRequest: 0, deployment: 0 };
+  const seen: Array<{ readonly options: ServiceIdentityRequestOptions; readonly header: string | null }> = [];
+  const inner = injectableServiceIdentity(configured);
+  const provider: ServiceIdentityProvider = {
+    deployment() {
+      calls.deployment += 1;
+      return inner.deployment();
+    },
+    forRequest(request, options) {
+      calls.forRequest += 1;
+      seen.push({ options: options ?? {}, header: request.headers.get(TEST_SERVICE_ID_HEADER) });
+      return inner.forRequest(request, options);
+    },
+  };
+  return { calls, seen, provider };
+}
+
+function repairJson(request: Request, reads: { json: number }): Request {
+  return new Proxy(request, {
+    get(target, property) {
+      if (property === "json") {
+        return async () => {
+          reads.json += 1;
+          return target.json();
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+function repairEnv(base: Record<string, unknown>, access: Record<string, number>) {
+  return new Proxy(base, {
+    get(target, property, receiver) {
+      if (typeof property === "string") access[property] = (access[property] ?? 0) + 1;
+      if (typeof property === "string" && REPAIR_DOWNSTREAM.includes(property as typeof REPAIR_DOWNSTREAM[number]) && !Object.hasOwn(target, property)) {
+        throw new Error(`unexpected downstream access: ${property}`);
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+}
+
+function repairCtx(reads: { tracing: number }): ExecutionContext {
+  return new Proxy({} as ExecutionContext, {
+    get(_target, property) {
+      if (property === "tracing") {
+        reads.tracing += 1;
+        return undefined;
+      }
+      if (property === "waitUntil" || property === "passThroughOnException") return () => undefined;
+      return undefined;
+    },
+  });
+}
+
+function expectRepairUntouched(access: Record<string, number>, reads: { json: number; tracing: number; spans: number }, identity: { forRequest: number; deployment: number }, executes: number, label: string) {
+  for (const name of REPAIR_DOWNSTREAM) expect(access[name] ?? 0, `${label} ${name}`).toBe(0);
+  expect(reads.json, `${label} json`).toBe(0);
+  expect(reads.tracing, `${label} tracing`).toBe(0);
+  expect(reads.spans, `${label} span`).toBe(0);
+  expect(identity.forRequest, `${label} forRequest`).toBe(0);
+  expect(identity.deployment, `${label} deployment`).toBe(0);
+  expect(executes, `${label} execute`).toBe(0);
+}
+
+describe("repair bearer denials", () => {
+  let executes = 0;
+  beforeEach(() => {
+    executes = 0;
+    vi.spyOn(RepairWorker.prototype, "execute").mockImplementation(async () => {
+      executes += 1;
+      throw new Error("repair execute must not run in the auth matrix");
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const postDenials = [
+    { label: "absent binding", token: undefined, header: "Bearer test-repair-operator-token", status: 404, code: "operator_repair_route_not_found" },
+    { label: "empty binding", token: "", header: "Bearer ", status: 404, code: "operator_repair_route_not_found" },
+    { label: "whitespace binding", token: " \t ", header: "Bearer  \t ", status: 404, code: "operator_repair_route_not_found" },
+    { label: "missing header", token: OPERATOR_TOKEN, header: undefined, status: 401, code: "operator_auth_required" },
+    { label: "wrong credential", token: OPERATOR_TOKEN, header: "Bearer wrong", status: 401, code: "operator_auth_required" },
+  ] as const;
+  const factories = [
+    { name: "createRuntimeWorker", create: createRuntimeWorker },
+    { name: "createCloudflareOnlyRuntimeWorker", create: createCloudflareOnlyRuntimeWorker },
+  ] as const;
+
+  it("rejects direct POST denials before parsing, identity, exclusion lookup, or execution", async () => {
+    for (const row of postDenials) {
+      const access: Record<string, number> = {};
+      const reads = { json: 0, tracing: 0, spans: 0 };
+      const identity = repairIdentity("deployed-service");
+      const tracing = { enterSpan: () => { reads.spans += 1; throw new Error("tracing"); } } as unknown as NativeTracing;
+      const request = repairJson(new Request("https://repair.test/operator/repair", {
+        method: "POST",
+        headers: row.header === undefined ? { "content-type": "application/json" } : { authorization: row.header, "content-type": "application/json" },
+        body: "{",
+      }), reads);
+      const response = await handleOperatorRepair(request, repairEnv({ REPAIR_OPERATOR_TOKEN: row.token }, access) as unknown as OperatorRepairEnv, tracing, identity.provider);
+      expect(response.status, row.label).toBe(row.status);
+      const text = await response.text();
+      expect(JSON.parse(text), row.label).toMatchObject({ code: row.code });
+      expect(text, row.label).not.toContain(OPERATOR_TOKEN);
+      expectRepairUntouched(access, reads, identity.calls, executes, row.label);
+    }
+  });
+
+  it("keeps direct non-POST repair at 404 for every binding state", async () => {
+    for (const method of ["GET", "PUT", "DELETE"] as const) {
+      for (const token of [undefined, "", " \n ", OPERATOR_TOKEN] as const) {
+        const access: Record<string, number> = {};
+        const reads = { json: 0, tracing: 0, spans: 0 };
+        const identity = repairIdentity("deployed-service");
+        const response = await handleOperatorRepair(
+          new Request("https://repair.test/operator/repair", { method, headers: { authorization: `Bearer ${OPERATOR_TOKEN}` } }),
+          repairEnv({ REPAIR_OPERATOR_TOKEN: token }, access) as unknown as OperatorRepairEnv,
+          { enterSpan: () => { reads.spans += 1; throw new Error("tracing"); } } as unknown as NativeTracing,
+          identity.provider,
+        );
+        expect(response.status, `${method} ${String(token)}`).toBe(404);
+        expect(await response.json(), `${method} ${String(token)}`).toEqual({
+          error: "Operator repair requires POST",
+          code: "operator_repair_route_not_found",
+        });
+        expect(access.REPAIR_OPERATOR_TOKEN ?? 0, `${method} must not read the binding`).toBe(0);
+        expectRepairUntouched(access, reads, identity.calls, executes, `${method} ${String(token)}`);
+      }
+    }
+  });
+
+  it("reaches JSON parsing for a correct direct credential without executing repair", async () => {
+    const access: Record<string, number> = {};
+    const reads = { json: 0, tracing: 0, spans: 0 };
+    const identity = repairIdentity("deployed-service");
+    const response = await handleOperatorRepair(
+      repairJson(new Request("https://repair.test/operator/repair", {
+        method: "POST",
+        headers: { authorization: `Bearer ${OPERATOR_TOKEN}`, "content-type": "application/json" },
+        body: "{",
+      }), reads),
+      repairEnv({ REPAIR_OPERATOR_TOKEN: OPERATOR_TOKEN }, access) as unknown as OperatorRepairEnv,
+      { enterSpan: () => { reads.spans += 1; throw new Error("tracing"); } } as unknown as NativeTracing,
+      identity.provider,
+    );
+    expect(response.status).toBe(400);
+    expect(reads.json).toBe(1);
+    expect(executes).toBe(0);
+    expect(identity.calls.deployment).toBe(0);
+    expect(access.JOURNAL ?? 0).toBe(0);
+    expect(access.REPAIR_EXCLUSION_LOOKUP ?? 0).toBe(0);
+  });
+
+  it.each(factories)("rejects $name POST repair denials before identity and downstream access", async (factory) => {
+    for (const row of postDenials) {
+      const access: Record<string, number> = {};
+      const reads = { json: 0, tracing: 0, spans: 0 };
+      const identity = repairIdentity("deployed-service");
+      const worker = factory.create({ serviceIdentityProvider: identity.provider } as never);
+      const fetch = worker.fetch as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
+      const response = await fetch(repairJson(new Request("https://repair.test/operator/repair", {
+        method: "POST",
+        headers: row.header === undefined ? undefined : { authorization: row.header },
+        body: "{",
+      }), reads), repairEnv({ REPAIR_OPERATOR_TOKEN: row.token }, access), repairCtx(reads));
+      expect(response.status, `${factory.name} ${row.label}`).toBe(row.status);
+      const text = await response.text();
+      expect(JSON.parse(text), `${factory.name} ${row.label}`).toMatchObject({ code: row.code });
+      expect(text, `${factory.name} ${row.label}`).not.toContain(OPERATOR_TOKEN);
+      expectRepairUntouched(access, reads, identity.calls, executes, `${factory.name} ${row.label}`);
+    }
+  });
+
+  it.each(factories)("keeps $name non-POST repair at 404 before the binding and identity", async (factory) => {
+    for (const token of [undefined, OPERATOR_TOKEN] as const) {
+      const access: Record<string, number> = {};
+      const reads = { json: 0, tracing: 0, spans: 0 };
+      const identity = repairIdentity("deployed-service");
+      const worker = factory.create({ serviceIdentityProvider: identity.provider } as never);
+      const fetch = worker.fetch as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
+      const response = await fetch(
+        new Request("https://repair.test/operator/repair", { method: "GET", headers: { authorization: `Bearer ${OPERATOR_TOKEN}` } }),
+        repairEnv({ REPAIR_OPERATOR_TOKEN: token }, access),
+        repairCtx(reads),
+      );
+      expect(response.status, `${factory.name} ${String(token)}`).toBe(404);
+      expect(access.REPAIR_OPERATOR_TOKEN ?? 0, `${factory.name} non-POST binding`).toBe(0);
+      expectRepairUntouched(access, reads, identity.calls, executes, `${factory.name} non-POST`);
+    }
+  });
+
+  it.each(factories)("returns $name scope.identity_missing after a correct repair credential", async (factory) => {
+    const access: Record<string, number> = {};
+    const reads = { json: 0, tracing: 0, spans: 0 };
+    const identity = repairIdentity(undefined);
+    const worker = factory.create({ serviceIdentityProvider: identity.provider } as never);
+    const fetch = worker.fetch as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
+    const response = await fetch(repairJson(new Request("https://repair.test/operator/repair", {
+      method: "POST",
+      headers: { authorization: `Bearer ${OPERATOR_TOKEN}` },
+      body: "{",
+    }), reads), repairEnv({ REPAIR_OPERATOR_TOKEN: OPERATOR_TOKEN }, access), repairCtx(reads));
+    expect(response.status, factory.name).toBe(503);
+    expect(await response.json(), factory.name).toEqual({
+      code: "scope.identity_missing",
+      error: "A deployment service identity is required for this scope",
+    });
+    expect(identity.calls.forRequest, factory.name).toBe(1);
+    expect(identity.calls.deployment, factory.name).toBe(0);
+    expect(reads.json, factory.name).toBe(0);
+    expect(reads.tracing, factory.name).toBe(0);
+    expect(executes, factory.name).toBe(0);
+    for (const name of REPAIR_DOWNSTREAM) expect(access[name] ?? 0, `${factory.name} ${name}`).toBe(0);
+  });
+
+  it.each(factories)("admits $name request identity before repair parsing and does not execute", async (factory) => {
+    for (const allow of [true, false]) {
+      const access: Record<string, number> = {};
+      const reads = { json: 0, tracing: 0, spans: 0 };
+      const identity = repairIdentity("deployed-service");
+      const worker = factory.create({ serviceIdentityProvider: identity.provider } as never);
+      const fetch = worker.fetch as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
+      const response = await fetch(repairJson(new Request("https://repair.test/operator/repair", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${OPERATOR_TOKEN}`,
+          [TEST_SERVICE_ID_HEADER]: "override-service",
+        },
+        body: "{",
+      }), reads), repairEnv({
+        REPAIR_OPERATOR_TOKEN: OPERATOR_TOKEN,
+        D1: undefined,
+        ...(allow ? { G11_VERIFICATION_ENABLED: "true" } : {}),
+      }, access), repairCtx(reads));
+      expect(response.status, `${factory.name} allow=${allow}`).toBe(400);
+      expect(identity.calls.forRequest, `${factory.name} allow=${allow}`).toBe(1);
+      expect(identity.seen[0]?.options, `${factory.name} allow=${allow}`).toEqual({ allowG11Verification: allow });
+      expect(identity.seen[0]?.header, `${factory.name} allow=${allow}`).toBe("override-service");
+      expect(reads.json, `${factory.name} allow=${allow}`).toBe(1);
+      expect(reads.tracing, `${factory.name} allow=${allow}`).toBe(1);
+      expect(executes, `${factory.name} allow=${allow}`).toBe(0);
+      expect(access.JOURNAL ?? 0, `${factory.name} allow=${allow}`).toBe(0);
+      expect(access.REPAIR_EXCLUSION_LOOKUP ?? 0, `${factory.name} allow=${allow}`).toBe(0);
+      expect(access.D1 ?? 0, `${factory.name} allow=${allow} D1`).toBe(factory.name === "createCloudflareOnlyRuntimeWorker" ? 1 : 0);
+    }
   });
 });

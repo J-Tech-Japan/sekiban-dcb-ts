@@ -206,4 +206,50 @@ describe("SDT-G14 meeting-room consumer", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ kind: "invalid", code: "invalid_command_input" });
   });
+
+  it("fails closed on the conformance gate before runtime or body parsing", async () => {
+    const rows = [
+      { label: "absent", token: undefined, header: "Bearer conformance-secret", status: 404, code: "not_found", calls: 0 },
+      { label: "empty", token: "", header: "Bearer ", status: 404, code: "not_found", calls: 0 },
+      { label: "whitespace", token: " \n\t ", header: "Bearer  \n\t ", status: 404, code: "not_found", calls: 0 },
+      { label: "missing header", token: "conformance-secret", header: undefined, status: 403, code: "unauthorized", calls: 0 },
+      { label: "wrong credential", token: "conformance-secret", header: "Bearer wrong", status: 403, code: "unauthorized", calls: 0 },
+      { label: "exact whitespace rejected", token: "  conformance-secret  ", header: "Bearer conformance-secret", status: 403, code: "unauthorized", calls: 0 },
+      { label: "correct credential", token: "conformance-secret", header: "Bearer conformance-secret", status: 200, code: undefined, calls: 1 },
+    ] as const;
+    for (const row of rows) {
+      let runtimeCalls = 0;
+      let jsonReads = 0;
+      const worker = createMeetingRoomWorker({
+        runtime: { fetch: async () => { runtimeCalls += 1; return new Response("ok", { status: 200 }); } },
+      });
+      const fetch = worker.fetch as (request: Request, env: MeetingRoomEnv, ctx: ExecutionContext) => Promise<Response>;
+      const request = new Request("https://sample.test/conformance/v1/api/sekiban/serialized/query", {
+        method: "POST",
+        headers: row.header === undefined ? undefined : { authorization: row.header },
+        body: "{",
+      });
+      const watched = new Proxy(request, {
+        get(target, property) {
+          if (property === "json") {
+            return async () => {
+              jsonReads += 1;
+              return target.json();
+            };
+          }
+          const value = Reflect.get(target, property, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      const response = await fetch(watched, { CONFORMANCE_TOKEN: row.token } as unknown as MeetingRoomEnv, {} as ExecutionContext);
+      expect(response.status, row.label).toBe(row.status);
+      if (row.code !== undefined) {
+        const text = await response.text();
+        expect(JSON.parse(text), row.label).toMatchObject({ code: row.code });
+        expect(text, row.label).not.toContain("conformance-secret");
+      }
+      expect(runtimeCalls, row.label).toBe(row.calls);
+      expect(jsonReads, row.label).toBe(0);
+    }
+  });
 });

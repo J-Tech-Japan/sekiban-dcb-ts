@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased matched set 0.2.2
+
+Package versions in this repository stay at 0.2.1. The matched set moves to
+0.2.2 only in a later release-preparation change, after this fix and the
+separate issue #287 interim fix are both merged. A later composition and
+starter change will pass the request environment into the authorization
+callback, document conditional `REPAIR_OPERATOR_TOKEN` setup for generated
+projects, and keep the generated starter's current exact `/operator/*` 404
+boundary. This changelog entry does not publish a package.
+
+### @sekiban/dcb-runtime
+
+- Shared bearer checks fail closed when a binding is missing, empty, or
+  whitespace-only, and compare the full credential with one WebCrypto SHA-256
+  digest.
+- `/operator/bootstrap/*` and both meeting-room conformance gates keep exact
+  configured bytes. Unconfigured bindings return 404. Configured missing or
+  wrong credentials keep 404/403 for bootstrap and 403 for conformance.
+- `POST /operator/repair` returns 404 when `REPAIR_OPERATOR_TOKEN` is not
+  configured. Configured missing or wrong credentials remain 401. Non-POST
+  remains 404.
+- Incident maintenance still trims its configured token, returns 503 when that
+  binding is unconfigured, and returns 401 for a missing or wrong credential.
+- Denied bootstrap and repair requests are rejected before service-identity
+  resolution and before downstream storage or Durable Object access.
+- Cloudflare-only sample deployment wrappers require a protected
+  `REPAIR_OPERATOR_TOKEN` file and send it to Wrangler on standard input.
+  Optional conformance provisioning uses the same file rule. The sample
+  wrapper's `--dry-run` and `-- --dry-run` forms bundle only and perform no
+  remote action.
+
 ## @sekiban/dcb-domain 0.2.1 (matched release)
 
 ### @sekiban/dcb-core 0.2.1

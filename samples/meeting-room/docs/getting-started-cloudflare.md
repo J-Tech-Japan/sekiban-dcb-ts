@@ -65,21 +65,35 @@ That script calls `dcb-cloudflare migrate --config samples/meeting-room/wrangler
 
 ## 3. Deploy
 
+Write `REPAIR_OPERATOR_TOKEN` to a protected file before any live deploy. The file must be a readable regular file and must contain a non-whitespace character. An optional `CONFORMANCE_TOKEN` file follows the same rule. The wrappers share these two variables and pipe each file to `wrangler secret put` without printing it. To rotate either value, replace the file and run the same wrapper again.
+
 ```sh
+export REPAIR_OPERATOR_TOKEN_FILE=/path/to/repair-token
+export CONFORMANCE_TOKEN_FILE=/path/to/conformance-token
 ./samples/meeting-room/scripts/deploy.sh
 ```
 
-Add `--keep-vars` only when you intend to preserve existing vars. The helper does not add it unless you pass it. `scripts/deploy/cloudflare-only-deploy.sh` performs the Cloudflare-only migration and deployment workflow.
+Add `--keep-vars` only when you intend to preserve existing vars. The helper does not add it unless you pass it. `scripts/deploy/cloudflare-only-deploy.sh` is the live workflow that also requires `G20_SERVICE_ID` and the same token files. Do not deploy this Worker with a raw Wrangler command.
 
-Note the printed `*.workers.dev` URL.
+`/operator/bootstrap/*`, `POST /operator/repair`, and both conformance gates keep the exact configured bytes after the non-whitespace check. Repair requests that are not POST return 404 even when the binding is set. A non-primary Cloudflare-only request returns 503 before the conformance credential is checked. Incident maintenance still trims its own token.
 
-The packed-tip path remains:
+These two spellings are equivalent. They require no token file, invoke Wrangler only as `deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --dry-run`, and return before the composition helper, remote migrations, secret provisioning, deployment listing, or a live deploy:
 
 ```sh
+./samples/meeting-room/scripts/deploy.sh --dry-run
+./samples/meeting-room/scripts/deploy.sh -- --dry-run
+```
+
+Note the printed deployment URL from a live run.
+
+The packed-tip live path uses the same files:
+
+```sh
+export REPAIR_OPERATOR_TOKEN_FILE=/path/to/repair-token
 ./scripts/deploy/npm-consumer-deploy.sh
 ```
 
-Dry-run packing/install only: `G99_DRY_RUN=1 ./scripts/deploy/npm-consumer-deploy.sh`.
+Dry-run packing/install only: `G99_DRY_RUN=1 ./scripts/deploy/npm-consumer-deploy.sh`. That form does not provision a secret or deploy.
 
 ## 4. Smoke (create → reserve → read)
 

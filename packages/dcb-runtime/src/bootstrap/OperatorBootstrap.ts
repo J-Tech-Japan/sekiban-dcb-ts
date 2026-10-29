@@ -3,16 +3,24 @@ import { createBootstrapStoreAdapter } from "./BootstrapStoreAdapter";
 import type { BootstrapManifest } from "./types";
 import type { StoreProvider, StoreProviderEnvironment } from "../store/provider";
 import type { AllocatorState } from "../allocator/types";
+import { checkConfiguredBearer } from "../http/ConfiguredBearer";
 import { scopeIdFor } from "../scope/ScopeName";
 
 type JsonObject = Record<string, unknown>;
 function json(body: unknown, status = 200): Response { return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8" } }); }
 function object(value: unknown): value is JsonObject { return typeof value === "object" && value !== null && !Array.isArray(value); }
-function bearer(request: Request, token: string): Response | undefined {
-  const supplied = request.headers.get("authorization");
-  // Keep absence indistinguishable from an undiscovered management surface.
-  if (supplied === null) return json({ code: "not_found", error: "not found" }, 404);
-  if (supplied !== `Bearer ${token}`) return json({ code: "operator_auth_required", error: "valid bearer required" }, 403);
+/** Missing and unconfigured stay indistinguishable from an unknown path. */
+export async function authenticateOperatorBootstrap(
+  request: Request,
+  binding: unknown,
+): Promise<Response | undefined> {
+  const decision = await checkConfiguredBearer(request, binding);
+  if (decision === "unconfigured" || decision === "missing") {
+    return json({ code: "not_found", error: "not found" }, 404);
+  }
+  if (decision === "invalid") {
+    return json({ code: "operator_auth_required", error: "valid bearer required" }, 403);
+  }
   return undefined;
 }
 
@@ -34,9 +42,13 @@ export interface OperatorBootstrapHooks {
   }) => Promise<void>;
 }
 
-/** Bearer-only operator lane. Incoming headers are never forwarded to a DO. */
-export async function handleOperatorBootstrap(request: Request, env: OperatorBootstrapEnv, storeProvider: StoreProvider, hooks: OperatorBootstrapHooks = {}): Promise<Response> {
-  const denied = bearer(request, env.REPAIR_OPERATOR_TOKEN); if (denied !== undefined) return denied;
+/** Authorized continuation. Authentication runs before this function. */
+export async function handleAuthorizedOperatorBootstrap(
+  request: Request,
+  env: OperatorBootstrapEnv,
+  storeProvider: StoreProvider,
+  hooks: OperatorBootstrapHooks = {},
+): Promise<Response> {
   const url = new URL(request.url); const match = url.pathname.match(/^\/operator\/bootstrap\/([^/]+)\/(plan|import|status|abort|export)$/);
   if (match === null) return json({ code: "not_found", error: "not found" }, 404);
   let serviceId: string;
@@ -86,4 +98,16 @@ export async function handleOperatorBootstrap(request: Request, env: OperatorBoo
     return json({ code: "bootstrap_read_model_rebuild_failed", error: "target read-model rebuild failed before READY" }, 503);
   }
   return invoke("/ready", body);
+}
+
+/** Bearer-only bootstrap lane. Incoming headers are never forwarded to a DO. */
+export async function handleOperatorBootstrap(
+  request: Request,
+  env: OperatorBootstrapEnv,
+  storeProvider: StoreProvider,
+  hooks: OperatorBootstrapHooks = {},
+): Promise<Response> {
+  const denied = await authenticateOperatorBootstrap(request, env.REPAIR_OPERATOR_TOKEN);
+  if (denied !== undefined) return denied;
+  return handleAuthorizedOperatorBootstrap(request, env, storeProvider, hooks);
 }

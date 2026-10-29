@@ -339,4 +339,74 @@ describe("SDT-G38 receiver-only surface preparation", () => {
     await expect(response.json()).resolves.toEqual({ error: "Conformance route is not allowlisted", code: "conformance_route_not_allowed" });
     expect(portCalls).toBe(0);
   });
+
+  it("fails closed on primary conformance after the component gate and before downstream ports", async () => {
+    const rows = [
+      { label: "absent", token: undefined, header: "Bearer fixture", status: 404, body: { error: "Not found", code: "not_found" } },
+      { label: "empty", token: "", header: "Bearer ", status: 404, body: { error: "Not found", code: "not_found" } },
+      { label: "whitespace", token: " \t\n ", header: "Bearer  \t\n ", status: 404, body: { error: "Not found", code: "not_found" } },
+      { label: "missing header", token: "fixture", header: undefined, status: 403, body: { error: "Conformance authentication required", code: "unauthorized" } },
+      { label: "wrong credential", token: "fixture", header: "Bearer wrong", status: 403, body: { error: "Conformance authentication required", code: "unauthorized" } },
+      { label: "correct credential", token: "fixture", header: "Bearer fixture", status: 404, body: { error: "Conformance route is not allowlisted", code: "conformance_route_not_allowed" } },
+    ] as const;
+    for (const row of rows) {
+      let portCalls = 0;
+      let jsonReads = 0;
+      const env = new Proxy({ G32_COMPONENT: "primary", CONFORMANCE_TOKEN: row.token }, {
+        get(target, property, receiver) {
+          if (["BOOTSTRAP", "ALLOCATOR", "JOURNAL", "TAG", "D1", "D1_MV", "DOWNSTREAM_QUEUE"].includes(String(property))) {
+            portCalls += 1;
+            throw new Error(`unexpected port access: ${String(property)}`);
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      }) as unknown as MeetingRoomCloudflareEnv;
+      const request = new Request("https://g38.test/conformance/v1/internal/downstream/drain", {
+        method: "POST",
+        headers: row.header === undefined ? undefined : { authorization: row.header },
+        body: "{",
+      });
+      const watched = new Proxy(request, {
+        get(target, property) {
+          if (property === "json") return async () => { jsonReads += 1; return target.json(); };
+          const value = Reflect.get(target, property, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      const response = await primaryWorker.fetch!(watched as never, env, createExecutionContext());
+      expect(response.status, row.label).toBe(row.status);
+      const text = await response.text();
+      expect(JSON.parse(text), row.label).toEqual(row.body);
+      expect(text, row.label).not.toContain("fixture");
+      if (row.token !== undefined && row.token.trim().length > 0 && row.token !== "fixture") {
+        expect(text, row.label).not.toContain(row.token);
+      }
+      expect(portCalls, row.label).toBe(0);
+      expect(jsonReads, row.label).toBe(0);
+    }
+  });
+
+  it("keeps a non-primary conformance request at 503 before bearer evaluation", async () => {
+    let portCalls = 0;
+    const env = new Proxy({ G32_COMPONENT: "receiver", CONFORMANCE_TOKEN: undefined }, {
+      get(target, property, receiver) {
+        if (["BOOTSTRAP", "ALLOCATOR", "JOURNAL", "TAG", "D1", "D1_MV", "DOWNSTREAM_QUEUE"].includes(String(property))) {
+          portCalls += 1;
+          throw new Error(`unexpected port access: ${String(property)}`);
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    }) as unknown as MeetingRoomCloudflareEnv;
+    const response = await primaryWorker.fetch!(
+      new Request("https://g38.test/conformance/v1/api/sekiban/serialized/commit") as never,
+      env,
+      createExecutionContext(),
+    );
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "This route is available only on the primary component",
+      code: "g38_primary_component_required",
+    });
+    expect(portCalls).toBe(0);
+  });
 });
