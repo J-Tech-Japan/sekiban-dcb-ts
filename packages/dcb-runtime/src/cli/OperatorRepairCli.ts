@@ -1,4 +1,5 @@
 import { BindingExclusionLookupClient } from "../downstream/ExclusionLookup";
+import { checkConfiguredBearer } from "../http/ConfiguredBearer";
 import { RepairWorker, RepairWorkerFailure, type RepairExecutionInput, type RepairFault, type RepairMode } from "../repair/RepairWorker";
 import { noOpNativeTracing, type NativeTracing } from "../trace/CommitTrace";
 import { envServiceIdentity, requireServiceIdentity, type ServiceIdentityProvider } from "../service/ServiceIdentityProvider";
@@ -92,20 +93,33 @@ function testFaultFromRequest(request: Request): RepairFault | undefined {
     : undefined;
 }
 
-/** Authenticated, bounded control-plane command; it is not a V1 public wire endpoint. */
-export async function handleOperatorRepair(
+/** Non-POST stays a route miss for every binding state, before authentication. */
+export function nonPostOperatorRepairResponse(request: Request): Response | undefined {
+  if (request.method === "POST") return undefined;
+  return error(404, "operator_repair_route_not_found", "Operator repair requires POST");
+}
+
+export async function authenticateOperatorRepair(
+  request: Request,
+  binding: unknown,
+): Promise<Response | undefined> {
+  const decision = await checkConfiguredBearer(request, binding);
+  if (decision === "unconfigured") {
+    return error(404, "operator_repair_route_not_found", "Operator repair route not found");
+  }
+  if (decision === "missing" || decision === "invalid") {
+    return error(401, "operator_auth_required", "A valid operator repair bearer token is required");
+  }
+  return undefined;
+}
+
+/** Authorized continuation. Authentication and the POST check run before this. */
+export async function handleAuthorizedOperatorRepair(
   request: Request,
   env: OperatorRepairEnv,
   nativeTracing: NativeTracing = noOpNativeTracing,
   serviceIdentityProvider?: ServiceIdentityProvider,
 ): Promise<Response> {
-  if (request.method !== "POST") {
-    return error(404, "operator_repair_route_not_found", "Operator repair requires POST");
-  }
-  const token = env.REPAIR_OPERATOR_TOKEN;
-  if (!isNonEmptyString(token) || request.headers.get("authorization") !== `Bearer ${token}`) {
-    return error(401, "operator_auth_required", "A valid operator repair bearer token is required");
-  }
   let body: unknown;
   try {
     body = await request.json<unknown>();
@@ -131,4 +145,18 @@ export async function handleOperatorRepair(
       : "Operator repair could not determine a durable repair result";
     return error(500, "operator_repair_failed", message);
   }
+}
+
+/** Authenticated, bounded repair command; it is not a V1 public wire endpoint. */
+export async function handleOperatorRepair(
+  request: Request,
+  env: OperatorRepairEnv,
+  nativeTracing: NativeTracing = noOpNativeTracing,
+  serviceIdentityProvider?: ServiceIdentityProvider,
+): Promise<Response> {
+  const methodDenied = nonPostOperatorRepairResponse(request);
+  if (methodDenied !== undefined) return methodDenied;
+  const denied = await authenticateOperatorRepair(request, env.REPAIR_OPERATOR_TOKEN);
+  if (denied !== undefined) return denied;
+  return handleAuthorizedOperatorRepair(request, env, nativeTracing, serviceIdentityProvider);
 }

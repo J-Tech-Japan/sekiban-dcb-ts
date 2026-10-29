@@ -94,10 +94,26 @@ The Cloudflare-only sample uses one D1 database for the PipelineStore and a sepa
 npx wrangler d1 create sekiban-dcb-meeting-room-cloudflare-pipeline
 npx wrangler d1 create sekiban-dcb-meeting-room-cloudflare-mv
 ./samples/meeting-room/scripts/migrate-remote.sh
-npx wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc
 ```
 
-Replace the two D1 IDs in `samples/meeting-room/wrangler.cloudflare-only.jsonc` before migrating or deploying. The optional library and gate checks are listed in the development section.
+Replace the two D1 IDs in `samples/meeting-room/wrangler.cloudflare-only.jsonc` before migrating or deploying. Live deployment of this Worker goes through a protected wrapper, not a raw Wrangler deploy. Write `REPAIR_OPERATOR_TOKEN` to a readable file that contains at least one non-whitespace character, and optionally do the same for `CONFORMANCE_TOKEN`. The wrappers never print those files. The same two paths are used by `./samples/meeting-room/scripts/deploy.sh`, `scripts/deploy/cloudflare-only-deploy.sh`, and the live branch of `scripts/deploy/npm-consumer-deploy.sh`.
+
+```sh
+export REPAIR_OPERATOR_TOKEN_FILE=/path/to/repair-token
+export CONFORMANCE_TOKEN_FILE=/path/to/conformance-token
+./samples/meeting-room/scripts/deploy.sh
+```
+
+To rotate a credential, replace the file contents and run the same wrapper again. It sends the file to `wrangler secret put` on standard input before deployment. `CONFORMANCE_TOKEN_FILE` may be omitted when that secret is already present or unused.
+
+These two commands are equivalent, require no token file, and perform no remote action. They do not build or run the composition helper, apply migrations, provision a secret, list deployments, or deploy live:
+
+```sh
+./samples/meeting-room/scripts/deploy.sh --dry-run
+./samples/meeting-room/scripts/deploy.sh -- --dry-run
+```
+
+Each one runs only `wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --dry-run`. Combining `--dry-run` with any other argument is rejected. `G99_DRY_RUN=1 ./scripts/deploy/npm-consumer-deploy.sh` remains the packed-consumer dry run and also stops before secret provisioning and deployment. The optional library and gate checks are listed in the development section.
 
 The Postgres alternative uses `samples/meeting-room/wrangler.jsonc`. The library's default provider is still Postgres and is never selected by an HTTP request; this variant uses Hyperdrive to reach it. Create the Hyperdrive configuration and replace `REPLACE_WITH_SAMPLE_HYPERDRIVE_ID` before deploying:
 

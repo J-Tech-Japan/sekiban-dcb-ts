@@ -41,10 +41,12 @@ commit remains pending, and only a head at or above it becomes visible. The
 published 120,000ms SafeWindow bound is the UI timeout. Polling cadence and
 the E2E harness grace period never decide visibility.
 
-The five serialized V1 paths are available only under `/conformance/v1/*` and
-require `Authorization: Bearer <CONFORMANCE_TOKEN>`. Bare V1 paths are not a
-public fallback. `CONFORMANCE_TOKEN` is a Wrangler secret, and Hyperdrive
-query caching is disabled before conformance and measurement runs.
+The five serialized V1 paths are available only under `/conformance/v1/*`.
+`CONFORMANCE_TOKEN` is configured only when it contains a non-whitespace
+character, and the comparison keeps those exact bytes. An unconfigured binding
+returns 404. A missing or wrong credential returns 403. Bare V1 paths are not a
+public fallback. Hyperdrive query caching is disabled before conformance and
+measurement runs.
 
 ## Cloudflare-only variant
 
@@ -71,8 +73,21 @@ versioned migrations before the first deployment (see
 
 ```sh
 ./samples/meeting-room/scripts/migrate-remote.sh
-npx wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc
+export REPAIR_OPERATOR_TOKEN_FILE=/path/to/repair-token
+export CONFORMANCE_TOKEN_FILE=/path/to/conformance-token
+./samples/meeting-room/scripts/deploy.sh
 ```
+
+`REPAIR_OPERATOR_TOKEN_FILE` is required for a live deploy. `CONFORMANCE_TOKEN_FILE` is optional. Both files must be readable, regular, and contain a non-whitespace character. The wrapper pipes each supplied file to `wrangler secret put` and does not print it. Rotation uses the same command after the file is replaced. `scripts/deploy/cloudflare-only-deploy.sh` and the live branch of `scripts/deploy/npm-consumer-deploy.sh` use those same two variables.
+
+Bundle-only, with no token file and no remote migration, secret, deployment list, or live deploy:
+
+```sh
+./samples/meeting-room/scripts/deploy.sh --dry-run
+./samples/meeting-room/scripts/deploy.sh -- --dry-run
+```
+
+`G99_DRY_RUN=1 ./scripts/deploy/npm-consumer-deploy.sh` packs and installs only. It does not provision a secret or deploy.
 
 The offline composition and deploy-gate checks use the repository's shared
 validation core. It checks the checked-in sample authority, local mapping, and

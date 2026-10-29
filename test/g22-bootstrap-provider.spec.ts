@@ -6,6 +6,14 @@ import fixtureBytes from "./fixtures/g22-csharp-fixture.generated.json?raw";
 import provenance from "./fixtures/g22-csharp-fixture.provenance.json";
 import { bootstrapDigest } from "../packages/dcb-runtime/src/bootstrap/manifest";
 import { handleOperatorBootstrap } from "../packages/dcb-runtime/src/bootstrap/OperatorBootstrap";
+import { createRuntimeWorker } from "../packages/dcb-runtime/src/index";
+import { createCloudflareOnlyRuntimeWorker } from "../packages/dcb-runtime/src/cloudflare";
+import {
+  injectableServiceIdentity,
+  TEST_SERVICE_ID_HEADER,
+  type ServiceIdentityProvider,
+  type ServiceIdentityRequestOptions,
+} from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import type { PipelineStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
@@ -158,5 +166,183 @@ describe("SDT-G22 provider bootstrap adapters", () => {
     expect(response.status).toBe(503);
     expect((await response.json<{ code: string }>()).code).toBe("bootstrap_read_model_rebuild_failed");
     expect(calls).toEqual(["/import", "/verify"]);
+  });
+});
+
+const DOWNSTREAM = ["BOOTSTRAP", "ALLOCATOR", "JOURNAL", "TAG", "TAG_STATE", "D1", "D1_MV", "REPAIR_EXCLUSION_LOOKUP", "DOWNSTREAM_QUEUE"] as const;
+
+function countedIdentity(configured: string | undefined) {
+  const calls = { forRequest: 0, deployment: 0 };
+  const seen: Array<{ readonly options: ServiceIdentityRequestOptions | undefined; readonly header: string | null }> = [];
+  const inner = injectableServiceIdentity(configured);
+  const provider: ServiceIdentityProvider = {
+    deployment() {
+      calls.deployment += 1;
+      return inner.deployment();
+    },
+    forRequest(request, options) {
+      calls.forRequest += 1;
+      seen.push({ options, header: request.headers.get(TEST_SERVICE_ID_HEADER) });
+      return inner.forRequest(request, options);
+    },
+  };
+  return { calls, seen, provider };
+}
+
+function countJson(request: Request, reads: { json: number }): Request {
+  return new Proxy(request, {
+    get(target, property) {
+      if (property === "json") {
+        return async () => {
+          reads.json += 1;
+          return target.json();
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+function accessEnv(base: Record<string, unknown>, access: Record<string, number>) {
+  return new Proxy(base, {
+    get(target, property, receiver) {
+      if (typeof property === "string") access[property] = (access[property] ?? 0) + 1;
+      if (typeof property === "string" && DOWNSTREAM.includes(property as typeof DOWNSTREAM[number]) && !Object.hasOwn(target, property)) {
+        throw new Error(`unexpected downstream access: ${property}`);
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+}
+
+function countTracing(reads: { tracing: number }): ExecutionContext {
+  return new Proxy({} as ExecutionContext, {
+    get(_target, property) {
+      if (property === "tracing") {
+        reads.tracing += 1;
+        return undefined;
+      }
+      if (property === "waitUntil" || property === "passThroughOnException") return () => undefined;
+      return undefined;
+    },
+  });
+}
+
+function expectNoDownstream(access: Record<string, number>, reads: { json: number; tracing: number; creates: number }, identity: { forRequest: number; deployment: number }, label: string) {
+  for (const name of DOWNSTREAM) expect(access[name] ?? 0, `${label} ${name}`).toBe(0);
+  expect(reads.json, `${label} json`).toBe(0);
+  expect(reads.tracing, `${label} tracing`).toBe(0);
+  expect(reads.creates, `${label} provider create`).toBe(0);
+  expect(identity.forRequest, `${label} forRequest`).toBe(0);
+  expect(identity.deployment, `${label} deployment`).toBe(0);
+}
+
+describe("bootstrap bearer denials", () => {
+  const factories = [
+    { name: "createRuntimeWorker", create: createRuntimeWorker },
+    { name: "createCloudflareOnlyRuntimeWorker", create: createCloudflareOnlyRuntimeWorker },
+  ] as const;
+  const denials = [
+    { label: "absent binding", token: undefined, header: "Bearer operator-secret", status: 404, code: "not_found" },
+    { label: "empty binding", token: "", header: "Bearer ", status: 404, code: "not_found" },
+    { label: "whitespace binding", token: " \t\n ", header: "Bearer  \t\n ", status: 404, code: "not_found" },
+    { label: "missing header", token: "operator-secret", header: undefined, status: 404, code: "not_found" },
+    { label: "wrong credential", token: "operator-secret", header: "Bearer wrong", status: 403, code: "operator_auth_required" },
+  ] as const;
+
+  it("rejects direct handler denials before parsing, provider creation, or Durable Object access", async () => {
+    for (const row of denials) {
+      const reads = { bootstrap: 0, allocator: 0, creates: 0, json: 0 };
+      const runtimeEnv = {
+        REPAIR_OPERATOR_TOKEN: row.token,
+        BOOTSTRAP: { idFromName: () => "id", get: () => { reads.bootstrap += 1; throw new Error("bootstrap get"); } },
+        ALLOCATOR: { idFromName: () => "id", get: () => { reads.allocator += 1; throw new Error("allocator get"); } },
+      };
+      const provider = { name: "test", create: () => { reads.creates += 1; throw new Error("provider create"); } };
+      const request = countJson(new Request("https://operator.test/operator/bootstrap/service/plan", {
+        method: "POST",
+        headers: row.header === undefined ? undefined : { authorization: row.header },
+        body: "{}",
+      }), reads);
+      const response = await handleOperatorBootstrap(request, runtimeEnv as never, provider as never);
+      expect(response.status, row.label).toBe(row.status);
+      const body = await response.text();
+      expect(JSON.parse(body), row.label).toMatchObject({ code: row.code });
+      expect(body, row.label).not.toContain("operator-secret");
+      expect(reads, row.label).toEqual({ bootstrap: 0, allocator: 0, creates: 0, json: 0 });
+    }
+  });
+
+  it.each(factories)("rejects $name bootstrap denials before identity and downstream access", async (factory) => {
+    for (const row of denials) {
+      const access: Record<string, number> = {};
+      const reads = { json: 0, tracing: 0, creates: 0 };
+      const identity = countedIdentity("deployed-service");
+      const storeProvider = { name: "test", create: () => { reads.creates += 1; throw new Error("provider create"); } };
+      const worker = factory.create({ serviceIdentityProvider: identity.provider, storeProvider } as never);
+      const fetch = worker.fetch as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
+      const request = countJson(new Request("https://operator.test/operator/bootstrap/service/plan", {
+        method: "POST",
+        headers: row.header === undefined ? undefined : { authorization: row.header },
+        body: "{}",
+      }), reads);
+      const response = await fetch(request, accessEnv({ REPAIR_OPERATOR_TOKEN: row.token }, access), countTracing(reads));
+      expect(response.status, `${factory.name} ${row.label}`).toBe(row.status);
+      const body = await response.text();
+      expect(JSON.parse(body), `${factory.name} ${row.label}`).toMatchObject({ code: row.code });
+      expect(body, `${factory.name} ${row.label}`).not.toContain("operator-secret");
+      if (row.header !== undefined) expect(body, `${factory.name} ${row.label}`).not.toContain(row.header);
+      expectNoDownstream(access, reads, identity.calls, `${factory.name} ${row.label}`);
+    }
+  });
+
+  it.each(factories)("keeps $name authorized bootstrap on the identity-missing 503", async (factory) => {
+    const access: Record<string, number> = {};
+    const reads = { json: 0, tracing: 0, creates: 0 };
+    const identity = countedIdentity(undefined);
+    const worker = factory.create({ serviceIdentityProvider: identity.provider } as never);
+    const fetch = worker.fetch as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
+    const response = await fetch(
+      new Request("https://operator.test/operator/bootstrap/service/status", { headers: { authorization: "Bearer operator-secret" } }),
+      accessEnv({ REPAIR_OPERATOR_TOKEN: "operator-secret" }, access),
+      countTracing(reads),
+    );
+    expect(response.status, factory.name).toBe(503);
+    expect(await response.json(), factory.name).toEqual({
+      code: "scope.identity_missing",
+      error: "A deployment service identity is required for this scope",
+    });
+    expect(identity.calls.forRequest, factory.name).toBe(1);
+    expect(identity.calls.deployment, factory.name).toBe(0);
+    expectNoDownstream(access, reads, { forRequest: 0, deployment: 0 }, `${factory.name} identity-missing downstream`);
+  });
+
+  it.each(factories)("passes $name request-identity options through to authorized bootstrap handling", async (factory) => {
+    for (const allow of [true, false]) {
+      const access: Record<string, number> = {};
+      const reads = { json: 0, tracing: 0, creates: 0, coordinator: 0 };
+      const identity = countedIdentity("deployed-service");
+      const namespace = {
+        idFromName: (value: string) => value,
+        get: () => ({ fetch: async () => { reads.coordinator += 1; return Response.json({ status: "EMPTY" }); } }),
+      };
+      const worker = factory.create({ serviceIdentityProvider: identity.provider } as never);
+      const fetch = worker.fetch as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
+      const response = await fetch(new Request("https://operator.test/operator/bootstrap/service/status", {
+        headers: { authorization: "Bearer operator-secret", [TEST_SERVICE_ID_HEADER]: "override-service" },
+      }), accessEnv({
+        REPAIR_OPERATOR_TOKEN: "operator-secret",
+        D1: undefined,
+        ...(allow ? { G11_VERIFICATION_ENABLED: "true" } : {}),
+        BOOTSTRAP: namespace,
+      }, access), countTracing(reads));
+      expect(response.status, `${factory.name} allow=${allow}`).toBe(200);
+      expect(identity.calls.forRequest, `${factory.name} allow=${allow}`).toBe(1);
+      expect(identity.seen[0]?.options, `${factory.name} allow=${allow}`).toEqual({ allowG11Verification: allow });
+      expect(identity.seen[0]?.header, `${factory.name} allow=${allow}`).toBe("override-service");
+      expect(reads.coordinator, `${factory.name} allow=${allow}`).toBe(1);
+      expect(access.D1 ?? 0, `${factory.name} allow=${allow} D1`).toBe(factory.name === "createCloudflareOnlyRuntimeWorker" ? 1 : 0);
+    }
   });
 });

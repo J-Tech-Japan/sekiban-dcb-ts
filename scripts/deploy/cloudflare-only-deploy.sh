@@ -15,8 +15,8 @@ if [[ ! "${SERVICE_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]]; then
 fi
 
 # Migrations and deploy go through the composition helper. This script still
-# owns the G20 service-id gate, the conformance secret, and the deploy flags
-# the helper does not invent (--strict, --var, --message).
+# owns the service-id gate, the protected-file secret step, and the deploy
+# flags the helper does not invent (--strict, --var, --message).
 export WRANGLER_BIN
 CLI="${REPO_ROOT}/packages/dcb-cloudflare/dist/cli.js"
 if [[ ! -f "${CLI}" ]]; then
@@ -24,9 +24,15 @@ if [[ ! -f "${CLI}" ]]; then
   npm run build -w @sekiban/dcb-cloudflare --prefix "${REPO_ROOT}"
 fi
 
-if [[ -n "${G20_CONFORMANCE_TOKEN_FILE:-}" ]]; then
-  test -f "${G20_CONFORMANCE_TOKEN_FILE}"
-  "${WRANGLER_BIN}" secret put CONFORMANCE_TOKEN --name "${WORKER_NAME}" < "${G20_CONFORMANCE_TOKEN_FILE}"
+if [[ -z "${REPAIR_OPERATOR_TOKEN_FILE:-}" ]]; then
+  printf 'REPAIR_OPERATOR_TOKEN_FILE is required\n' >&2
+  exit 2
+fi
+PROVISION="${SCRIPT_DIR}/provision-meeting-room-secrets.sh"
+if [[ -n "${CONFORMANCE_TOKEN_FILE:-}" ]]; then
+  "${PROVISION}" "${WRANGLER_BIN}" "${WORKER_NAME}" "${REPAIR_OPERATOR_TOKEN_FILE}" "${CONFORMANCE_TOKEN_FILE}"
+else
+  "${PROVISION}" "${WRANGLER_BIN}" "${WORKER_NAME}" "${REPAIR_OPERATOR_TOKEN_FILE}"
 fi
 
 node "${CLI}" deploy --config "${CONFIG}" --keep-vars -- \

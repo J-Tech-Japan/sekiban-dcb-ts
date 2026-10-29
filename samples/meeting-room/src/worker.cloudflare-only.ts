@@ -1,6 +1,7 @@
 import { materializedViewD1, bootstrapBinding, journalBinding, tagBinding, pipelineD1 } from "./generated/provider-composition";
 import type { ExecuteResult } from "@sekiban/dcb-client";
 import {
+  checkConfiguredBearer,
   createCloudflareOnlyRuntimeWorker,
   createG60DurableHopObserver,
   AllocatorDurableObject,
@@ -909,8 +910,9 @@ async function command(request: Request, env: MeetingRoomCloudflareEnv, ctx: Exe
 async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
   const componentReject = rejectUnlessPrimaryComponent(env, "conformance");
   if (componentReject !== undefined) return componentReject;
-  const supplied = request.headers.get("authorization");
-  if (env.CONFORMANCE_TOKEN === undefined || supplied !== `Bearer ${env.CONFORMANCE_TOKEN}`) return json({ error: "Conformance authentication required", code: "unauthorized" }, 403);
+  const decision = await checkConfiguredBearer(request, env.CONFORMANCE_TOKEN);
+  if (decision === "unconfigured") return json({ error: "Not found", code: "not_found" }, 404);
+  if (decision !== "authorized") return json({ error: "Conformance authentication required", code: "unauthorized" }, 403);
   const url = new URL(request.url);
   const g42 = await g42ProbeRouteInput(request, url);
   if (g42.kind === "invalid") {

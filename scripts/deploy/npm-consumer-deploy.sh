@@ -127,6 +127,19 @@ EOF
   exit 0
 fi
 
+if [[ -z "${REPAIR_OPERATOR_TOKEN_FILE:-}" ]]; then
+  echo "REPAIR_OPERATOR_TOKEN_FILE is required" >&2
+  exit 2
+fi
+WRANGLER_BIN="${WRANGLER_BIN:-${ROOT}/node_modules/.bin/wrangler}"
+if [[ -n "${CONFORMANCE_TOKEN_FILE:-}" ]]; then
+  "${ROOT}/scripts/deploy/provision-meeting-room-secrets.sh" \
+    "${WRANGLER_BIN}" "${WORKER_NAME}" "${REPAIR_OPERATOR_TOKEN_FILE}" "${CONFORMANCE_TOKEN_FILE}"
+else
+  "${ROOT}/scripts/deploy/provision-meeting-room-secrets.sh" \
+    "${WRANGLER_BIN}" "${WORKER_NAME}" "${REPAIR_OPERATOR_TOKEN_FILE}"
+fi
+
 echo "g99-npm-consumer: deploying ${WORKER_NAME}"
 DEPLOY_OUT="$(mktemp)"
 (

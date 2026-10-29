@@ -9,6 +9,8 @@ import starterLifecycleMigration from "../packages/create-dcb/template/migration
 // @ts-expect-error Vite raw asset import.
 import incidentMaintenanceSource from "../packages/dcb-runtime/src/http/IncidentMaintenance.ts?raw";
 // @ts-expect-error Vite raw asset import.
+import configuredBearerSource from "../packages/dcb-runtime/src/http/ConfiguredBearer.ts?raw";
+// @ts-expect-error Vite raw asset import.
 import incidentLifecycleSource from "../packages/dcb-runtime/src/completeness/IncidentLifecycle.ts?raw";
 import { IncidentLifecycle } from "../packages/dcb-runtime/src/completeness/IncidentLifecycle";
 import { GlobalCompletenessReconciler } from "../packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler";
@@ -76,6 +78,15 @@ async function installMigration(): Promise<void> {
   if (!(await hasTable("serialized_dcb_incident_lifecycles"))) {
     await database().batch(statements(lifecycleMigration as string));
   }
+}
+
+type StarterWorker = { default: ExportedHandler };
+
+let starterWorker: Promise<StarterWorker> | undefined;
+
+function loadStarterWorker(): Promise<StarterWorker> {
+  starterWorker ??= import("../packages/create-dcb/template/src/worker") as Promise<StarterWorker>;
+  return starterWorker;
 }
 
 beforeAll(installMigration);
@@ -286,7 +297,7 @@ describe("SDT-G124 incident lifecycle", () => {
     const serviceId = `g124-starter-${crypto.randomUUID()}`;
     const identity = `finding-${crypto.randomUUID()}`;
     await seedFinding(serviceId, identity);
-    const starter = (await import("../packages/create-dcb/template/src/worker")) as { default: ExportedHandler };
+    const starter = await loadStarterWorker();
     const starterFetch = starter.default.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
     const response = await starterFetch(new Request("https://starter.test/internal/sekiban/maintenance/incidents", {
       headers: { authorization: `Bearer ${TOKEN}`, [TEST_SERVICE_ID_HEADER]: serviceId },
@@ -303,7 +314,7 @@ describe("SDT-G124 incident lifecycle", () => {
       body: JSON.stringify(action(identity, "starter-ack", 0, { deadlineAt: Date.now() + 10_000 })),
     }), { ...(env as unknown as Record<string, unknown>), D1: database(), D1_MV: database(), INCIDENT_MAINTAINER_TOKEN: TOKEN, SDT_SERVICE_ID: serviceId } as never, {} as ExecutionContext);
     expect(write.status).toBe(200);
-  });
+  }, 45_000);
 });
 
 type MatrixState = "OPEN" | "ACKNOWLEDGED" | "CORRECTION_RECORDED" | "CLOSED" | "REOPENED";
@@ -548,10 +559,14 @@ describe("SDT-G124 review matrices", () => {
 });
 
 describe("SDT-G124 authentication, reads, concurrency, and routing", () => {
-  it("pins the shared authenticator to digest/XOR comparison rather than string equality", () => {
-    expect(incidentMaintenanceSource).toContain("crypto.subtle.digest");
-    expect(incidentMaintenanceSource).toContain("fixedLengthEqual");
-    expect(incidentMaintenanceSource).toContain("for (let index = 0; index < length; index += 1)");
+  it("pins the shared authenticator to digest comparison rather than string equality", () => {
+    expect(configuredBearerSource).toContain('crypto.subtle.digest("SHA-256"');
+    expect(configuredBearerSource).toContain("for (let index = 0; index < length; index += 1)");
+    expect(configuredBearerSource).not.toContain("timingSafeEqual");
+    expect(configuredBearerSource).not.toContain("node:crypto");
+    expect(incidentMaintenanceSource).toContain("checkConfiguredBearer");
+    expect(incidentMaintenanceSource).toContain('tokenNormalization: "trim"');
+    expect(incidentMaintenanceSource).not.toContain("fixedLengthEqual");
     expect(incidentMaintenanceSource).not.toContain("credential === `Bearer ${token}`");
   });
 
@@ -569,7 +584,7 @@ describe("SDT-G124 authentication, reads, concurrency, and routing", () => {
         throw new Error("identity must not run");
       }),
     });
-    const starter = (await import("../packages/create-dcb/template/src/worker")) as { default: ExportedHandler };
+    const starter = await loadStarterWorker();
     const defaultFetch = defaultWorker.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
     const cloudflareFetch = cloudflareWorker.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
     const starterFetch = starter.default.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
@@ -590,26 +605,72 @@ describe("SDT-G124 authentication, reads, concurrency, and routing", () => {
         path: "/internal/sekiban/maintenance/incidents",
       },
     ];
+    let jsonReads = 0;
+    let d1Reads = 0;
+    const watchEnv = (binding: unknown) => new Proxy({ INCIDENT_MAINTAINER_TOKEN: binding } as Record<string, unknown>, {
+      get(target, property, receiver) {
+        if (property === "D1") d1Reads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const watchRequest = (path: string, init?: RequestInit) => {
+      const request = new Request(`https://auth.test${path}`, init);
+      return new Proxy(request, {
+        get(target, property) {
+          if (property === "json") {
+            return async () => {
+              jsonReads += 1;
+              return target.json();
+            };
+          }
+          const value = Reflect.get(target, property, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    };
+    const unconfigured = [
+      { label: "absent", binding: undefined },
+      { label: "exactly empty", binding: "" },
+      { label: "spaces", binding: " " },
+      { label: "tab", binding: "\t" },
+      { label: "newline", binding: "\n" },
+    ];
     for (const handler of handlers) {
-      for (const missingBinding of [undefined, " "]) {
-        const response = await handler.fetch(new Request(`https://auth.test${handler.path}`, {
+      for (const entry of unconfigured) {
+        const response = await handler.fetch(watchRequest(handler.path, {
           method: "POST", body: "not-json", headers: { authorization: "Bearer wrong" },
-        }), { INCIDENT_MAINTAINER_TOKEN: missingBinding });
-        expect(response.status, `${handler.name} binding`).toBe(503);
-        expect(await response.json()).toEqual({ error: "Incident maintenance is not configured", code: "incident_maintenance_unavailable" });
+        }), watchEnv(entry.binding));
+        expect(response.status, `${handler.name} ${entry.label} binding`).toBe(503);
+        expect(await response.json(), `${handler.name} ${entry.label} binding`).toEqual({
+          error: "Incident maintenance is not configured",
+          code: "incident_maintenance_unavailable",
+        });
       }
+      const bearerUndefined = await handler.fetch(watchRequest(handler.path, {
+        method: "POST", body: "not-json", headers: { authorization: "Bearer undefined" },
+      }), watchEnv(undefined));
+      expect(bearerUndefined.status, `${handler.name} Bearer undefined when unconfigured`).toBe(503);
+      expect(await bearerUndefined.json(), `${handler.name} Bearer undefined when unconfigured`).toEqual({
+        error: "Incident maintenance is not configured",
+        code: "incident_maintenance_unavailable",
+      });
       for (const authorization of [undefined, "", "Bearer wrong", "Bearer undefined"]) {
         const headers = authorization === undefined ? undefined : new Headers({ authorization });
-        const response = await handler.fetch(new Request(`https://auth.test${handler.path}`, {
+        const response = await handler.fetch(watchRequest(handler.path, {
           method: "POST", body: "not-json", headers,
-        }), { INCIDENT_MAINTAINER_TOKEN: TOKEN });
+        }), watchEnv(TOKEN));
         expect(response.status, `${handler.name} credential ${authorization}`).toBe(401);
         const responseText = await response.text();
-        expect(JSON.parse(responseText)).toEqual({ error: "A valid incident maintenance bearer token is required", code: "incident_auth_required" });
-        expect(responseText).not.toContain(TOKEN);
+        expect(JSON.parse(responseText), `${handler.name} credential ${authorization}`).toEqual({
+          error: "A valid incident maintenance bearer token is required",
+          code: "incident_auth_required",
+        });
+        expect(responseText, `${handler.name} credential ${authorization}`).not.toContain(TOKEN);
       }
     }
     expect(identityCalls).toEqual({ default: 0, cloudflare: 0 });
+    expect(jsonReads, "unconfigured and unauthorized incident requests must not parse JSON").toBe(0);
+    expect(d1Reads, "unconfigured and unauthorized incident requests must not read D1").toBe(0);
   });
 
   it("keeps bearer credentials out of the digest while preserving idempotency across valid tokens", async () => {
@@ -676,7 +737,7 @@ describe("SDT-G124 authentication, reads, concurrency, and routing", () => {
   });
 
   it("keeps exact filters, encoded detail, and generated-starter lookalikes on their intended routes", async () => {
-    const starter = (await import("../packages/create-dcb/template/src/worker")) as { default: ExportedHandler };
+    const starter = await loadStarterWorker();
     const starterFetch = starter.default.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
     const starterEnv = { ...(env as unknown as Record<string, unknown>), D1: database(), D1_MV: database(), INCIDENT_MAINTAINER_TOKEN: TOKEN };
     for (const path of [

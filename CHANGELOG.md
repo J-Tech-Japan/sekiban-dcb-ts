@@ -1,8 +1,37 @@
 # Changelog
 
-## Unreleased
+## Unreleased matched set 0.2.2
 
-No package version is claimed by this change.
+Package versions in this repository stay at 0.2.1. The matched set moves to
+0.2.2 only in a later release-preparation change that ships both changes
+below together. A later composition and
+starter change will pass the request environment into the authorization
+callback, document conditional `REPAIR_OPERATOR_TOKEN` setup for generated
+projects, and keep the generated starter's current exact `/operator/*` 404
+boundary. This changelog entry does not publish a package.
+
+### @sekiban/dcb-runtime
+
+- Shared bearer checks fail closed when a binding is missing, empty, or
+  whitespace-only. They hash both complete credentials with SHA-256 and
+  compare every digest byte without early exit.
+- `/operator/bootstrap/*` and both meeting-room conformance gates keep exact
+  configured bytes. Unconfigured bindings return 404. Configured missing or
+  wrong credentials keep 404/403 for bootstrap and 403 for conformance.
+- `POST /operator/repair` returns 404 when `REPAIR_OPERATOR_TOKEN` is not
+  configured. Configured missing or wrong credentials remain 401. Non-POST
+  remains 404.
+- Incident maintenance still trims its configured token, returns 503 when that
+  binding is unconfigured, and returns 401 for a missing or wrong credential.
+- Denied bootstrap and repair requests are rejected before service-identity
+  resolution and before downstream storage or Durable Object access.
+- Cloudflare-only sample deployment wrappers require a protected
+  `REPAIR_OPERATOR_TOKEN` file and send it to Wrangler on standard input.
+  Optional conformance provisioning uses the same file rule. The sample
+  wrapper's `--dry-run` and `-- --dry-run` forms bundle only and perform no
+  remote action.
+
+### Serialized query parameters
 
 - A scalar serialized query accepts only a parsed empty object. Any other parsed value is HTTP 400 `query_params_unsupported` with the message "The selected query does not support these parameters." The check runs after the query is resolved and before projector lookup, provider initialization, or a store read. A caller-supplied `{}` keeps the existing count result.
 - A list query accepts only `PageNumber`, `PageSize`, `NewestFirst`, and `consistency`. An unknown own key receives the same 400. Callers that previously sent ignored list keys must stop sending them. `waitForSortableUniqueId` stays an outer request field. Value checks and defaults are unchanged.

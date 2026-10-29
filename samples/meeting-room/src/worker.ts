@@ -1,5 +1,6 @@
 import type { ExecuteResult } from "@sekiban/dcb-client";
 import {
+  checkConfiguredBearer,
   createRuntimeWorker,
   AllocatorDurableObject,
   JournalDurableObject,
@@ -252,9 +253,11 @@ async function commandRequest(request: Request, env: MeetingRoomEnv, ctx: Execut
 }
 
 async function conformanceRequest(request: Request, env: MeetingRoomEnv, ctx: ExecutionContext, runtimeHandler: MeetingRoomRuntimeHandler): Promise<Response> {
-  const expected = env.CONFORMANCE_TOKEN;
-  const supplied = request.headers.get("authorization");
-  if (expected === undefined || supplied !== `Bearer ${expected}`) {
+  const decision = await checkConfiguredBearer(request, env.CONFORMANCE_TOKEN);
+  if (decision === "unconfigured") {
+    return json({ error: "Not found", code: "not_found" }, 404);
+  }
+  if (decision !== "authorized") {
     return json({ error: "Conformance authentication required", code: "unauthorized" }, 403);
   }
   const url = new URL(request.url);

@@ -9,6 +9,7 @@ import {
   type ServiceIdentityProvider,
 } from "../service/ServiceIdentityProvider";
 import type { IncidentLifecycleState } from "../completeness/types";
+import { checkConfiguredBearer } from "./ConfiguredBearer";
 
 export interface IncidentMaintenanceEnvironment {
   readonly D1?: D1Database;
@@ -25,33 +26,6 @@ function json(body: unknown, status = 200): Response {
 
 function error(status: number, code: string, message: string): Response {
   return json({ error: message, code }, status);
-}
-
-function configuredToken(value: string | undefined): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const token = value.trim();
-  return token.length === 0 ? undefined : token;
-}
-
-async function digest(value: string): Promise<Uint8Array> {
-  const bytes = new TextEncoder().encode(value);
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-}
-
-function fixedLengthEqual(left: Uint8Array, right: Uint8Array): boolean {
-  let difference = left.length ^ right.length;
-  const length = Math.max(left.length, right.length);
-  for (let index = 0; index < length; index += 1) {
-    difference |= (left[index] ?? 0) ^ (right[index] ?? 0);
-  }
-  return difference === 0;
-}
-
-async function authenticated(request: Request, token: string): Promise<boolean> {
-  const credential = request.headers.get("authorization") ?? "";
-  const suppliedToken = credential.startsWith("Bearer ") ? credential.slice("Bearer ".length) : "";
-  const [expectedDigest, suppliedDigest] = await Promise.all([digest(token), digest(suppliedToken)]);
-  return fixedLengthEqual(expectedDigest, suppliedDigest);
 }
 
 function boolFilter(value: string | null, name: string): boolean | undefined {
@@ -115,11 +89,13 @@ export async function handleIncidentMaintenance(
   env: IncidentMaintenanceEnvironment,
   serviceIdentityProvider: ServiceIdentityProvider,
 ): Promise<Response> {
-  const token = configuredToken(env.INCIDENT_MAINTAINER_TOKEN);
-  if (token === undefined) {
+  const decision = await checkConfiguredBearer(request, env.INCIDENT_MAINTAINER_TOKEN, {
+    tokenNormalization: "trim",
+  });
+  if (decision === "unconfigured") {
     return error(503, "incident_maintenance_unavailable", "Incident maintenance is not configured");
   }
-  if (!(await authenticated(request, token))) {
+  if (decision === "missing" || decision === "invalid") {
     return error(401, "incident_auth_required", "A valid incident maintenance bearer token is required");
   }
 

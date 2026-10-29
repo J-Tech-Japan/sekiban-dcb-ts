@@ -10,8 +10,15 @@
 import type { DomainDefinition } from "@sekiban/dcb-core";
 import { AllocatorDurableObject as RuntimeAllocatorDurableObject } from "./allocator/AllocatorDurableObject";
 import { BootstrapCoordinatorDurableObject as RuntimeBootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
-import { handleOperatorBootstrap } from "./bootstrap/OperatorBootstrap";
-import { handleOperatorRepair } from "./cli/OperatorRepairCli";
+import {
+  authenticateOperatorBootstrap,
+  handleAuthorizedOperatorBootstrap,
+} from "./bootstrap/OperatorBootstrap";
+import {
+  authenticateOperatorRepair,
+  handleAuthorizedOperatorRepair,
+  nonPostOperatorRepairResponse,
+} from "./cli/OperatorRepairCli";
 import { handleSerializedCommit } from "./commit/CommitWorker";
 import {
   handleDownstreamQueue,
@@ -110,6 +117,12 @@ export type {
   ServiceIdentityRequestOptions,
   ServiceIdentityResolution,
 } from "./service/ServiceIdentityProvider";
+export { checkConfiguredBearer } from "./http/ConfiguredBearer";
+export type {
+  CheckConfiguredBearerOptions,
+  ConfiguredBearerResult,
+  ConfiguredBearerTokenNormalization,
+} from "./http/ConfiguredBearer";
 
 export interface CloudflareOnlyEnv {
   ALLOCATOR: DurableObjectNamespace;
@@ -269,6 +282,18 @@ export function createCloudflareOnlyRuntimeWorker(
       if (isIncidentMaintenancePath(url.pathname)) {
         return handleIncidentMaintenance(request, env, options.serviceIdentityProvider ?? envServiceIdentity(env));
       }
+      const operatorRepair = url.pathname === "/operator/repair";
+      const operatorBootstrap = url.pathname.startsWith("/operator/bootstrap/");
+      if (operatorRepair) {
+        const methodDenied = nonPostOperatorRepairResponse(request);
+        if (methodDenied !== undefined) return methodDenied;
+        const denied = await authenticateOperatorRepair(request, env.REPAIR_OPERATOR_TOKEN);
+        if (denied !== undefined) return denied;
+      }
+      if (operatorBootstrap) {
+        const denied = await authenticateOperatorBootstrap(request, env.REPAIR_OPERATOR_TOKEN);
+        if (denied !== undefined) return denied;
+      }
       const serviceIdentity = options.serviceIdentityProvider ?? envServiceIdentity(env);
       const requestIdentityOptions = { allowG11Verification: env.G11_VERIFICATION_ENABLED === "true" };
       let requestServiceId: string;
@@ -324,11 +349,11 @@ export function createCloudflareOnlyRuntimeWorker(
           serviceIdentityProvider: serviceIdentity,
         });
       }
-      if (url.pathname === "/operator/repair") {
-        return handleOperatorRepair(request, env, cloudflareTracing(ctx), serviceIdentity);
+      if (operatorRepair) {
+        return handleAuthorizedOperatorRepair(request, env, cloudflareTracing(ctx), serviceIdentity);
       }
-      if (url.pathname.startsWith("/operator/bootstrap/")) {
-        return handleOperatorBootstrap(request, env, storeProvider, {
+      if (operatorBootstrap) {
+        return handleAuthorizedOperatorBootstrap(request, env, storeProvider, {
           afterVerifyBeforeReady: options.afterBootstrapVerify === undefined
             ? undefined
             : ({ serviceId }) => options.afterBootstrapVerify!({ serviceId, env }),
