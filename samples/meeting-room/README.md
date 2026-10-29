@@ -53,10 +53,11 @@ It has two independent D1 bindings (`D1` for the PipelineStore and `D1_MV` for
 materialized-view rows/checkpoints), the same Journal/Allocator/Tag Durable
 Objects, and a Queue for durable outbox delivery. It deliberately has no
 Hyperdrive, Postgres, or experimental Cosmos binding. The Queue consumer applies each
-*stored* outcome to the atomic unsafe port, so the reservation list and the
-keyed room state can show an immediate tentative view from the composed `D1_MV` read.
-The room page calls `GET /api/read/room?roomId=...` and returns the decoded
-`RoomProjector` state, its version, and `lastSortedUniqueId`.
+*stored* outcome to the atomic unsafe port, so the reservation list can show
+an immediate tentative view from the composed `D1_MV` read. `/api/read/room`
+is not that materialized-view query. It is a keyed serialized tag-state read:
+`GET /api/read/room?roomId=...` returns the decoded `RoomProjector` state, its
+version, and `lastSortedUniqueId`.
 SafeWindow catch-up remains the definitive ordered fold; an unsafe failure is
 retried and is never silently acknowledged. Cron is only the recovery net for
 safe catch-up and residual kick/GC work. The existing PG config stays available

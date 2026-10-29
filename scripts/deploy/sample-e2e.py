@@ -368,7 +368,17 @@ def pagination_self_test() -> None:
     except RuntimeError:
         rejected_partial_state = True
     require(rejected_partial_state, "partial room state was accepted")
-    process_result = {"selfTest": "g15-e2e-pagination", "requestedPages": requested_pages, "totalCount": result["totalCount"], "roomHead": room_head}
+    later_room_head = "063923995692002000000693137502"
+    later_room_body = {**room_body, "lastSortedUniqueId": later_room_head}
+    assert_room_state_read(room_body, room_state, room_head, room_id)
+    rejected_later_room_tag = False
+    try:
+        assert_room_state_read(later_room_body, room_state, room_head, room_id)
+    except RuntimeError:
+        rejected_later_room_tag = True
+    require(rejected_later_room_tag, "create head was accepted after an intervening room-tagged event")
+    assert_room_state_read(later_room_body, room_state, later_room_head, room_id)
+    process_result = {"selfTest": "g15-e2e-pagination", "requestedPages": requested_pages, "totalCount": result["totalCount"], "roomHead": room_head, "laterRoomHead": later_room_head}
     print(json.dumps(process_result))
 
 
@@ -432,6 +442,26 @@ def main() -> None:
     create_suid = commit_suid(create_body)
     created_read, created_visible_ms = read_until_visible(args.base_url, "room", "roomId", room_id, create_suid, safe_window_bound_ms)
     require(isinstance(created_read.get("state"), dict) and created_read["state"].get("status") == "created", f"room projection did not update: {created_read}")
+    # Read the keyed room before any later room-tagged commit. RoomReserved
+    # carries the room tag and advances lastSortedUniqueId without changing
+    # the created RoomProjector state.
+    room_state_read: dict[str, Any] | None = None
+    if args.include_query_views:
+        room_state_status, room_state_body, room_state_ms = request(
+            args.base_url,
+            f"/api/read/room?roomId={urllib.parse.quote(room_id)}",
+            method="GET",
+        )
+        require(room_state_status == 200 and isinstance(room_state_body, dict), f"room state returned HTTP {room_state_status}: {room_state_body}")
+        expected_room_state = {"status": "created", "version": 1, "roomId": room_id, "name": "SDT-G15"}
+        assert_room_state_read(room_state_body, expected_room_state, create_suid, room_id)
+        room_state_read = {
+            "status": room_state_status,
+            "requestMs": round(room_state_ms, 3),
+            "state": room_state_body.get("state"),
+            "lastSortedUniqueId": room_state_body.get("lastSortedUniqueId"),
+            "tagStateId": room_state_body.get("tagStateId"),
+        }
 
     reserve_status, reserve_body, reserve_ms = request(
         args.base_url,
@@ -450,14 +480,7 @@ def main() -> None:
     if args.include_query_views:
         reservations_list, reservation_list_visible_ms = read_until_reservation_listed(args.base_url, reservation_id, safe_window_bound_ms)
         require(reservations_list["item"].get("status") == "reserved", f"reservation list returned unexpected state: {reservations_list}")
-        room_state_status, room_state_body, room_state_ms = request(
-            args.base_url,
-            f"/api/read/room?roomId={urllib.parse.quote(room_id)}",
-            method="GET",
-        )
-        require(room_state_status == 200 and isinstance(room_state_body, dict), f"room state returned HTTP {room_state_status}: {room_state_body}")
-        expected_room_state = {"status": "created", "version": 1, "roomId": room_id, "name": "SDT-G15"}
-        assert_room_state_read(room_state_body, expected_room_state, create_suid, room_id)
+        require(room_state_read is not None, "keyed room state was not read before reservation")
         query_views = {
             "reservationList": {
                 "status": 200,
@@ -466,13 +489,7 @@ def main() -> None:
                 "readHead": reservations_list["readHead"],
                 "observations": reservations_list["observations"],
             },
-            "roomState": {
-                "status": room_state_status,
-                "requestMs": round(room_state_ms, 3),
-                "state": room_state_body.get("state"),
-                "lastSortedUniqueId": room_state_body.get("lastSortedUniqueId"),
-                "tagStateId": room_state_body.get("tagStateId"),
-            },
+            "roomState": room_state_read,
         }
 
     cancel_status, cancel_body, cancel_ms = request(
