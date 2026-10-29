@@ -6,7 +6,7 @@ Start here: [`docs/getting-started-cloudflare.md`](docs/getting-started-cloudfla
 (migrate both D1s → deploy → smoke → C-0 notes).
 
 This Worker is a small consumer of the matched npm packages
-(`@sekiban/dcb-{core,domain,client,runtime}@0.2.1`) plus the published npm
+(`@sekiban/dcb-{core,domain,client,runtime}@0.2.2`) plus the published npm
 helper `@sekiban/dcb-cloudflare`, linked from the workspace while developing in
 this repository. The helper mounts storage beside
 a caller's own Worker; this sample is not that caller's only application.
