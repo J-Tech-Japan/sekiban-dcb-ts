@@ -38,9 +38,9 @@ the Worker does not export runtime fetch directly. Adding `/operator` routes
 provisions `REPAIR_OPERATOR_TOKEN` through Wrangler and updates the gate,
 receipt expectations, route tests, and applicable runbook policy together.
 Until that coordinated change, the stock gate reports `generated runtime mount
-is not maintenance-only` before Wrangler. A direct runtime fetch export that
-keeps the exact maintenance-only mount still reaches the external prerequisite
-check before Wrangler. Do not put the value in source, topology, `vars`,
+is not maintenance-only` before Wrangler. A default export that is not the
+single const `composeHandlers` call is an unresolved source shape before
+Wrangler. Do not put the value in source, topology, `vars`,
 generated output, command arguments, or logs. `deploy:check` reports that
 source state and does not verify remote state. The stock mount has no
 `extraPaths` member and one `extraPrefixes` entry.

@@ -496,6 +496,7 @@ function workerStructure(authority, source, label) {
   const exports = [];
   let composedWorker = null;
   let exportedWorker = false;
+  const compositionCalls = [];
   const runtimeDeclarations = new Map();
   const initializers = new Map();
   const defaultExpressions = [];
@@ -543,27 +544,72 @@ function workerStructure(authority, source, label) {
     return ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) &&
       names.has(node.expression.text) && node.name.text === member;
   }
+  function isComposeHandlersCall(node) {
+    return ts.isCallExpression(node)
+      && ts.isIdentifier(node.expression)
+      && node.expression.text === "composeHandlers";
+  }
+  function unwrapParens(node) {
+    let current = node;
+    while (ts.isParenthesizedExpression(current)) current = current.expression;
+    return current;
+  }
   function visit(node) {
+    if (isComposeHandlersCall(node)) compositionCalls.push(node);
     if (ts.isExportDeclaration(node) && node.moduleSpecifier?.text === "@sekiban/dcb-cloudflare" && ts.isNamedExports(node.exportClause)) {
       for (const specifier of node.exportClause.elements) exports.push((specifier.propertyName ?? specifier.name).text);
     }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
       if (node.initializer) initializers.set(node.name.text, node.initializer);
-      if (node.initializer && ts.isCallExpression(node.initializer) &&
-          ts.isIdentifier(node.initializer.expression) && node.initializer.expression.text === "composeHandlers") {
-        composedWorker = node.initializer;
-      }
       if (node.initializer && containsCall(node.initializer, "createCloudflareOnlyRuntimeWorker")) {
         runtimeDeclarations.set(node.name.text, node.initializer);
       }
     }
-    if (ts.isExportAssignment(node) && !node.isExportEquals) {
-      defaultExpressions.push(node.expression);
-      if (ts.isIdentifier(node.expression) && node.expression.text === "worker") exportedWorker = true;
-    }
+    if (ts.isExportAssignment(node) && !node.isExportEquals) defaultExpressions.push(node.expression);
     ts.forEachChild(node, visit);
   }
   visit(worker);
+  function resolveExportedComposition() {
+    if (compositionCalls.length !== 1) {
+      const site = compositionCalls[1] ?? compositionCalls[0] ?? worker;
+      unresolvedSourceShape("composeHandlers", lineOf(site));
+    }
+    const call = compositionCalls[0];
+    let owner = call.parent;
+    while (owner && ts.isParenthesizedExpression(owner)) owner = owner.parent;
+    const declared = Boolean(owner) && ts.isVariableDeclaration(owner);
+    const initializer = declared && owner.initializer ? unwrapParens(owner.initializer) : undefined;
+    const list = declared ? owner.parent : undefined;
+    const statement = list && list.parent;
+    const topLevelConst = declared
+      && ts.isIdentifier(owner.name)
+      && initializer === call
+      && ts.isVariableDeclarationList(list)
+      && list.declarations.length === 1
+      && (list.flags & ts.NodeFlags.Const) !== 0
+      && ts.isVariableStatement(statement)
+      && ts.isSourceFile(statement.parent);
+    if (!topLevelConst) unresolvedSourceShape("composeHandlers", lineOf(call));
+    const sameName = [];
+    function collectNames(node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === owner.name.text) {
+        sameName.push(node);
+      }
+      ts.forEachChild(node, collectNames);
+    }
+    collectNames(worker);
+    if (sameName.length !== 1) unresolvedSourceShape("composeHandlers", lineOf(owner));
+    if (defaultExpressions.length !== 1) {
+      unresolvedSourceShape("default", lineOf(defaultExpressions[0] ?? worker));
+    }
+    const exported = unwrapParens(defaultExpressions[0]);
+    if (!ts.isIdentifier(exported) || exported.text !== owner.name.text) {
+      unresolvedSourceShape("default", lineOf(defaultExpressions[0]));
+    }
+    return call;
+  }
+  composedWorker = resolveExportedComposition();
+  exportedWorker = true;
   const runtimeNames = new Set(runtimeDeclarations.keys());
   const root = composedWorker?.arguments[0];
   const properties = root && ts.isObjectLiteralExpression(root) ? root.properties : [];
@@ -1408,12 +1454,14 @@ function selfTest() {
   function replaceSekiban(text) {
     return workerText.replace(/ {2}sekiban: \{[\s\S]*?\n {2}\},/, text);
   }
-  function requirePrerequisite(mutant, expected) {
-    return () => prerequisiteFailure(
-      () => sourceParity(baseline.authority, new Map([[workerPath, mutant]])),
-      expected,
-    );
-  }
+  checks.push(expectFailure("missing-external-prerequisite", () => prerequisiteFailure(
+    () => assertExternalPrerequisite({
+      triggers: ["runtime-fetch-direct"],
+      source: [{ property: "default", value: "runtime", line: 1 }],
+    }),
+    { triggers: ["runtime-fetch-direct"], source: [{ property: "default", value: "runtime" }] },
+  )));
+  checks.push("prerequisite-diagnostic-shape");
   function mountCase(label, mutant) {
     checks.push(expectFailure("generated runtime mount is not maintenance-only", () => {
       try {
@@ -1465,40 +1513,48 @@ function selfTest() {
     "operator-route-classifier",
   );
   mountCase("operator-prefix-mount-shape", operatorPrefix);
-  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
+  const compositionStart = workerText.indexOf(
+    "const worker: ExportedHandler<StarterEnvironment> = composeHandlers<StarterEnvironment>({",
+  );
+  const compositionEnd = workerText.indexOf("export default worker;");
+  const conformingComposition = workerText.slice(compositionStart, compositionEnd).replace(
+    "const worker:",
+    "const decoy:",
+  );
+  const nonconformingWorker = workerText.replace(flagLine, "    forwardSerializedRoutes: true,");
+  const decoyBefore = nonconformingWorker.replace(
+    "const worker:",
+    `${conformingComposition}const worker:`,
+  );
+  const decoyAfter = nonconformingWorker.replace(
+    "export default worker;",
+    `${conformingComposition}export default worker;`,
+  );
+  unresolvedCase("exported-nonconforming-decoy-before", decoyBefore);
+  unresolvedCase("exported-nonconforming-decoy-after", decoyAfter);
+  unresolvedCase(
+    "multiple-compositions",
+    workerText.replace("export default worker;", `${conformingComposition}export default worker;`),
+  );
+  unresolvedCase(
+    "default-export-not-resolvable",
     workerText.replace("export default worker;", "export default runtime;"),
-    { triggers: ["runtime-fetch-direct"], source: [{ property: "default", value: "runtime" }] },
-  )));
-  checks.push("direct-exposure-prerequisite");
-  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
+  );
+  unresolvedCase(
+    "default-export-alias",
     workerText.replace(
       "const worker: ExportedHandler<StarterEnvironment> = composeHandlers<StarterEnvironment>({",
       "const worker = runtime;\nconst composed = composeHandlers<StarterEnvironment>({",
     ),
-    { triggers: ["runtime-fetch-direct"], source: [{ property: "worker", value: "runtime" }] },
-  )));
-  checks.push("runtime-alias-prerequisite");
-  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
+  );
+  unresolvedCase(
+    "default-export-object",
     workerText.replace("export default worker;", "export default { fetch: runtime.fetch };"),
-    { triggers: ["runtime-fetch-direct"], source: [{ property: "fetch", value: "runtime.fetch" }] },
-  )));
-  checks.push("runtime-fetch-property-prerequisite");
-  const combined = operatorRepair.replace("export default worker;", "export default runtime;");
-  const combinedStructure = workerStructure(baseline.authority, combined, "combined.ts");
-  assert(
-    canonical(combinedStructure.triggers) === canonical(["operator-route-mounted", "runtime-fetch-direct"]),
-    "combined-triggers",
   );
-  assert(
-    combinedStructure.source.some((item) => item.property === "extraPaths" && item.value === "/operator/repair"),
-    "combined-triggers",
+  unresolvedCase(
+    "combined-export-not-resolvable",
+    operatorRepair.replace("export default worker;", "export default runtime;"),
   );
-  assert(
-    combinedStructure.source.some((item) => item.property === "default" && item.value === "runtime"),
-    "combined-triggers",
-  );
-  mountCase("combined-mount-shape", combined);
-  checks.push("combined-triggers");
 
   const lookalike = workerStructure(
     baseline.authority,
@@ -1679,27 +1735,25 @@ function selfTest() {
   );
   checks.push("mount-shape-before-wrangler");
   const directGate = rejectedGate(workerText.replace("export default worker;", "export default runtime;"));
-  assert(directGate.text.includes("deploy-check:missing-external-prerequisite:"), "prerequisite-before-wrangler");
-  assert(directGate.spawnCalls === 0, "prerequisite-before-wrangler");
+  assert(directGate.text.includes("deploy-check:unresolved-source-shape"), "unresolved-export-before-wrangler");
+  assert(!directGate.text.includes("missing-external-prerequisite"), "unresolved-export-before-wrangler");
+  assert(directGate.spawnCalls === 0, "unresolved-export-before-wrangler");
   assert(!directGate.text.includes(repairCanary), "canary-redaction");
   assert(
     !directGate.output.stdout.includes(repairCanary) && !directGate.output.stderr.includes(repairCanary),
     "canary-redaction",
   );
-  checks.push("prerequisite-before-wrangler");
-  const combinedGate = rejectedGate(combined);
+  checks.push("unresolved-export-before-wrangler");
+  const decoyGate = rejectedGate(decoyAfter);
+  assert(decoyGate.text.includes("deploy-check:unresolved-source-shape"), "decoy-before-wrangler");
+  assert(!decoyGate.text.includes("generated runtime mount is not maintenance-only"), "decoy-before-wrangler");
+  assert(decoyGate.spawnCalls === 0, "decoy-before-wrangler");
+  assert(!decoyGate.text.includes(repairCanary), "canary-redaction");
   assert(
-    combinedGate.text.includes("deploy-check:generated runtime mount is not maintenance-only"),
-    "combined-mount-shape-before-wrangler",
-  );
-  assert(!combinedGate.text.includes("missing-external-prerequisite"), "combined-mount-shape-before-wrangler");
-  assert(combinedGate.spawnCalls === 0, "combined-mount-shape-before-wrangler");
-  assert(!combinedGate.text.includes(repairCanary), "canary-redaction");
-  assert(
-    !combinedGate.output.stdout.includes(repairCanary) && !combinedGate.output.stderr.includes(repairCanary),
+    !decoyGate.output.stdout.includes(repairCanary) && !decoyGate.output.stderr.includes(repairCanary),
     "canary-redaction",
   );
-  checks.push("combined-mount-shape-before-wrangler");
+  checks.push("decoy-before-wrangler");
 
   let capturedEnv;
   const successOutput = captureWrites(() => {

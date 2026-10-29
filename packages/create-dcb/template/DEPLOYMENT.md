@@ -67,9 +67,9 @@ Worker does not export runtime fetch directly. Adding `/operator` routes
 provisions `REPAIR_OPERATOR_TOKEN` through Wrangler and updates the gate,
 receipt expectations, route tests, and applicable runbook policy together.
 Until that coordinated change, the stock gate reports `generated runtime mount
-is not maintenance-only` before Wrangler. A direct runtime fetch export that
-keeps the exact maintenance-only mount still reaches the external prerequisite
-check before Wrangler. `deploy:check` classifies that source. It does not read
+is not maintenance-only` before Wrangler. A default export that is not the
+single const `composeHandlers` call is an unresolved source shape before
+Wrangler. `deploy:check` classifies that source. It does not read
 a secret value and does not verify remote state. The stock mount has no
 `extraPaths` member and one `extraPrefixes` entry. See
 [Conditional repair secret](#conditional-repair-secret).
@@ -192,9 +192,8 @@ not require `REPAIR_OPERATOR_TOKEN`. Adding `/operator` routes provisions
 `REPAIR_OPERATOR_TOKEN` through Wrangler and updates the gate, receipt
 expectations, route tests, and applicable runbook policy together. Until that
 coordinated change, the stock gate reports `generated runtime mount is not
-maintenance-only` before Wrangler. A direct runtime fetch export that keeps
-the exact maintenance-only mount still reaches the external prerequisite check
-before Wrangler. When that coordinated `/operator` change is in place, set the
+maintenance-only` before Wrangler. A default export that is not the single
+const `composeHandlers` call is an unresolved source shape before Wrangler. When that coordinated `/operator` change is in place, set the
 secret through Wrangler:
 
 ```sh
