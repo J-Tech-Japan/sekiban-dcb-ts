@@ -9,7 +9,7 @@ shell and infrastructure listed afterwards.
 - `src/booking-domain.ts` — room/reservation commands, events, projectors, and queries.
 - `src/booking-transport.ts` — the command and query transport map.
 - `src/booking-mv.ts` — the two demo materializers and Queue delivery views.
-- `src/booking-routes.ts` — demo HTTP command/read routes.
+- `src/booking-routes.ts` — demo HTTP command/read routes. The room route reads tag state and returns `lastSortedUniqueId`.
 - `public/index.html` — demo form markup.
 - `public/app.js` — demo command/read client.
 - `public/styles.css` — demo presentation.

@@ -29,12 +29,20 @@ describe("SDT-G16 query view model", () => {
       status: 503,
       code: "projection_unavailable",
     });
-    expect(uiModel.roomQueryView(200, { resultJson: JSON.stringify({ count: 0 }), lastSortedUniqueId: "suid-0" })).toEqual({
+    const roomState = { status: "created", version: 1, roomId: "room-1", name: "Boardroom" };
+    expect(uiModel.roomStateView(200, {
+      state: roomState,
+      version: 1,
+      lastSortedUniqueId: "suid-0",
+      lastSortableUniqueId: "wrong-head",
+      readHead: "also-wrong",
+    })).toEqual({
       kind: "ready",
-      result: { count: 0 },
+      state: roomState,
+      version: 1,
       readHead: "suid-0",
     });
-    expect(uiModel.roomQueryView(503, { error: "unavailable", code: "projection_unavailable" })).toMatchObject({
+    expect(uiModel.roomStateView(503, { error: "unavailable", code: "projection_unavailable" })).toMatchObject({
       kind: "error",
       status: 503,
       code: "projection_unavailable",
@@ -47,7 +55,16 @@ describe("SDT-G16 query view model", () => {
       status: 502,
       code: "transport",
     });
-    expect(uiModel.roomQueryView(200, { resultJson: "not-json" })).toMatchObject({
+    expect(uiModel.roomStateView(200, {
+      state: { status: "created" },
+      lastSortableUniqueId: "wrong-head",
+      readHead: "also-wrong",
+    })).toMatchObject({
+      kind: "error",
+      status: 502,
+      code: "transport",
+    });
+    expect(uiModel.roomStateView(200, { lastSortedUniqueId: "suid-0", state: "not-an-object" })).toMatchObject({
       kind: "error",
       status: 502,
       code: "transport",

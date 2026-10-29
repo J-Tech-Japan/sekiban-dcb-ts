@@ -91,13 +91,23 @@ export function reservationListView(status, body) {
   };
 }
 
-export function roomQueryView(status, body) {
+export function roomStateView(status, body) {
   if (status < 200 || status >= 300 || typeof body?.error === "string") {
     return queryError(status, body);
   }
-  const result = parsedJson(body?.resultJson ?? body?.result ?? body);
-  if (result === undefined) return queryError(502, { error: "Room query returned invalid resultJson", code: "transport" });
-  return { kind: "ready", result, readHead: readHeadFrom(body) };
+  if (typeof body?.lastSortedUniqueId !== "string") {
+    return queryError(502, { error: "Room state omitted lastSortedUniqueId", code: "transport" });
+  }
+  const state = body.state;
+  if (state === null || typeof state !== "object" || Array.isArray(state)) {
+    return queryError(502, { error: "Room state returned an invalid state", code: "transport" });
+  }
+  return {
+    kind: "ready",
+    state,
+    version: body.version,
+    readHead: body.lastSortedUniqueId,
+  };
 }
 
 // --- SDT-G97 portable snapshot reconcile (pure; tested via Vitest) ---

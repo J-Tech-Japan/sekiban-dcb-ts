@@ -108,7 +108,17 @@ async function readProjection(request: Request, env: StarterEnvironment, ctx: Ex
   if (!response.ok) return json(body, response.status);
   if (typeof body !== "object" || body === null || Array.isArray(body)) return json({ error: "Projection read returned an invalid body", code: "transport" }, 502);
   const record = body as Record<string, unknown>;
-  return json({ projection: isRoom ? "room" : "reservation", [parameter]: value, tagStateId: `${tag.id}:${projector}`, state: decodePayload(record.payload), version: record.version, lastSortableUniqueId: record.lastSortableUniqueId });
+  if (typeof record.lastSortedUniqueId !== "string") {
+    return json({ error: "Projection read omitted lastSortedUniqueId", code: "transport" }, 502);
+  }
+  return json({
+    projection: isRoom ? "room" : "reservation",
+    [parameter]: value,
+    tagStateId: `${tag.id}:${projector}`,
+    state: decodePayload(record.payload),
+    version: record.version,
+    lastSortedUniqueId: record.lastSortedUniqueId,
+  });
 }
 
 function positiveInteger(value: string | null, fallback: number): number | Response {
@@ -121,27 +131,18 @@ function positiveInteger(value: string | null, fallback: number): number | Respo
 async function readQuery(request: Request, env: StarterEnvironment, ctx: ExecutionContext, runtime: StarterRuntime): Promise<Response> {
   if (request.method !== "GET") return json({ error: "Query routes require GET", code: "validation_error" }, 405);
   const url = new URL(request.url);
-  const reservations = url.pathname === "/api/read/reservations";
-  const rooms = url.pathname === "/api/read/room-query";
-  if (!reservations && !rooms) return json({ error: "Query route was not found", code: "not_found" }, 404);
+  if (url.pathname !== "/api/read/reservations") return json({ error: "Query route was not found", code: "not_found" }, 404);
   const transport = createV1Transport(runtimeFetcher(runtime, env, ctx), env.SDT_SERVICE_ID);
   const executor = createSekibanExecutor(transport, { serviceId: env.SDT_SERVICE_ID });
   try {
-    if (reservations) {
-      const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), 1);
-      const pageSize = positiveInteger(url.searchParams.get("pageSize"), 20);
-      if (pageNumber instanceof Response) return pageNumber;
-      if (pageSize instanceof Response) return pageSize;
-      const result = await executor.listQuery({
-        queryType: "GetReservationListQuery",
-        queryParamsJson: JSON.stringify({ PageNumber: pageNumber, PageSize: pageSize, NewestFirst: url.searchParams.get("newestFirst") === "true" }),
-      }, { consistency: "unsafe" });
-      return json(result);
-    }
-    const result = await executor.query({
-      queryType: "GetRoomStateQuery",
-      queryParamsJson: JSON.stringify({ roomId: url.searchParams.get("roomId") ?? undefined }),
-    });
+    const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), 1);
+    const pageSize = positiveInteger(url.searchParams.get("pageSize"), 20);
+    if (pageNumber instanceof Response) return pageNumber;
+    if (pageSize instanceof Response) return pageSize;
+    const result = await executor.listQuery({
+      queryType: "GetReservationListQuery",
+      queryParamsJson: JSON.stringify({ PageNumber: pageNumber, PageSize: pageSize, NewestFirst: url.searchParams.get("newestFirst") === "true" }),
+    }, { consistency: "unsafe" });
     return json(result);
   } catch (error) {
     if (error instanceof ClientError) return json({ error: error.message, code: error.code }, error.status ?? 502);
@@ -153,7 +154,7 @@ export async function applicationFetch(request: Request, env: StarterEnvironment
   const path = new URL(request.url).pathname;
   if (path.startsWith("/api/commands/")) return command(request, env, ctx, runtime);
   if (path === "/api/read/room" || path === "/api/read/reservation") return readProjection(request, env, ctx, runtime);
-  if (path === "/api/read/reservations" || path === "/api/read/room-query") return readQuery(request, env, ctx, runtime);
+  if (path === "/api/read/reservations") return readQuery(request, env, ctx, runtime);
   if (env.ASSETS !== undefined) return env.ASSETS.fetch(request);
   if (path === "/" || path === "/index.html") return new Response("Booking starter", { headers: { "content-type": "text/plain; charset=utf-8" } });
   return new Response("Not found", { status: 404 });

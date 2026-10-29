@@ -609,7 +609,16 @@ const runtime = createCloudflareOnlyRuntimeWorker({
     onOutcome: ({ env, ...observation }) => recordMeetingRoomLivePollOutcome(env, observation),
   },
 });
-const runtimeFetch = runtime.fetch as unknown as (request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext) => Promise<Response>;
+function runtimeFetch(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
+  // In-process tests supply this seam. A deployed Worker never sets it.
+  const override = (env as { readonly __G16_RUNTIME_FETCH__?: typeof runtimeFetch }).__G16_RUNTIME_FETCH__;
+  if (override !== undefined) return override(request, env, ctx);
+  return (runtime.fetch as unknown as (
+    request: Request,
+    env: MeetingRoomCloudflareEnv,
+    ctx: ExecutionContext,
+  ) => Promise<Response>)(request, env, ctx);
+}
 
 // P1 is deliberately the smallest possible custom-span control: one span,
 // one application attribute, at the public Worker fetch boundary. It is not a
@@ -824,45 +833,35 @@ async function readProjection(request: Request, env: MeetingRoomCloudflareEnv, c
 async function readQuery(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
   if (request.method !== "GET") return json({ error: "Query routes require GET", code: "validation_error" }, 400);
   const url = new URL(request.url);
-  const isReservations = url.pathname === "/api/read/reservations";
-  const isRoomQuery = url.pathname === "/api/read/room-query";
-  if (!isReservations && !isRoomQuery) return json({ error: "Query route was not found", code: "not_found" }, 404);
-  let queryParams: Record<string, unknown>;
-  let waitForSortableUniqueId: string | undefined;
-  if (isReservations) {
-    const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), "pageNumber", 1);
-    if (pageNumber instanceof Response) return pageNumber;
-    const pageSize = positiveInteger(url.searchParams.get("pageSize"), "pageSize", 20);
-    if (pageSize instanceof Response) return pageSize;
-    const newestFirst = url.searchParams.get("newestFirst");
-    if (newestFirst !== null && newestFirst !== "true" && newestFirst !== "false") return json({ error: "newestFirst must be true or false", code: "validation_error" }, 400);
-    const requestedWait = url.searchParams.get("waitForSortableUniqueId");
-    if (requestedWait !== null && requestedWait.length === 0) return json({ error: "waitForSortableUniqueId must be non-empty", code: "validation_error" }, 400);
-    waitForSortableUniqueId = requestedWait ?? undefined;
-    queryParams = { PageNumber: pageNumber, PageSize: pageSize, ...(newestFirst === "true" ? { NewestFirst: true } : {}) };
-  } else {
-    const roomId = url.searchParams.get("roomId");
-    queryParams = roomId === null || roomId.length === 0 ? {} : { roomId };
+  if (url.pathname !== "/api/read/reservations") return json({ error: "Query route was not found", code: "not_found" }, 404);
+  const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), "pageNumber", 1);
+  if (pageNumber instanceof Response) return pageNumber;
+  const pageSize = positiveInteger(url.searchParams.get("pageSize"), "pageSize", 20);
+  if (pageSize instanceof Response) return pageSize;
+  const newestFirst = url.searchParams.get("newestFirst");
+  if (newestFirst !== null && newestFirst !== "true" && newestFirst !== "false") {
+    return json({ error: "newestFirst must be true or false", code: "validation_error" }, 400);
   }
-  const queryType = isReservations ? "GetReservationListQuery" : "GetRoomStateQuery";
+  const requestedWait = url.searchParams.get("waitForSortableUniqueId");
+  if (requestedWait !== null && requestedWait.length === 0) {
+    return json({ error: "waitForSortableUniqueId must be non-empty", code: "validation_error" }, 400);
+  }
+  const waitForSortableUniqueId = requestedWait ?? undefined;
+  const queryParams = {
+    PageNumber: pageNumber,
+    PageSize: pageSize,
+    ...(newestFirst === "true" ? { NewestFirst: true } : {}),
+  };
   const runtimeTransport = createV1Transport({
     fetch: (input, init) => runtimeFetch(new Request(input, init), env, ctx),
   }, serviceIdentity(env));
   const executor = createSekibanExecutor(runtimeTransport, { serviceId: serviceIdentity(env) });
   try {
-    if (isReservations) {
-      const result = await executor.listQuery({
-        queryType,
-        queryParamsJson: JSON.stringify(queryParams),
-        ...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId }),
-      }, { consistency: "unsafe" });
-      return json(result);
-    }
-    const result = await executor.query({
-      queryType,
+    const result = await executor.listQuery({
+      queryType: "GetReservationListQuery",
       queryParamsJson: JSON.stringify(queryParams),
       ...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId }),
-    });
+    }, { consistency: "unsafe" });
     return json(result);
   } catch (error) {
     if (error instanceof ClientError) return json({ error: error.message, code: error.code }, error.status ?? 502);
@@ -1178,7 +1177,7 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
     }
     if (path === "/api/sekiban/serialized" || path.startsWith("/api/sekiban/serialized/")) return json({ error: "Raw V1 routes are available only through the authenticated conformance lane", code: "not_found" }, 404);
     if (path === "/api/read/room" || path === "/api/read/reservation") return readProjection(request, env, ctx);
-    if (path === "/api/read/reservations" || path === "/api/read/room-query") return readQuery(request, env, ctx);
+    if (path === "/api/read/reservations") return readQuery(request, env, ctx);
     if (env.ASSETS !== undefined) return env.ASSETS.fetch(request);
     if (path === "/" || path === "/index.html") return new Response("Meeting-room sample", { headers: { "content-type": "text/html; charset=utf-8" } });
     return new Response("Not found", { status: 404 });

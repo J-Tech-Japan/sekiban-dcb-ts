@@ -14,7 +14,8 @@ import { projectionIdFor } from "../packages/dcb-runtime/src/projection/Projecti
 import type { QueryProjectionStore } from "../packages/dcb-runtime/src/query/ProjectionQueryStore";
 import { QueryRegistry } from "../packages/dcb-runtime/src/query/QueryRegistry";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
-import type { ProjectionCheckpoint, StoredEvent } from "../packages/dcb-runtime/src/store/types";
+import type { StoreProvider } from "../packages/dcb-runtime/src/store/provider";
+import type { PipelineStore, ProjectionCheckpoint, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
 const SERVICE_ID = "local-test-runtime";
@@ -120,6 +121,45 @@ class FakeQueryStore implements QueryProjectionStore {
   async readProjectionCheckpoint(...input: [serviceId: string, projectionId: string]): Promise<ProjectionCheckpoint | undefined> {
     this.serviceIds.push(input[0]);
     return this.checkpoints.get(input[1]);
+  }
+}
+
+class CountingStoreProvider implements StoreProvider {
+  readonly name = "counting-test";
+  creates = 0;
+  initializes = 0;
+
+  create(): PipelineStore {
+    this.creates += 1;
+    return {
+      initialize: async () => {
+        this.initializes += 1;
+      },
+    } as PipelineStore;
+  }
+}
+
+class ListPageSpy {
+  readonly pages: unknown[] = [];
+  readonly rowReads: unknown[] = [];
+  initialized = 0;
+
+  async initialize(): Promise<void> {
+    this.initialized += 1;
+  }
+
+  async queryRows(serviceId: string, viewId: string, options: unknown = {}): Promise<MaterializedViewRow[]> {
+    this.rowReads.push({ serviceId, viewId, options });
+    return [];
+  }
+
+  async readListPage(_serviceId: string, _viewId: string, options: unknown): Promise<{
+    rows: readonly MaterializedViewRow[];
+    totalCount: number;
+    readHead: string;
+  }> {
+    this.pages.push(options);
+    return { rows: [], totalCount: 0, readHead: "" };
   }
 }
 
@@ -544,5 +584,304 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     });
     expect(defaultLatest.status).toBe(200);
     expect(await defaultLatest.json()).toEqual({ exists: false, lastSortableUniqueId: "" });
+  });
+
+  const unsupportedMessage = "The selected query does not support these parameters.";
+
+  function unsupportedSeams() {
+    return {
+      memory: new FakeQueryStore(),
+      provider: new CountingStoreProvider(),
+      materializedView: new FakeMaterializedViewQueryPort([]),
+    };
+  }
+
+  async function refuseAcrossBackings(path: "query" | "list-query", body: unknown) {
+    const seams = unsupportedSeams();
+    const memoryResponse = await handleSerializedQuery(queryRequest(path, body), {}, { store: seams.memory });
+    const providerResponse = await handleSerializedQuery(queryRequest(path, body), {}, { storeProvider: seams.provider });
+    const materializedViewResponse = await handleSerializedQuery(queryRequest(path, body), {}, {
+      queryBacking: "d1-mv",
+      materializedViewQueryPort: seams.materializedView,
+    });
+    return { seams, memoryResponse, providerResponse, materializedViewResponse };
+  }
+
+  async function expectUnsupportedRefusal(path: "query" | "list-query", queryParamsJson: string, leaked: readonly string[]) {
+    const queryType = path === "query" ? "GetTestCountQuery" : "GetTestListQuery";
+    const observed = await refuseAcrossBackings(path, { queryType, queryParamsJson });
+    const responses = [observed.memoryResponse, observed.providerResponse, observed.materializedViewResponse];
+    for (const response of responses) {
+      expect(response.status).toBe(400);
+      const body = await response.json<Record<string, unknown>>();
+      expect(body).toEqual({ error: unsupportedMessage, code: "query_params_unsupported" });
+      expect(Object.keys(body).sort()).toEqual(["code", "error"]);
+      const encoded = JSON.stringify(body);
+      for (const fragment of leaked) {
+        expect(encoded).not.toContain(fragment);
+      }
+    }
+    expect(observed.seams.memory.serviceIds).toEqual([]);
+    expect(observed.seams.provider.creates).toBe(0);
+    expect(observed.seams.provider.initializes).toBe(0);
+    expect(observed.seams.materializedView.initialized).toBe(0);
+    expect(observed.seams.materializedView.calls).toEqual([]);
+    return observed;
+  }
+
+  function pagedStore() {
+    const store = new FakeQueryStore();
+    const tag = "test:param-page";
+    const entries = [
+      { eventId: g32EventId("p-1"), suid: g32Suid("param-page-1"), payload: JSON.stringify({ forecastId: "one" }) },
+      { eventId: g32EventId("p-2"), suid: g32Suid("param-page-2"), payload: JSON.stringify({ forecastId: "two" }) },
+      { eventId: g32EventId("p-3"), suid: g32Suid("param-page-3"), payload: JSON.stringify({ forecastId: "three" }) },
+    ];
+    store.tags = [tag];
+    const point = checkpoint(tag, entries, g32Suid("param-page-9"));
+    store.checkpoints.set(point.projectionId, point);
+    return store;
+  }
+
+  it("keeps the legacy count for a caller-supplied empty object and whitespace-equivalent JSON", async () => {
+    const compactStore = new FakeQueryStore();
+    const compact = await handleSerializedQuery(queryRequest("query", {
+      queryType: "GetTestCountQuery",
+      queryParamsJson: "{}",
+    }), {}, { store: compactStore });
+    expect(compact.status).toBe(200);
+    expect(await compact.json()).toEqual({ resultJson: JSON.stringify({ count: 0 }) });
+    expect(compactStore.serviceIds.length).toBeGreaterThan(0);
+
+    const spacedStore = new FakeQueryStore();
+    const spaced = await handleSerializedQuery(queryRequest("query", {
+      queryType: "GetTestCountQuery",
+      queryParamsJson: " \n{ }\t",
+    }), {}, { store: spacedStore });
+    expect(spaced.status).toBe(200);
+    expect(await spaced.json()).toEqual({ resultJson: JSON.stringify({ count: 0 }) });
+    expect(spacedStore.serviceIds.length).toBeGreaterThan(0);
+  });
+
+  it("refuses a scalar roomId object before projector checks and backing access", async () => {
+    await expectUnsupportedRefusal("query", JSON.stringify({ roomId: "room-1" }), ["roomId", "room-1"]);
+    const disabledRegistry = new QueryRegistry([{
+      queryType: "GetTestCountQuery",
+      endpoint: "query",
+      tagGroup: "test",
+      tagProjector: TEST_PROJECTOR,
+      enabled: false,
+    }]);
+    const store = new FakeQueryStore();
+    const disabled = await handleSerializedQuery(queryRequest("query", {
+      queryType: "GetTestCountQuery",
+      queryParamsJson: JSON.stringify({ roomId: "room-1" }),
+    }), {}, { store, registry: disabledRegistry });
+    expect(disabled.status).toBe(400);
+    expect(await disabled.json()).toEqual({ error: unsupportedMessage, code: "query_params_unsupported" });
+    expect(store.serviceIds).toEqual([]);
+  });
+
+  it("refuses a scalar array before any backing access", async () => {
+    await expectUnsupportedRefusal("query", JSON.stringify(["room-1"]), ["room-1"]);
+  });
+
+  it("refuses a scalar string before any backing access", async () => {
+    await expectUnsupportedRefusal("query", JSON.stringify("room-1"), ["room-1"]);
+  });
+
+  it("refuses a scalar number before any backing access", async () => {
+    await expectUnsupportedRefusal("query", "7", ["7"]);
+  });
+
+  it("refuses a scalar boolean before any backing access", async () => {
+    await expectUnsupportedRefusal("query", "true", []);
+  });
+
+  it("refuses scalar null before any backing access", async () => {
+    await expectUnsupportedRefusal("query", "null", []);
+  });
+
+  it("keeps malformed queryParamsJson on validation_error ahead of parameter policy", async () => {
+    const store = new FakeQueryStore();
+    const disabledRegistry = new QueryRegistry([{
+      queryType: "GetTestCountQuery",
+      endpoint: "query",
+      tagGroup: "test",
+      tagProjector: TEST_PROJECTOR,
+      enabled: false,
+    }]);
+    const response = await handleSerializedQuery(queryRequest("query", {
+      queryType: "GetTestCountQuery",
+      queryParamsJson: "{",
+    }), {}, { store, registry: disabledRegistry });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "queryParamsJson must contain a JSON document",
+      code: "validation_error",
+    });
+    expect(store.serviceIds).toEqual([]);
+  });
+
+  it("keeps an endpoint mismatch ahead of unsupported scalar parameters", async () => {
+    const store = new FakeQueryStore();
+    const response = await handleSerializedQuery(queryRequest("query", {
+      queryType: "GetTestListQuery",
+      queryParamsJson: JSON.stringify({ roomId: "room-1" }),
+    }), {}, { store });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "queryType is not mapped for this endpoint",
+      code: "validation_error",
+    });
+    expect(store.serviceIds).toEqual([]);
+  });
+
+  it("accepts each list control and preserves current paging, order, and consistency", async () => {
+    const pageNumber = await handleSerializedQuery(queryRequest("list-query", {
+      queryType: "GetTestListQuery",
+      queryParamsJson: JSON.stringify({ PageNumber: 2, PageSize: 2 }),
+    }), {}, { store: pagedStore() });
+    expect(pageNumber.status).toBe(200);
+    const pageNumberBody = await pageNumber.json<{ itemsJson: string; currentPage: number; pageSize: number; totalCount: number; totalPages: number }>();
+    expect(pageNumberBody).toMatchObject({ currentPage: 2, pageSize: 2, totalCount: 3, totalPages: 2 });
+    expect(JSON.parse(pageNumberBody.itemsJson)).toEqual([{ forecastId: "three" }]);
+
+    const pageSize = await handleSerializedQuery(queryRequest("list-query", {
+      queryType: "GetTestListQuery",
+      queryParamsJson: JSON.stringify({ PageSize: 1 }),
+    }), {}, { store: pagedStore() });
+    expect(pageSize.status).toBe(200);
+    const pageSizeBody = await pageSize.json<{ itemsJson: string; currentPage: number; pageSize: number }>();
+    expect(pageSizeBody).toMatchObject({ currentPage: 1, pageSize: 1 });
+    expect(JSON.parse(pageSizeBody.itemsJson)).toEqual([{ forecastId: "one" }]);
+
+    const newest = await handleSerializedQuery(queryRequest("list-query", {
+      queryType: "GetTestListQuery",
+      queryParamsJson: JSON.stringify({ NewestFirst: true, PageSize: 2 }),
+    }), {}, { store: pagedStore() });
+    expect(newest.status).toBe(200);
+    const newestBody = await newest.json<{ itemsJson: string }>();
+    expect(JSON.parse(newestBody.itemsJson)).toEqual([{ forecastId: "one" }, { forecastId: "two" }]);
+
+    const defaults = await handleSerializedQuery(queryRequest("list-query", {
+      queryType: "GetTestListQuery",
+      queryParamsJson: "{}",
+    }), {}, { store: pagedStore() });
+    expect(defaults.status).toBe(200);
+    const defaultBody = await defaults.json<{ currentPage: number; pageSize: number; readHead: string; itemsJson: string }>();
+    expect(defaultBody).toMatchObject({ currentPage: 1, pageSize: 20, readHead: g32Suid("param-page-9") });
+    expect(JSON.parse(defaultBody.itemsJson)).toEqual([
+      { forecastId: "one" },
+      { forecastId: "two" },
+      { forecastId: "three" },
+    ]);
+
+    const unsafe = await handleSerializedQuery(queryRequest("list-query", {
+      queryType: "GetTestListQuery",
+      queryParamsJson: JSON.stringify({ consistency: "unsafe" }),
+    }), {}, { store: pagedStore() });
+    expect(unsafe.status).toBe(200);
+    expect(await unsafe.json()).toMatchObject({
+      currentPage: 1,
+      pageSize: 20,
+      readHead: g32Suid("param-page-3"),
+    });
+
+    const combined = await handleSerializedQuery(queryRequest("list-query", {
+      queryType: "GetTestListQuery",
+      queryParamsJson: JSON.stringify({
+        PageNumber: 1,
+        PageSize: 1,
+        NewestFirst: false,
+        consistency: "safe",
+      }),
+    }), {}, { store: pagedStore() });
+    expect(combined.status).toBe(200);
+    const combinedBody = await combined.json<{ itemsJson: string; readHead: string; currentPage: number; pageSize: number }>();
+    expect(combinedBody).toMatchObject({
+      currentPage: 1,
+      pageSize: 1,
+      readHead: g32Suid("param-page-9"),
+    });
+    expect(JSON.parse(combinedBody.itemsJson)).toEqual([{ forecastId: "one" }]);
+
+    const descending = new ListPageSpy();
+    const ascending = new ListPageSpy();
+    const descendingResponse = await handleSerializedQuery(queryRequest("list-query", {
+      queryType: "GetTestListQuery",
+      queryParamsJson: JSON.stringify({ NewestFirst: true, PageNumber: 1, PageSize: 5 }),
+    }), {}, { queryBacking: "d1-mv", materializedViewQueryPort: descending });
+    const ascendingResponse = await handleSerializedQuery(queryRequest("list-query", {
+      queryType: "GetTestListQuery",
+      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 5 }),
+    }), {}, { queryBacking: "d1-mv", materializedViewQueryPort: ascending });
+    expect(descendingResponse.status).toBe(200);
+    expect(ascendingResponse.status).toBe(200);
+    expect(descending.initialized).toBe(1);
+    expect(ascending.initialized).toBe(1);
+    expect(descending.rowReads).toEqual([]);
+    expect(ascending.rowReads).toEqual([]);
+    expect(descending.pages).toEqual([{
+      limit: 5,
+      offset: 0,
+      descending: true,
+      consistency: "safe",
+    }]);
+    expect(ascending.pages).toEqual([{
+      limit: 5,
+      offset: 0,
+      consistency: "safe",
+    }]);
+  });
+
+  it("refuses an unknown list business key before any backing access", async () => {
+    await expectUnsupportedRefusal("list-query", JSON.stringify({ PageNumber: 1, roomId: "room-1" }), ["roomId", "room-1"]);
+  });
+
+  it("treats a differently cased list key as unsupported", async () => {
+    await expectUnsupportedRefusal("list-query", JSON.stringify({ pageNumber: 1 }), ["pageNumber"]);
+  });
+
+  it("keeps a non-object list document on validation_error", async () => {
+    const store = new FakeQueryStore();
+    const response = await handleSerializedQuery(queryRequest("list-query", {
+      queryType: "GetTestListQuery",
+      queryParamsJson: "[]",
+    }), {}, { store });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "list-query queryParamsJson must contain an object",
+      code: "validation_error",
+    });
+    expect(store.serviceIds).toEqual([]);
+  });
+
+  it("keeps list null on the existing non-object validation_error", async () => {
+    const store = new FakeQueryStore();
+    const response = await handleSerializedQuery(queryRequest("list-query", {
+      queryType: "GetTestListQuery",
+      queryParamsJson: "null",
+    }), {}, { store });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "list-query queryParamsJson must contain an object",
+      code: "validation_error",
+    });
+    expect(store.serviceIds).toEqual([]);
+  });
+
+  it("keeps an invalid recognized list value on validation_error", async () => {
+    const store = new FakeQueryStore();
+    const response = await handleSerializedQuery(queryRequest("list-query", {
+      queryType: "GetTestListQuery",
+      queryParamsJson: JSON.stringify({ PageNumber: 0 }),
+    }), {}, { store });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "PageNumber and PageSize must be positive integers, NewestFirst must be a boolean, and consistency must be safe or unsafe",
+      code: "validation_error",
+    });
+    expect(store.serviceIds).toEqual([]);
   });
 });

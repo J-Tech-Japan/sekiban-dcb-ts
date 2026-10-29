@@ -31,10 +31,10 @@ export type ReservationListView =
       readonly totalCount: number;
     };
 export declare function reservationListView(status: number, body: unknown): ReservationListView;
-export type RoomQueryView =
+export type RoomStateView =
   | { readonly kind: "error"; readonly status: number; readonly code: string; readonly error: string }
-  | { readonly kind: "ready"; readonly result: unknown; readonly readHead?: string };
-export declare function roomQueryView(status: number, body: unknown): RoomQueryView;
+  | { readonly kind: "ready"; readonly state: Record<string, unknown>; readonly version?: number; readonly readHead: string };
+export declare function roomStateView(status: number, body: unknown): RoomStateView;
 
 export type PortableSnapshot = {
   readonly projectorId: string;

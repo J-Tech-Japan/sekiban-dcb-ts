@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMeetingRoomWorker, type MeetingRoomEnv } from "../samples/meeting-room/src/worker";
+import cloudflareWorker from "../samples/meeting-room/src/worker.cloudflare-only";
+import type { MeetingRoomCloudflareEnv } from "../samples/meeting-room/src/worker.cloudflare-env";
 
 interface CapturedCall {
   readonly request: Request;
@@ -18,8 +20,30 @@ function workerFetch() {
   return worker.fetch as unknown as (request: Request, env: MeetingRoomEnv, ctx: ExecutionContext) => Promise<Response>;
 }
 
+const ROOM_STATE = { status: "created", version: 1, roomId: "room-1", name: "Boardroom" };
+const ROOM_VERSION = 4;
+const ROOM_HEAD = "063923995692002000000693137501";
+
+function tagStateRuntime() {
+  const calls: CapturedCall[] = [];
+  const runtime = {
+    fetch: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const body = await request.clone().json<Record<string, unknown>>();
+      calls.push({ request, body });
+      return runtimeResponse({
+        payload: ROOM_STATE,
+        version: ROOM_VERSION,
+        lastSortedUniqueId: ROOM_HEAD,
+        lastSortableUniqueId: "wrong-head",
+      });
+    },
+  };
+  return { calls, runtime };
+}
+
 describe("SDT-G16 application query views", () => {
-  it("maps reservations and room-query through the internal runtime without forwarding client headers", async () => {
+  it("maps reservations through list-query without forwarding client headers", async () => {
     const calls: CapturedCall[] = [];
     const runtime = {
       fetch: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -53,22 +77,11 @@ describe("SDT-G16 application query views", () => {
     expect(reservations.headers.get("content-type")).toBe("application/json; charset=utf-8");
     expect(await reservations.json()).toMatchObject({ totalCount: 1, pageSize: 20, continuation: "opaque-next-page-token" });
 
-    const room = await fetch(new Request("https://sample.test/api/read/room-query?roomId=room-1", {
-      headers: hostileHeaders,
-    }), { RUNTIME: runtime } as unknown as MeetingRoomEnv, {} as ExecutionContext);
-    expect(room.status).toBe(200);
-    expect(await room.json()).toEqual({ resultJson: JSON.stringify({ count: 1 }) });
-
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(1);
     expect(new URL(calls[0]!.request.url).pathname).toBe("/api/sekiban/serialized/list-query");
     expect(calls[0]!.body).toEqual({
       queryType: "GetReservationListQuery",
       queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20, consistency: "unsafe" }),
-    });
-    expect(new URL(calls[1]!.request.url).pathname).toBe("/api/sekiban/serialized/query");
-    expect(calls[1]!.body).toEqual({
-      queryType: "GetRoomStateQuery",
-      queryParamsJson: JSON.stringify({ roomId: "room-1" }),
     });
     for (const call of calls) {
       expect(call.request.headers.get("content-type")).toBe("application/json");
@@ -77,6 +90,65 @@ describe("SDT-G16 application query views", () => {
       expect(call.request.headers.has("x-sdt-g9-test-service-id")).toBe(false);
       expect(call.request.headers.has("authorization")).toBe(false);
     }
+  });
+
+  it("reads one room through the keyed tag-state route on the application worker", async () => {
+    const { calls, runtime } = tagStateRuntime();
+    const fetch = workerFetch();
+    const room = await fetch(new Request("https://sample.test/api/read/room?roomId=room-1"), {
+      RUNTIME: runtime,
+    } as unknown as MeetingRoomEnv, {} as ExecutionContext);
+    expect(room.status).toBe(200);
+    expect(await room.json()).toEqual({
+      projection: "room",
+      roomId: "room-1",
+      tagStateId: "room:room-1:RoomProjector",
+      state: ROOM_STATE,
+      version: ROOM_VERSION,
+      lastSortedUniqueId: ROOM_HEAD,
+    });
+    expect(calls).toHaveLength(1);
+    expect(new URL(calls[0]!.request.url).pathname).toBe("/api/sekiban/serialized/tag-state");
+    expect(calls[0]!.body).toEqual({ tagStateId: "room:room-1:RoomProjector" });
+
+    const removed = await fetch(new Request("https://sample.test/api/read/room-query?roomId=room-1"), {
+      RUNTIME: runtime,
+    } as unknown as MeetingRoomEnv, {} as ExecutionContext);
+    expect(removed.status).toBe(404);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("reads one room through the keyed tag-state route on the cloudflare worker", async () => {
+    const { calls, runtime } = tagStateRuntime();
+    const fetch = cloudflareWorker.fetch as unknown as (
+      request: Request,
+      env: MeetingRoomCloudflareEnv,
+      ctx: ExecutionContext,
+    ) => Promise<Response>;
+    const env = {
+      __G16_RUNTIME_FETCH__: (request: Request) => runtime.fetch(request),
+    } as unknown as MeetingRoomCloudflareEnv;
+    const room = await fetch(new Request("https://sample.test/api/read/room?roomId=room-1"), env, {} as ExecutionContext);
+    expect(room.status).toBe(200);
+    expect(await room.json()).toEqual({
+      projection: "room",
+      roomId: "room-1",
+      tagStateId: "room:room-1:RoomProjector",
+      state: ROOM_STATE,
+      version: ROOM_VERSION,
+      lastSortedUniqueId: ROOM_HEAD,
+    });
+    expect(calls).toHaveLength(1);
+    expect(new URL(calls[0]!.request.url).pathname).toBe("/api/sekiban/serialized/tag-state");
+    expect(calls[0]!.body).toEqual({ tagStateId: "room:room-1:RoomProjector" });
+
+    const removed = await fetch(
+      new Request("https://sample.test/api/read/room-query?roomId=room-1"),
+      env,
+      {} as ExecutionContext,
+    );
+    expect(removed.status).toBe(404);
+    expect(calls).toHaveLength(1);
   });
 
   it("distinguishes runtime projection errors and keeps raw V1 unavailable", async () => {

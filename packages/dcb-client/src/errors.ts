@@ -20,6 +20,7 @@ const SAFE_MESSAGES: Readonly<Record<string, string>> = Object.freeze({
   invalid_read_snapshot: "The read snapshot was invalid",
   partial_write: "The command was partially written",
   projection_unavailable: "The mapped query projection is unavailable",
+  query_params_unsupported: "The selected query does not support these parameters.",
   "scope.mismatch": "The executor and transport scopes do not match",
   timeout: "Execution timed out",
   transport: "Transport request failed",

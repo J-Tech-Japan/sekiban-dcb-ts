@@ -103,6 +103,14 @@ def require(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
+def assert_room_state_read(body: dict[str, Any], expected_state: dict[str, Any], expected_head: str, room_id: str) -> None:
+    require(isinstance(body, dict), f"room state body was not an object: {body}")
+    require(body.get("state") == expected_state, f"room state did not match the decoded fixture: {body.get('state')}")
+    require(body.get("lastSortedUniqueId") == expected_head, f"room read head was not the commit sortable id: {body.get('lastSortedUniqueId')}")
+    require(body.get("tagStateId") == f"room:{room_id}:RoomProjector", f"room tag-state id drifted: {body.get('tagStateId')}")
+    require(body.get("version") == expected_state.get("version"), f"room version drifted: {body.get('version')}")
+
+
 def visibility_state(commit_id: str, head: str, elapsed_ms: float, bound_ms: int) -> str:
     """The deployed-lane equivalent of public/ui-model.js visibilityState."""
     if elapsed_ms > bound_ms:
@@ -336,7 +344,31 @@ def pagination_self_test() -> None:
     require(result["firstPageItemCount"] == 20 and result["pageItemsTotal"] == 22, "page-overflow counts were not preserved")
     require(result["totalCount"] == 22 and result["totalPages"] == 2, "page-overflow plan was not derived from totalCount")
     require(result["readHead"] == head, "first-page readHead capture drifted")
-    process_result = {"selfTest": "g15-e2e-pagination", "requestedPages": requested_pages, "totalCount": result["totalCount"]}
+    room_id = "fixture-room"
+    room_head = "063923995692002000000693137501"
+    room_state = {"status": "created", "version": 1, "roomId": room_id, "name": "Boardroom"}
+    room_body = {
+        "projection": "room",
+        "roomId": room_id,
+        "tagStateId": f"room:{room_id}:RoomProjector",
+        "state": room_state,
+        "version": 1,
+        "lastSortedUniqueId": room_head,
+    }
+    assert_room_state_read(room_body, room_state, room_head, room_id)
+    rejected_wrong_head = False
+    try:
+        assert_room_state_read({**room_body, "lastSortedUniqueId": "wrong-head"}, room_state, room_head, room_id)
+    except RuntimeError:
+        rejected_wrong_head = True
+    require(rejected_wrong_head, "wrong room read head was accepted")
+    rejected_partial_state = False
+    try:
+        assert_room_state_read({**room_body, "state": {"status": "created"}}, room_state, room_head, room_id)
+    except RuntimeError:
+        rejected_partial_state = True
+    require(rejected_partial_state, "partial room state was accepted")
+    process_result = {"selfTest": "g15-e2e-pagination", "requestedPages": requested_pages, "totalCount": result["totalCount"], "roomHead": room_head}
     print(json.dumps(process_result))
 
 
@@ -418,16 +450,14 @@ def main() -> None:
     if args.include_query_views:
         reservations_list, reservation_list_visible_ms = read_until_reservation_listed(args.base_url, reservation_id, safe_window_bound_ms)
         require(reservations_list["item"].get("status") == "reserved", f"reservation list returned unexpected state: {reservations_list}")
-        room_query_status, room_query_body, room_query_ms = request(
+        room_state_status, room_state_body, room_state_ms = request(
             args.base_url,
-            f"/api/read/room-query?roomId={urllib.parse.quote(room_id)}",
+            f"/api/read/room?roomId={urllib.parse.quote(room_id)}",
             method="GET",
         )
-        require(room_query_status == 200 and isinstance(room_query_body, dict), f"room query returned HTTP {room_query_status}: {room_query_body}")
-        result_json = room_query_body.get("resultJson")
-        require(isinstance(result_json, str), f"room query omitted resultJson: {room_query_body}")
-        room_result = json.loads(result_json)
-        require(isinstance(room_result, dict), f"room query result was not an object: {room_result}")
+        require(room_state_status == 200 and isinstance(room_state_body, dict), f"room state returned HTTP {room_state_status}: {room_state_body}")
+        expected_room_state = {"status": "created", "version": 1, "roomId": room_id, "name": "SDT-G15"}
+        assert_room_state_read(room_state_body, expected_room_state, create_suid, room_id)
         query_views = {
             "reservationList": {
                 "status": 200,
@@ -436,7 +466,13 @@ def main() -> None:
                 "readHead": reservations_list["readHead"],
                 "observations": reservations_list["observations"],
             },
-            "roomQuery": {"status": room_query_status, "requestMs": round(room_query_ms, 3), "result": room_result},
+            "roomState": {
+                "status": room_state_status,
+                "requestMs": round(room_state_ms, 3),
+                "state": room_state_body.get("state"),
+                "lastSortedUniqueId": room_state_body.get("lastSortedUniqueId"),
+                "tagStateId": room_state_body.get("tagStateId"),
+            },
         }
 
     cancel_status, cancel_body, cancel_ms = request(
