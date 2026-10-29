@@ -357,7 +357,6 @@ describe("SDT-G78 public error classification", () => {
     const assertSanitized = (value: unknown): void => {
       expect(value).toBeInstanceOf(ClientError);
       const error = value as ClientError & Record<string, unknown>;
-      expect(error).not.toBe(hostileBody);
       expect(error.message).toBe(canonical);
       expect(error.code).toBe("query_params_unsupported");
       expect(error.status).toBe(400);
@@ -377,15 +376,18 @@ describe("SDT-G78 public error classification", () => {
       status: 400,
       headers,
     }));
-    assertSanitized(await direct.query(scalarRequest).catch((value: unknown) => value));
-    assertSanitized(await direct.listQuery(listRequest).catch((value: unknown) => value));
-
     const executor = createSekibanExecutor(baseTransport({
       query: async () => ({ status: 400, headers, body: hostileBody }),
       listQuery: async () => ({ status: 400, headers, body: hostileBody }),
     }));
-    assertSanitized(await executor.query(scalarRequest).catch((value: unknown) => value));
-    assertSanitized(await executor.listQuery(listRequest).catch((value: unknown) => value));
+    const errors = [
+      await direct.query(scalarRequest).catch((value: unknown) => value),
+      await direct.listQuery(listRequest).catch((value: unknown) => value),
+      await executor.query(scalarRequest).catch((value: unknown) => value),
+      await executor.listQuery(listRequest).catch((value: unknown) => value),
+    ];
+    for (const error of errors) assertSanitized(error);
+    expect(new Set(errors).size).toBe(errors.length);
     expect(failureKindForCode("query_params_unsupported")).toBe("invalid");
   });
 
