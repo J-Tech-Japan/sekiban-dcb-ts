@@ -421,6 +421,45 @@ function isOperatorMount(value) {
   return value === "/operator" || value.startsWith("/operator/");
 }
 
+const serializedRoutePaths = [
+  "/api/sekiban/serialized/commit",
+  "/api/sekiban/serialized/query",
+  "/api/sekiban/serialized/list-query",
+  "/api/sekiban/serialized/tag-latest-sortable",
+  "/api/sekiban/serialized/tag-state",
+];
+
+function booleanLiteral(node) {
+  if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
+  return undefined;
+}
+
+function overlapsSerializedRoute(paths, prefixes) {
+  const pathOverlap = paths.some((value) => serializedRoutePaths.includes(value));
+  const prefixOverlap = prefixes.some((prefix) => serializedRoutePaths.some((route) => (
+    route === prefix || route.startsWith(`${prefix}/`)
+  )));
+  return pathOverlap || prefixOverlap;
+}
+
+function serializedRouteState(shape) {
+  const prefixes = Array.isArray(shape.extraPrefixes) ? shape.extraPrefixes : [];
+  const paths = Array.isArray(shape.extraPaths) ? shape.extraPaths : [];
+  const singleMaintenance = prefixes.length === 1 && prefixes[0] === "/maintenance";
+  const accepted = shape.forwardSerializedRoutes === false
+    && shape.extraPaths === null
+    && singleMaintenance
+    && !overlapsSerializedRoute(paths, prefixes);
+  return accepted ? "unmounted" : "mounted";
+}
+
+function assertMaintenanceOnlyMount(structure) {
+  if (structure.serializedRoutes !== "unmounted") {
+    fail("generated runtime mount is not maintenance-only");
+  }
+}
+
 function externalPrerequisiteDiagnostic(structure) {
   const source = [...structure.source].sort((left, right) => (
     left.property.localeCompare(right.property)
@@ -510,7 +549,7 @@ function workerStructure(authority, source, label) {
     }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
       if (node.initializer) initializers.set(node.name.text, node.initializer);
-      if (node.name.text === "worker" && node.initializer && ts.isCallExpression(node.initializer) &&
+      if (node.initializer && ts.isCallExpression(node.initializer) &&
           ts.isIdentifier(node.initializer.expression) && node.initializer.expression.text === "composeHandlers") {
         composedWorker = node.initializer;
       }
@@ -528,35 +567,69 @@ function workerStructure(authority, source, label) {
   const runtimeNames = new Set(runtimeDeclarations.keys());
   const root = composedWorker?.arguments[0];
   const properties = root && ts.isObjectLiteralExpression(root) ? root.properties : [];
-  for (const property of properties) {
-    if (!ts.isPropertyAssignment(property) || !ts.isIdentifier(property.name)) continue;
-    if (property.name.text === "application") {
-      handlers.application = true;
-      handlers.fetch = propertyNames(property.initializer).includes("fetch");
+  const sekibanAssignments = [];
+  const mountShape = {
+    forwardSerializedRoutes: "omitted",
+    extraPaths: null,
+    extraPrefixes: null,
+  };
+  function recordStaticRoutes(name, entry) {
+    if (!ts.isPropertyAssignment(entry)) unresolvedSourceShape(name, lineOf(entry));
+    const values = staticStringArray(entry.initializer);
+    if (values === undefined) unresolvedSourceShape(name, lineOf(entry));
+    const texts = values.map((item) => item.value);
+    if (name === "extraPaths") mountShape.extraPaths = texts;
+    if (name === "extraPrefixes") mountShape.extraPrefixes = texts;
+    for (const item of values) {
+      if (!isOperatorMount(item.value)) continue;
+      operatorMounted = true;
+      exposure.push({ property: name, value: item.value, line: item.line });
     }
-    if (property.name.text === "sekiban" && ts.isObjectLiteralExpression(property.initializer)) {
-      for (const entry of property.initializer.properties) {
-        if (ts.isSpreadAssignment(entry)) unresolvedSourceShape("sekiban", lineOf(entry));
-        if (entry.name && ts.isComputedPropertyName(entry.name)) unresolvedSourceShape("sekiban", lineOf(entry));
-        const name = entry.name ? propertyText(entry.name) : undefined;
-        if (name === "extraPaths" || name === "extraPrefixes") {
-          if (!ts.isPropertyAssignment(entry)) unresolvedSourceShape(name, lineOf(entry));
-          const values = staticStringArray(entry.initializer);
-          if (values === undefined) unresolvedSourceShape(name, lineOf(entry));
-          for (const item of values) {
-            if (!isOperatorMount(item.value)) continue;
-            operatorMounted = true;
-            exposure.push({ property: name, value: item.value, line: item.line });
-          }
-        }
-        if (!ts.isPropertyAssignment(entry) || !ts.isIdentifier(entry.name)) continue;
-        if (entry.name.text === "fetch") handlers.fetch = runtimeProperty(entry.initializer, runtimeNames, "fetch");
-        if (entry.name.text === "queue") handlers.queue = runtimeProperty(entry.initializer, runtimeNames, "queue");
-        if (entry.name.text === "scheduled") {
-          handlers.scheduled = runtimeProperty(entry.initializer, runtimeNames, "scheduled");
+  }
+  function inspectSekiban(property) {
+    if (!ts.isPropertyAssignment(property) || !ts.isObjectLiteralExpression(property.initializer)) {
+      unresolvedSourceShape("sekiban", lineOf(property));
+    }
+    const counts = { forwardSerializedRoutes: 0, extraPaths: 0, extraPrefixes: 0 };
+    for (const entry of property.initializer.properties) {
+      if (ts.isSpreadAssignment(entry)) unresolvedSourceShape("sekiban", lineOf(entry));
+      if (entry.name && ts.isComputedPropertyName(entry.name)) unresolvedSourceShape("sekiban", lineOf(entry));
+      const name = entry.name ? propertyText(entry.name) : undefined;
+      if (name === "forwardSerializedRoutes" || name === "extraPaths" || name === "extraPrefixes") {
+        counts[name] += 1;
+        if (counts[name] > 1) unresolvedSourceShape(name, lineOf(entry));
+        if (!ts.isPropertyAssignment(entry)) unresolvedSourceShape(name, lineOf(entry));
+        if (name === "forwardSerializedRoutes") {
+          const literal = booleanLiteral(entry.initializer);
+          if (literal === undefined) unresolvedSourceShape(name, lineOf(entry));
+          mountShape.forwardSerializedRoutes = literal;
+        } else {
+          recordStaticRoutes(name, entry);
         }
       }
+      if (!ts.isPropertyAssignment(entry) || !ts.isIdentifier(entry.name)) continue;
+      if (entry.name.text === "fetch") handlers.fetch = runtimeProperty(entry.initializer, runtimeNames, "fetch");
+      if (entry.name.text === "queue") handlers.queue = runtimeProperty(entry.initializer, runtimeNames, "queue");
+      if (entry.name.text === "scheduled") {
+        handlers.scheduled = runtimeProperty(entry.initializer, runtimeNames, "scheduled");
+      }
     }
+  }
+  if (root && ts.isObjectLiteralExpression(root)) {
+    for (const property of properties) {
+      if (ts.isSpreadAssignment(property)) unresolvedSourceShape("sekiban", lineOf(property));
+      if (property.name && ts.isComputedPropertyName(property.name)) {
+        unresolvedSourceShape("sekiban", lineOf(property));
+      }
+      const name = property.name ? propertyText(property.name) : undefined;
+      if (name === "application" && ts.isPropertyAssignment(property)) {
+        handlers.application = true;
+        handlers.fetch = propertyNames(property.initializer).includes("fetch");
+      }
+      if (name === "sekiban") sekibanAssignments.push(property);
+    }
+    if (sekibanAssignments.length !== 1) unresolvedSourceShape("sekiban", lineOf(root));
+    inspectSekiban(sekibanAssignments[0]);
   }
   function classifyDefault(node, seen) {
     if (ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isParenthesizedExpression(node)) {
@@ -626,6 +699,10 @@ function workerStructure(authority, source, label) {
     directRuntimeFetch,
     triggers,
     source: exposure,
+    forwardSerializedRoutes: mountShape.forwardSerializedRoutes,
+    extraPaths: mountShape.extraPaths,
+    extraPrefixes: mountShape.extraPrefixes,
+    serializedRoutes: serializedRouteState(mountShape),
   };
 }
 
@@ -634,6 +711,7 @@ function sourceParity(authority, overrides = new Map()) {
   assert(existsSync(workerPath), "worker-source-missing", authority.worker.entrypoint);
   const readSource = (path) => overrides.get(path) ?? readFileSync(path, "utf8");
   const structure = workerStructure(authority, readSource(workerPath), authority.worker.entrypoint);
+  assertMaintenanceOnlyMount(structure);
   assertExternalPrerequisite(structure);
   assert(canonical(structure.exports) === canonical(structure.expectedClasses), "worker-do-exports");
   assert(structure.composition, "worker-runtime-composition");
@@ -691,6 +769,7 @@ function sourceParity(authority, overrides = new Map()) {
     runtimeExposure: {
       operatorRoutes: structure.operatorRoutes,
       directRuntimeFetch: structure.directRuntimeFetch,
+      serializedRoutes: structure.serializedRoutes,
     },
   };
 }
@@ -1313,11 +1392,21 @@ function selfTest() {
   assert(unchanged.operatorRoutes === "unmounted", "runtime-exposure");
   assert(unchanged.directRuntimeFetch === false, "runtime-exposure");
   assert(unchanged.triggers.length === 0, "runtime-exposure");
+  assert(unchanged.serializedRoutes === "unmounted", "runtime-exposure");
+  assert(unchanged.extraPaths === null, "runtime-exposure");
+  assert(canonical(unchanged.extraPrefixes) === canonical(["/maintenance"]), "runtime-exposure");
   checks.push("runtime-exposure");
 
   const maintenanceLine = '    extraPrefixes: ["/maintenance"],';
+  const flagLine = "    forwardSerializedRoutes: false,";
   function withMount(text) {
     return workerText.replace(maintenanceLine, text);
+  }
+  function withFlag(text) {
+    return workerText.replace(flagLine, text);
+  }
+  function replaceSekiban(text) {
+    return workerText.replace(/ {2}sekiban: \{[\s\S]*?\n {2}\},/, text);
   }
   function requirePrerequisite(mutant, expected) {
     return () => prerequisiteFailure(
@@ -1325,21 +1414,57 @@ function selfTest() {
       expected,
     );
   }
-  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
-    withMount('    extraPaths: ["/operator/repair"],\n    extraPrefixes: ["/maintenance"],'),
-    { triggers: ["operator-route-mounted"], source: [{ property: "extraPaths", value: "/operator/repair" }] },
-  )));
-  checks.push("extra-path-prerequisite");
-  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
-    withMount('    extraPaths: ["/operator"],\n    extraPrefixes: ["/maintenance"],'),
-    { triggers: ["operator-route-mounted"], source: [{ property: "extraPaths", value: "/operator" }] },
-  )));
-  checks.push("exact-operator-path");
-  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
-    withMount('    extraPrefixes: ["/operator/bootstrap"],'),
-    { triggers: ["operator-route-mounted"], source: [{ property: "extraPrefixes", value: "/operator/bootstrap" }] },
-  )));
-  checks.push("extra-prefix-prerequisite");
+  function mountCase(label, mutant) {
+    checks.push(expectFailure("generated runtime mount is not maintenance-only", () => {
+      try {
+        sourceParity(baseline.authority, new Map([[workerPath, mutant]]));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("missing-external-prerequisite")) {
+          fail("self-test-wrong-failure", `${label}/prerequisite-before-mount-shape`);
+        }
+        throw error;
+      }
+      fail("self-test-mount-shape-accepted", label);
+    }));
+    checks.push(label);
+  }
+  function unresolvedCase(label, mutant) {
+    checks.push(expectFailure("unresolved-source-shape", () => {
+      sourceParity(baseline.authority, new Map([[workerPath, mutant]]));
+      fail("self-test-unresolved-accepted", label);
+    }));
+    checks.push(label);
+  }
+  const operatorRepair = withMount('    extraPaths: ["/operator/repair"],\n    extraPrefixes: ["/maintenance"],');
+  const operatorRepairStructure = workerStructure(baseline.authority, operatorRepair, "operator-repair.ts");
+  assert(operatorRepairStructure.operatorRoutes === "mounted", "operator-route-classifier");
+  assert(
+    canonical(operatorRepairStructure.triggers) === canonical(["operator-route-mounted"]),
+    "operator-route-classifier",
+  );
+  assert(
+    operatorRepairStructure.source.some((item) => item.property === "extraPaths" && item.value === "/operator/repair"),
+    "operator-route-classifier",
+  );
+  mountCase("operator-repair-mount-shape", operatorRepair);
+  const exactOperator = withMount('    extraPaths: ["/operator"],\n    extraPrefixes: ["/maintenance"],');
+  const exactOperatorStructure = workerStructure(baseline.authority, exactOperator, "exact-operator.ts");
+  assert(exactOperatorStructure.operatorRoutes === "mounted", "operator-route-classifier");
+  assert(
+    exactOperatorStructure.source.some((item) => item.property === "extraPaths" && item.value === "/operator"),
+    "operator-route-classifier",
+  );
+  mountCase("exact-operator-mount-shape", exactOperator);
+  const operatorPrefix = withMount('    extraPrefixes: ["/operator/bootstrap"],');
+  const operatorPrefixStructure = workerStructure(baseline.authority, operatorPrefix, "operator-prefix.ts");
+  assert(operatorPrefixStructure.operatorRoutes === "mounted", "operator-route-classifier");
+  assert(
+    operatorPrefixStructure.source.some((item) => (
+      item.property === "extraPrefixes" && item.value === "/operator/bootstrap"
+    )),
+    "operator-route-classifier",
+  );
+  mountCase("operator-prefix-mount-shape", operatorPrefix);
   checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
     workerText.replace("export default worker;", "export default runtime;"),
     { triggers: ["runtime-fetch-direct"], source: [{ property: "default", value: "runtime" }] },
@@ -1358,17 +1483,21 @@ function selfTest() {
     { triggers: ["runtime-fetch-direct"], source: [{ property: "fetch", value: "runtime.fetch" }] },
   )));
   checks.push("runtime-fetch-property-prerequisite");
-  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
-    withMount('    extraPaths: ["/operator/repair"],\n    extraPrefixes: ["/maintenance"],')
-      .replace("export default worker;", "export default runtime;"),
-    {
-      triggers: ["operator-route-mounted", "runtime-fetch-direct"],
-      source: [
-        { property: "extraPaths", value: "/operator/repair" },
-        { property: "default", value: "runtime" },
-      ],
-    },
-  )));
+  const combined = operatorRepair.replace("export default worker;", "export default runtime;");
+  const combinedStructure = workerStructure(baseline.authority, combined, "combined.ts");
+  assert(
+    canonical(combinedStructure.triggers) === canonical(["operator-route-mounted", "runtime-fetch-direct"]),
+    "combined-triggers",
+  );
+  assert(
+    combinedStructure.source.some((item) => item.property === "extraPaths" && item.value === "/operator/repair"),
+    "combined-triggers",
+  );
+  assert(
+    combinedStructure.source.some((item) => item.property === "default" && item.value === "runtime"),
+    "combined-triggers",
+  );
+  mountCase("combined-mount-shape", combined);
   checks.push("combined-triggers");
 
   const lookalike = workerStructure(
@@ -1379,8 +1508,8 @@ function selfTest() {
   assert(lookalike.operatorRoutes === "unmounted", "operator-lookalike");
   assert(lookalike.directRuntimeFetch === false, "operator-lookalike");
   assert(lookalike.triggers.length === 0, "operator-lookalike");
-  sourceParity(baseline.authority, new Map([[workerPath, withMount('    extraPrefixes: ["/operator-bootstrap"],')]]));
-  checks.push("operator-lookalike");
+  mountCase("operator-lookalike", withMount('    extraPrefixes: ["/operators"],'));
+  mountCase("operator-bootstrap-lookalike", withMount('    extraPrefixes: ["/operator-bootstrap"],'));
 
   checks.push(expectFailure("unresolved-source-shape", () => {
     workerStructure(baseline.authority, withMount('    extraPaths: [...["/health"]],\n    extraPrefixes: ["/maintenance"],'), "unresolved-extra-paths.ts");
@@ -1402,7 +1531,92 @@ function selfTest() {
   }));
   checks.push("unresolved-sekiban-spread");
 
+  mountCase("flag-true", withFlag("    forwardSerializedRoutes: true,"));
+  mountCase("flag-omitted", withFlag(""));
+  mountCase("extra-paths-empty", workerText.replace(maintenanceLine, `    extraPaths: [],\n${maintenanceLine}`));
+  mountCase(
+    "extra-paths-added",
+    workerText.replace(maintenanceLine, `    extraPaths: ["/health"],\n${maintenanceLine}`),
+  );
+  mountCase(
+    "extra-paths-serialized",
+    workerText.replace(maintenanceLine, `    extraPaths: ["/api/sekiban/serialized/commit"],\n${maintenanceLine}`),
+  );
+  mountCase("maintenance-omitted", withMount("    extraPrefixes: [],"));
+  mountCase("maintenance-duplicated", withMount('    extraPrefixes: ["/maintenance", "/maintenance"],'));
+  mountCase("maintenance-added", withMount('    extraPrefixes: ["/maintenance", "/health"],'));
+  mountCase("serialized-prefix-exact", withMount('    extraPrefixes: ["/api/sekiban/serialized/commit"],'));
+  mountCase("serialized-prefix-ancestor", withMount('    extraPrefixes: ["/api/sekiban/serialized"],'));
+  unresolvedCase("flag-identifier", withFlag("    forwardSerializedRoutes: configuredFlag,"));
+  unresolvedCase("flag-call", withFlag("    forwardSerializedRoutes: configuredFlag(),"));
+  unresolvedCase("flag-shorthand", withFlag("    forwardSerializedRoutes,"));
+  unresolvedCase("flag-computed", withFlag('    ["forwardSerializedRoutes"]: false,'));
+  unresolvedCase("flag-spread", withFlag("    ...routeShape,"));
+  unresolvedCase("prefix-identifier", withMount("    extraPrefixes: configuredPrefixes,"));
+  unresolvedCase("prefix-call", withMount("    extraPrefixes: configuredPrefixes(),"));
+  unresolvedCase("prefix-shorthand", withMount("    extraPrefixes,"));
+  unresolvedCase("prefix-computed", withMount('    ["extraPrefixes"]: ["/maintenance"],'));
+  unresolvedCase("prefix-spread", withMount('    extraPrefixes: [...["/maintenance"]],'));
+  unresolvedCase(
+    "flag-duplicate-false-then-true",
+    workerText.replace(flagLine, "    forwardSerializedRoutes: false,\n    forwardSerializedRoutes: true,"),
+  );
+  unresolvedCase(
+    "flag-duplicate-true-then-false",
+    workerText.replace(flagLine, "    forwardSerializedRoutes: true,\n    forwardSerializedRoutes: false,"),
+  );
+  unresolvedCase(
+    "prefix-duplicate-maintenance-then-other",
+    workerText.replace(
+      maintenanceLine,
+      '    extraPrefixes: ["/maintenance"],\n    extraPrefixes: ["/other"],',
+    ),
+  );
+  unresolvedCase(
+    "prefix-duplicate-other-then-maintenance",
+    workerText.replace(
+      maintenanceLine,
+      '    extraPrefixes: ["/other"],\n    extraPrefixes: ["/maintenance"],',
+    ),
+  );
+  unresolvedCase("root-spread-before", workerText.replace("  sekiban: {\n", "  ...rootMount,\n  sekiban: {\n"));
+  unresolvedCase(
+    "root-spread-after",
+    workerText.replace(
+      "    scheduled: runtime.scheduled,\n  },\n});",
+      "    scheduled: runtime.scheduled,\n  },\n  ...rootMount,\n});",
+    ),
+  );
+  unresolvedCase("sekiban-computed", workerText.replace("  sekiban: {\n", "  [\"sekiban\"]: {\n"));
+  unresolvedCase("sekiban-shorthand", replaceSekiban("  sekiban,"));
+  unresolvedCase("sekiban-non-object", replaceSekiban("  sekiban: configuredMount,"));
+  const duplicateSekiban = [
+    "  sekiban: {",
+    "    prefix: \"/internal/sekiban\",",
+    "    forwardSerializedRoutes: true,",
+    "    extraPrefixes: [\"/other\"],",
+    "  },",
+  ].join("\n");
+  unresolvedCase(
+    "sekiban-duplicate-maintenance-then-other",
+    workerText.replace(
+      "    scheduled: runtime.scheduled,\n  },\n});",
+      `    scheduled: runtime.scheduled,\n  },\n${duplicateSekiban}\n});`,
+    ),
+  );
+  unresolvedCase(
+    "sekiban-duplicate-other-then-maintenance",
+    workerText.replace("  sekiban: {\n", `${duplicateSekiban}\n  sekiban: {\n`),
+  );
+
   const gateSource = readFileSync(fileURLToPath(import.meta.url), "utf8");
+  assert(gateSource.includes("function assertMaintenanceOnlyMount"), "maintenance-only-inspection");
+  assert(gateSource.includes("sekibanAssignments.length !== 1"), "maintenance-only-inspection");
+  assert(
+    gateSource.includes("assertMaintenanceOnlyMount(structure);\n  assertExternalPrerequisite(structure);"),
+    "maintenance-only-parity",
+  );
+  checks.push("maintenance-only-inspection", "maintenance-only-parity");
   assertRepairBindingNameOnly(gateSource);
   checks.push("repair-binding-name-only");
   checks.push(expectFailure("repair-binding-value-inspection", () => assertRepairBindingNameOnly(
@@ -1432,30 +1646,60 @@ function selfTest() {
     CLOUDFLARE_ACCOUNT_ID: repairCanary,
     UNRELATED_CONTROL: "kept-control",
   };
-  let failureSpawnCalls = 0;
-  let failureText = "";
-  const failureOutput = captureWrites(() => {
-    try {
-      runGate(false, {
-        sourceOverrides: new Map([[
-          workerPath,
-          withMount('    extraPaths: ["/operator/repair"],\n    extraPrefixes: ["/maintenance"],'),
-        ]]),
-        env: canaryEnv,
-        spawn() {
-          failureSpawnCalls += 1;
-          return { status: 0, stdout: "", stderr: "" };
-        },
-      });
-    } catch (error) {
-      failureText = renderFailure(error);
-    }
-  });
-  assert(failureText.includes("deploy-check:missing-external-prerequisite:"), "prerequisite-before-wrangler");
-  assert(failureSpawnCalls === 0, "prerequisite-before-wrangler");
-  assert(!failureText.includes(repairCanary), "canary-redaction");
-  assert(!failureOutput.stdout.includes(repairCanary) && !failureOutput.stderr.includes(repairCanary), "canary-redaction");
+  function rejectedGate(mutant) {
+    let spawnCalls = 0;
+    let text = "";
+    const output = captureWrites(() => {
+      try {
+        runGate(false, {
+          sourceOverrides: new Map([[workerPath, mutant]]),
+          env: canaryEnv,
+          spawn() {
+            spawnCalls += 1;
+            return { status: 0, stdout: "", stderr: "" };
+          },
+        });
+      } catch (error) {
+        text = renderFailure(error);
+      }
+    });
+    return { spawnCalls, text, output };
+  }
+  const operatorGate = rejectedGate(operatorRepair);
+  assert(
+    operatorGate.text.includes("deploy-check:generated runtime mount is not maintenance-only"),
+    "mount-shape-before-wrangler",
+  );
+  assert(!operatorGate.text.includes("missing-external-prerequisite"), "mount-shape-before-wrangler");
+  assert(operatorGate.spawnCalls === 0, "mount-shape-before-wrangler");
+  assert(!operatorGate.text.includes(repairCanary), "canary-redaction");
+  assert(
+    !operatorGate.output.stdout.includes(repairCanary) && !operatorGate.output.stderr.includes(repairCanary),
+    "canary-redaction",
+  );
+  checks.push("mount-shape-before-wrangler");
+  const directGate = rejectedGate(workerText.replace("export default worker;", "export default runtime;"));
+  assert(directGate.text.includes("deploy-check:missing-external-prerequisite:"), "prerequisite-before-wrangler");
+  assert(directGate.spawnCalls === 0, "prerequisite-before-wrangler");
+  assert(!directGate.text.includes(repairCanary), "canary-redaction");
+  assert(
+    !directGate.output.stdout.includes(repairCanary) && !directGate.output.stderr.includes(repairCanary),
+    "canary-redaction",
+  );
   checks.push("prerequisite-before-wrangler");
+  const combinedGate = rejectedGate(combined);
+  assert(
+    combinedGate.text.includes("deploy-check:generated runtime mount is not maintenance-only"),
+    "combined-mount-shape-before-wrangler",
+  );
+  assert(!combinedGate.text.includes("missing-external-prerequisite"), "combined-mount-shape-before-wrangler");
+  assert(combinedGate.spawnCalls === 0, "combined-mount-shape-before-wrangler");
+  assert(!combinedGate.text.includes(repairCanary), "canary-redaction");
+  assert(
+    !combinedGate.output.stdout.includes(repairCanary) && !combinedGate.output.stderr.includes(repairCanary),
+    "canary-redaction",
+  );
+  checks.push("combined-mount-shape-before-wrangler");
 
   let capturedEnv;
   const successOutput = captureWrites(() => {
@@ -1477,6 +1721,12 @@ function selfTest() {
   const successReceipt = JSON.parse(successOutput.stdout);
   assert(successReceipt.runtimeExposure.operatorRoutes === "unmounted", "receipt-shape");
   assert(successReceipt.runtimeExposure.directRuntimeFetch === false, "receipt-shape");
+  assert(successReceipt.runtimeExposure.serializedRoutes === "unmounted", "receipt-shape");
+  assert(canonical(Object.keys(successReceipt.runtimeExposure).sort()) === canonical([
+    "directRuntimeFetch",
+    "operatorRoutes",
+    "serializedRoutes",
+  ]), "receipt-shape");
   assert(canonical(successReceipt.externalPrerequisites) === canonical([{
     name: "REPAIR_OPERATOR_TOKEN",
     required: false,

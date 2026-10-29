@@ -30,6 +30,7 @@ const worker: ExportedHandler<StarterEnvironment> = composeHandlers<StarterEnvir
     prefix: "/internal/sekiban",
     fetch: runtime.fetch,
     authorize: () => true,
+    forwardSerializedRoutes: false,
     extraPrefixes: ["/maintenance"],
     queue: runtime.queue,
     scheduled: runtime.scheduled,

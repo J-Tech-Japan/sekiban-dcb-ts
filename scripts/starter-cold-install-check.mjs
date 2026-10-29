@@ -319,10 +319,23 @@ function finishInstall(work, env, mode, artifact, receipt) {
       "packed topology repair conditions changed",
     );
     for (const file of ["DEPLOYMENT.md", "README.md", "AGENTS.md"]) {
-      const text = readFileSync(join(project, file), "utf8");
+      const text = readFileSync(join(project, file), "utf8").replace(/\s+/g, " ");
       assert(text.includes("REPAIR_OPERATOR_TOKEN"), `packed ${file} omitted the repair prerequisite`);
       assert(text.includes("extraPath") && text.includes("extraPrefix"), `packed ${file} omitted the source triggers`);
       assert(text.includes("does not verify remote state"), `packed ${file} omitted the offline-only boundary`);
+      assert(text.includes("exact maintenance-only mount"), `packed ${file} omitted the stock gate boundary`);
+      assert(
+        text.includes("receipt expectations, route tests, and applicable runbook policy"),
+        `packed ${file} omitted the coordinated customization contract`,
+      );
+      assert(
+        text.includes("generated runtime mount is not maintenance-only"),
+        `packed ${file} omitted the mount-shape diagnostic`,
+      );
+      assert(
+        !text.includes("Provision it through Wrangler before adding"),
+        `packed ${file} treats token provisioning as sufficient`,
+      );
     }
   }
   const descriptorPath = join(project, "cosmos.experimental.json");
@@ -348,8 +361,14 @@ function finishInstall(work, env, mode, artifact, receipt) {
   const starterWorker = readFileSync(join(project, "src/worker.ts"), "utf8");
   assert(!starterWorker.includes("@sekiban/dcb-runtime/cosmos"), "generated worker activated Cosmos");
   if (mode === "pack") {
+    assert(
+      starterWorker.includes("forwardSerializedRoutes: false"),
+      "packed worker omitted forwardSerializedRoutes: false",
+    );
     assert(starterWorker.includes('extraPrefixes: ["/maintenance"]'), "packed worker changed the maintenance prefix");
     assert(!starterWorker.includes("extraPaths"), "packed worker mounted an extra path");
+    const maintenancePrefixes = starterWorker.match(/extraPrefixes:\s*\["\/maintenance"\]/g) ?? [];
+    assert(maintenancePrefixes.length === 1, "packed worker maintenance prefix is not exactly one");
   }
   const starterWrangler = readFileSync(join(project, "wrangler.jsonc"), "utf8");
   assert(starterWrangler.includes('"d1_databases"') && !starterWrangler.includes("COSMOS_KEY"), "generated Wrangler composition is not active D1-only");
@@ -640,7 +659,11 @@ function selfTest() {
   }
   const modernAuthority = receiptAuthority(true);
   const modernReceipt = receiptFor(modernAuthority, {
-    runtimeExposure: { operatorRoutes: "unmounted", directRuntimeFetch: false },
+    runtimeExposure: {
+      operatorRoutes: "unmounted",
+      directRuntimeFetch: false,
+      serializedRoutes: "unmounted",
+    },
     externalPrerequisites: [{
       name: "REPAIR_OPERATOR_TOKEN",
       required: false,
@@ -650,6 +673,22 @@ function selfTest() {
   });
   validateDeployCheckReceipt(modernReceipt, modernAuthority);
   checks.push("modern-receipt");
+  const missingSerialized = structuredClone(modernReceipt);
+  delete missingSerialized.runtimeExposure.serializedRoutes;
+  nodeAssert.throws(
+    () => validateDeployCheckReceipt(missingSerialized, modernAuthority),
+    /runtime exposure/,
+    "modern authority accepted a receipt without serializedRoutes",
+  );
+  checks.push("modern-receipt-missing-serialized-routes");
+  const mountedSerialized = structuredClone(modernReceipt);
+  mountedSerialized.runtimeExposure.serializedRoutes = "mounted";
+  nodeAssert.throws(
+    () => validateDeployCheckReceipt(mountedSerialized, modernAuthority),
+    /runtime exposure/,
+    "modern authority accepted a mounted serialized route state",
+  );
+  checks.push("modern-receipt-mounted-serialized-routes");
   const missingPrerequisite = structuredClone(modernReceipt);
   delete missingPrerequisite.externalPrerequisites;
   nodeAssert.throws(

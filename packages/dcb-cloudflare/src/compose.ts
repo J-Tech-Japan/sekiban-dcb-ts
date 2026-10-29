@@ -49,6 +49,7 @@ export interface SekibanMount<
   authorize: Authorize<RequestType, Env, Ctx>;
   extraPaths?: readonly string[];
   extraPrefixes?: readonly string[];
+  forwardSerializedRoutes?: boolean;
   queue?: QueueHandler<Env, Ctx, Batch>;
   scheduled?: ScheduledHandler<Env, Ctx, Controller>;
 }
@@ -128,6 +129,14 @@ function validateExtraPrefixes(prefixes: readonly string[] | undefined): readonl
   return prefixes ?? [];
 }
 
+function resolveForwardSerializedRoutes(mount: object & { forwardSerializedRoutes?: boolean }): boolean {
+  if (!Object.hasOwn(mount, "forwardSerializedRoutes")) return true;
+  if (typeof mount.forwardSerializedRoutes !== "boolean") {
+    throw new Error("forwardSerializedRoutes must be boolean");
+  }
+  return mount.forwardSerializedRoutes;
+}
+
 export function composeFetch<
   Env = unknown,
   Ctx = ExecutionContext,
@@ -137,6 +146,7 @@ export function composeFetch<
   sekiban?: SekibanMount<Env, Ctx, RequestType, never, never>;
 }): FetchHandler<Env, Ctx, RequestType> {
   const mount = input.sekiban;
+  const forwardSerializedRoutes = mount === undefined ? true : resolveForwardSerializedRoutes(mount);
   if (mount !== undefined) {
     if (typeof mount.authorize !== "function") {
       throw new Error("authorize is required to mount runtime routes");
@@ -144,13 +154,20 @@ export function composeFetch<
     assertPrefix(mount.prefix);
     validateExtraPrefixes(mount.extraPrefixes);
   }
-  const allowed = mount === undefined ? new Set<string>() : new Set<string>([...SERIALIZED_PATHS, ...(mount.extraPaths ?? [])]);
+  const serializedPaths = forwardSerializedRoutes ? SERIALIZED_PATHS : [];
+  const allowed = mount === undefined
+    ? new Set<string>()
+    : new Set<string>([...serializedPaths, ...(mount.extraPaths ?? [])]);
   const extraPrefixes = mount === undefined ? [] : validateExtraPrefixes(mount.extraPrefixes);
+  const canonicalSerializedPaths = new Set<string>(SERIALIZED_PATHS);
   return async (request, env, ctx) => {
     if (mount === undefined) return input.application(request, env, ctx);
     const url = new URL(request.url);
     if (!segmentPrefix(url.pathname, mount.prefix)) return input.application(request, env, ctx);
     const stripped = stripPrefix(url.pathname, mount.prefix);
+    if (!forwardSerializedRoutes && canonicalSerializedPaths.has(stripped)) {
+      return new Response("runtime route is not forwarded", { status: 404 });
+    }
     const prefixAllowed = extraPrefixes.some((prefix) => segmentPrefix(stripped, prefix));
     if (!allowed.has(stripped) && !prefixAllowed) return new Response("runtime route is not forwarded", { status: 404 });
     const decision = await mount.authorize(request, env, ctx);

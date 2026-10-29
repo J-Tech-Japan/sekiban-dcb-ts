@@ -78,6 +78,173 @@ async function request(handler, path, init = {}, env = {}, ctx = {}) {
   return handler(new Request(`https://caller.example${path}`, init), env, ctx);
 }
 
+const forwardingMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "BREW"];
+
+async function falseForwardingProbes(lib) {
+  const { composeFetch, composeHandlers } = lib;
+  const paths = [...lib.SERIALIZED_PATHS];
+  if (paths.length !== 5) fail("serialized path list changed");
+  const probes = {};
+  const application = async () => new Response("app");
+  for (const path of paths) {
+    let authorizeCalls = 0;
+    let runtimeCalls = 0;
+    const fetch = composeFetch({
+      application,
+      sekiban: {
+        prefix: "/sekiban",
+        fetch: async () => {
+          runtimeCalls += 1;
+          return new Response("runtime");
+        },
+        authorize: () => {
+          authorizeCalls += 1;
+          return true;
+        },
+        forwardSerializedRoutes: false,
+      },
+    });
+    for (const method of forwardingMethods) {
+      const response = await request(fetch, `/sekiban${path}`, { method });
+      const body = await response.text();
+      if (response.status !== 404 || body !== "runtime route is not forwarded") {
+        fail(`${path} ${method} was forwarded when serialized routes are off`);
+      }
+      if (authorizeCalls !== 0 || runtimeCalls !== 0) {
+        fail(`${path} ${method} called authorization or runtime`);
+      }
+    }
+    probes[`false:${path}`] = { status: 404, authorizeCalls, runtimeCalls };
+  }
+  for (const path of paths) {
+    const cases = [
+      [{ extraPaths: [path] }, `${path} extraPath restored a canonical path`],
+      [{ extraPrefixes: [path] }, `${path} extraPrefix restored a canonical path`],
+      [{ extraPrefixes: ["/api/sekiban/serialized"] }, `${path} ancestor prefix restored a canonical path`],
+    ];
+    for (const [extra, label] of cases) {
+      let authorizeCalls = 0;
+      let runtimeCalls = 0;
+      const fetch = composeFetch({
+        application,
+        sekiban: {
+          prefix: "/sekiban",
+          fetch: async () => {
+            runtimeCalls += 1;
+            return new Response("runtime");
+          },
+          authorize: () => {
+            authorizeCalls += 1;
+            return true;
+          },
+          forwardSerializedRoutes: false,
+          ...extra,
+        },
+      });
+      const response = await request(fetch, `/sekiban${path}`);
+      const body = await response.text();
+      const blocked = response.status !== 404 || body !== "runtime route is not forwarded";
+      if (blocked || authorizeCalls !== 0 || runtimeCalls !== 0) fail(label);
+    }
+  }
+  let extraAuthorizeCalls = 0;
+  let extraRuntimeCalls = 0;
+  const extras = composeFetch({
+    application,
+    sekiban: {
+      prefix: "/sekiban",
+      extraPaths: ["/custom-health"],
+      extraPrefixes: ["/maintenance"],
+      fetch: async () => {
+        extraRuntimeCalls += 1;
+        return new Response("runtime");
+      },
+      authorize: () => {
+        extraAuthorizeCalls += 1;
+        return true;
+      },
+      forwardSerializedRoutes: false,
+    },
+  });
+  const health = await request(extras, "/sekiban/custom-health");
+  const maintenance = await request(extras, "/sekiban/maintenance/incidents");
+  if (health.status !== 200 || maintenance.status !== 200 || extraRuntimeCalls !== 2 || extraAuthorizeCalls !== 2) {
+    fail("non-overlapping extras were not forwarded with serialized routes off");
+  }
+  for (const path of paths) {
+    const blocked = await request(extras, `/sekiban${path}`);
+    const blockedBody = await blocked.text();
+    if (blocked.status !== 404 || blockedBody !== "runtime route is not forwarded" || extraRuntimeCalls !== 2) {
+      fail(`${path} was restored beside a non-overlapping extra`);
+    }
+  }
+  probes["false-non-overlapping"] = {
+    health: health.status,
+    maintenance: maintenance.status,
+    runtimeCalls: extraRuntimeCalls,
+  };
+  const quietOrder = [];
+  const quiet = composeHandlers({
+    application: {
+      fetch: application,
+      queue: async () => { quietOrder.push("app-queue"); },
+      scheduled: async () => { quietOrder.push("app-scheduled"); },
+    },
+    sekiban: {
+      prefix: "/sekiban",
+      fetch: async () => new Response("runtime"),
+      authorize: () => true,
+      forwardSerializedRoutes: false,
+      queue: async () => { quietOrder.push("runtime-queue"); },
+      scheduled: async () => { quietOrder.push("runtime-scheduled"); },
+    },
+  });
+  const quietResponse = await request(quiet.fetch, `/sekiban${paths[0]}`);
+  const quietBody = await quietResponse.text();
+  await quiet.queue({}, {}, {});
+  await quiet.scheduled({}, {}, {});
+  if (quietResponse.status !== 404 || quietBody !== "runtime route is not forwarded") {
+    fail("false mount without extras forwarded a serialized path");
+  }
+  if (quietOrder.join(",") !== "runtime-queue,app-queue,runtime-scheduled,app-scheduled") {
+    fail("false mount without extras dropped queue or scheduled composition");
+  }
+  probes["false-no-extras"] = { status: quietResponse.status, order: quietOrder };
+  let trueRuntimeCalls = 0;
+  const explicitTrue = composeFetch({
+    application,
+    sekiban: {
+      prefix: "/sekiban",
+      fetch: async () => {
+        trueRuntimeCalls += 1;
+        return new Response("runtime");
+      },
+      authorize: () => true,
+      forwardSerializedRoutes: true,
+    },
+  });
+  const trueResponse = await request(explicitTrue, `/sekiban${paths[0]}`);
+  if (trueResponse.status !== 200 || trueRuntimeCalls !== 1) fail("explicit true did not keep the serialized default");
+  probes["explicit-true"] = { status: trueResponse.status, runtimeCalls: trueRuntimeCalls };
+  for (const value of ["false", 0, { value: false }, null, undefined]) {
+    let threw = false;
+    try {
+      const sekiban = {
+        prefix: "/sekiban",
+        fetch: async () => new Response("runtime"),
+        authorize: () => true,
+      };
+      Object.defineProperty(sekiban, "forwardSerializedRoutes", { value, enumerable: true });
+      composeFetch({ application, sekiban });
+    } catch (error) {
+      threw = error instanceof Error && error.message === "forwardSerializedRoutes must be boolean";
+    }
+    if (!threw) fail(`non-boolean forwardSerializedRoutes was accepted: ${String(value)}`);
+  }
+  probes["non-boolean"] = true;
+  return probes;
+}
+
 async function helperProbes() {
   const lib = await import(pathToFileURL(join(root, "packages/dcb-cloudflare/dist/compose.js")).href);
   const cli = await import(pathToFileURL(join(root, "packages/dcb-cloudflare/dist/cli.js")).href);
@@ -361,6 +528,7 @@ async function helperProbes() {
   };
   const matched = readFileSync(join(root, "scripts/dcb-matched-set-release-check.mjs"), "utf8");
   probes["matched-set"] = !matched.includes("@sekiban/dcb-cloudflare") && !matched.includes("\"dcb-cloudflare\"");
+  Object.assign(probes, await falseForwardingProbes(lib));
   return probes;
 }
 
