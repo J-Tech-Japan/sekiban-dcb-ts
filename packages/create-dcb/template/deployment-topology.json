@@ -73,6 +73,17 @@
       "optional": true,
       "ownership": "runtime-owned",
       "forbiddenIn": "vars"
+    },
+    {
+      "name": "REPAIR_OPERATOR_TOKEN",
+      "optional": true,
+      "ownership": "runtime-owned",
+      "forbiddenIn": "vars",
+      "verification": "external",
+      "requiredWhen": [
+        "operator-route-mounted",
+        "runtime-fetch-direct"
+      ]
     }
   ]
 }

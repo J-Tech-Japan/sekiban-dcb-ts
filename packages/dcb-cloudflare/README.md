@@ -18,10 +18,15 @@ and Node 22 or newer. cf is intentionally not a dependency of this package.
 
 ```ts
 import { composeHandlers, requireHandlers } from "@sekiban/dcb-cloudflare";
-import { createCloudflareOnlyRuntimeWorker, type CloudflareOnlyEnv } from "@sekiban/dcb-runtime/cloudflare";
+import {
+  checkConfiguredBearer,
+  createCloudflareOnlyRuntimeWorker,
+  type CloudflareOnlyEnv,
+} from "@sekiban/dcb-runtime/cloudflare";
 
 interface Env extends CloudflareOnlyEnv {
   readonly SDT_SERVICE_ID: string;
+  readonly REPAIR_OPERATOR_TOKEN?: string;
 }
 
 const runtime = requireHandlers(createCloudflareOnlyRuntimeWorker({ /* domain, config */ }));
@@ -31,7 +36,15 @@ const worker: ExportedHandler<Env> = composeHandlers<Env>({
   sekiban: {
     prefix: "/internal/sekiban",
     fetch: runtime.fetch,
-    authorize: (request) => request.headers.get("authorization") === "Bearer <token>",
+    authorize: async (request, env) => {
+      const decision = await checkConfiguredBearer(request, env.REPAIR_OPERATOR_TOKEN);
+      if (decision === "unconfigured") return new Response("Not found", { status: 404 });
+      if (decision === "missing" || decision === "invalid") {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      if (decision === "authorized") return true;
+      return new Response("Unauthorized", { status: 401 });
+    },
     queue: runtime.queue,
     scheduled: runtime.scheduled,
   },
@@ -40,9 +53,18 @@ const worker: ExportedHandler<Env> = composeHandlers<Env>({
 export default worker;
 ```
 
+`checkConfiguredBearer` is available beginning with `@sekiban/dcb-runtime` 0.2.2.
+This package's manifest still depends on `@sekiban/dcb-runtime` 0.2.1 exactly.
+The release-preparation change moves that exact dependency to 0.2.2 before
+publishing `@sekiban/dcb-cloudflare` 0.1.4. The example describes that upcoming
+runtime helper, not the currently published 0.1.3 helper and runtime pair. The
+callback returns `true` only for `authorized`. `unconfigured` is an explicit
+404, and `missing` or `invalid` is an explicit denial. The composition helper's
+`false` mapping is not the example's denial path.
+
 The declarations reference Workers types, so TypeScript consumers install `@cloudflare/workers-types`, include `"@cloudflare/workers-types"` in `compilerOptions.types`, and pass the environment type explicitly at the Worker boundary. The generated starter already does both. `requireHandlers()` bridges `createCloudflareOnlyRuntimeWorker()`'s result, whose handler members are optional in the Workers types.
 
-The helper requires `@sekiban/dcb-runtime` 0.2.1, and the generated starter pins the matched 0.2.1 set.
+The generated starter pins the matched 0.2.1 set. This change does not move that pin.
 
 ## License
 

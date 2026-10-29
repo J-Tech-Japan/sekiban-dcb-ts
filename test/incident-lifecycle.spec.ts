@@ -736,6 +736,98 @@ describe("SDT-G124 authentication, reads, concurrency, and routing", () => {
     }
   });
 
+  it("keeps unmounted operator routes at 404 and reaches unconfigured maintenance", async () => {
+    const starter = await loadStarterWorker();
+    const starterFetch = starter.default.fetch as unknown as (
+      request: Request,
+      env: unknown,
+      ctx: ExecutionContext,
+    ) => Promise<Response>;
+    const runtimeBindings = [
+      "REPAIR_OPERATOR_TOKEN",
+      "INCIDENT_MAINTAINER_TOKEN",
+      "SDT_SERVICE_ID",
+      "D1",
+      "D1_MV",
+      "ALLOCATOR",
+      "BOOTSTRAP",
+      "JOURNAL",
+      "TAG",
+      "TAG_STATE",
+    ] as const;
+
+    function watchedEnv(): { env: object; reads: Record<string, number> } {
+      const reads: Record<string, number> = {};
+      const env = new Proxy({}, {
+        get(_target, property) {
+          if (typeof property === "string") reads[property] = (reads[property] ?? 0) + 1;
+          return undefined;
+        },
+      });
+      return { env, reads };
+    }
+
+    function expectQuiet(reads: Record<string, number>, allowed: readonly string[] = []): void {
+      for (const name of runtimeBindings) {
+        if (allowed.includes(name)) continue;
+        expect(reads[name] ?? 0, name).toBe(0);
+      }
+    }
+
+    const prefixed = [
+      {
+        method: "POST",
+        path: "/internal/sekiban/operator/repair",
+        body: JSON.stringify({ probe: "harmless" }),
+        expectedBody: "runtime route is not forwarded",
+      },
+      {
+        method: "GET",
+        path: "/internal/sekiban/operator/bootstrap/x/status",
+        body: undefined,
+        expectedBody: "runtime route is not forwarded",
+      },
+    ];
+    for (const request of prefixed) {
+      const watched = watchedEnv();
+      const response = await starterFetch(new Request(`https://starter.test${request.path}`, {
+        method: request.method,
+        headers: request.body === undefined ? undefined : { "content-type": "application/json" },
+        body: request.body,
+      }), watched.env, {} as ExecutionContext);
+      expect(response.status, request.path).toBe(404);
+      await expect(response.text(), request.path).resolves.toBe(request.expectedBody);
+      expectQuiet(watched.reads);
+    }
+
+    const unprefixed = [
+      { method: "POST", path: "/operator/repair", body: JSON.stringify({ probe: "harmless" }) },
+      { method: "GET", path: "/operator/bootstrap/x/status", body: undefined },
+    ];
+    for (const request of unprefixed) {
+      const watched = watchedEnv();
+      const response = await starterFetch(new Request(`https://starter.test${request.path}`, {
+        method: request.method,
+        headers: request.body === undefined ? undefined : { "content-type": "application/json" },
+        body: request.body,
+      }), watched.env, {} as ExecutionContext);
+      expect(response.status, request.path).toBe(404);
+      await expect(response.text(), request.path).resolves.toBe("Not found");
+      expectQuiet(watched.reads);
+    }
+
+    const maintenance = watchedEnv();
+    const incidents = await starterFetch(
+      new Request("https://starter.test/internal/sekiban/maintenance/incidents"),
+      maintenance.env,
+      {} as ExecutionContext,
+    );
+    expect(incidents.status).toBe(503);
+    await expect(incidents.json()).resolves.toMatchObject({ code: "incident_maintenance_unavailable" });
+    expect(maintenance.reads.INCIDENT_MAINTAINER_TOKEN ?? 0).toBeGreaterThan(0);
+    expectQuiet(maintenance.reads, ["INCIDENT_MAINTAINER_TOKEN"]);
+  });
+
   it("keeps exact filters, encoded detail, and generated-starter lookalikes on their intended routes", async () => {
     const starter = await loadStarterWorker();
     const starterFetch = starter.default.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;

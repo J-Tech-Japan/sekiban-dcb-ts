@@ -215,6 +215,25 @@ function assertTemplateAndStarter(project) {
       "18 months",
     ]) check(text.includes(phrase), `starter guidance omitted ${phrase}`);
   }
+  const repairGuidance = [
+    "REPAIR_OPERATOR_TOKEN",
+    "extraPath",
+    "extraPrefix",
+    "/operator",
+    "does not verify remote state",
+  ];
+  const generatedReadme = readFileSync(join(project, "README.md"), "utf8");
+  const generatedAgents = readFileSync(join(project, "AGENTS.md"), "utf8");
+  const creatorReadme = readFileSync(join(root, "packages/create-dcb/README.md"), "utf8");
+  for (const [label, text] of [
+    ["template README", starterReadme],
+    ["template AGENTS", starterAgents],
+    ["generated README", generatedReadme],
+    ["generated AGENTS", generatedAgents],
+    ["creator README", creatorReadme],
+  ]) {
+    for (const phrase of repairGuidance) check(text.includes(phrase), `${label} omitted ${phrase}`);
+  }
   const replace = readFileSync(join(root, "packages/create-dcb/template/REPLACE.md"), "utf8");
   for (const phrase of ["`cloudflare.config.ts`", "`public/.assetsignore`", "`AGENTS.md`"]) check(replace.includes(phrase), `REPLACE.md omitted ${phrase}`);
   const sourceCore = readFileSync(join(root, "scripts/lib/offline-provider-validation.mjs"));

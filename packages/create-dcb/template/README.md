@@ -45,6 +45,14 @@ npm run deploy
 The optional incident-maintenance secret setup is documented in the
 [DEPLOYMENT.md secret section](./DEPLOYMENT.md#9-optional-incident-maintenance-secret).
 
+`REPAIR_OPERATOR_TOKEN` is optional while `/operator/*` stays unmounted and
+the Worker does not export runtime fetch directly. Provision it through
+Wrangler before adding an `extraPath` or `extraPrefix` under `/operator`, or
+before exposing runtime fetch directly. The value does not belong in source,
+topology, `vars`, generated output, command arguments, or logs. `deploy:check`
+reports that source state only and does not verify remote state. See
+[DEPLOYMENT.md](./DEPLOYMENT.md#conditional-repair-secret).
+
 ## cf CLI (beta)
 
 Use `npm run migrate` for D1 migrations and `npm run deploy` for the Worker.

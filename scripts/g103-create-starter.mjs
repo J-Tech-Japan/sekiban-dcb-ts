@@ -217,10 +217,42 @@ function assertInventory(project) {
   assert(cosmosDescriptorProof.byteParity, "generated Cosmos descriptor is not byte-identical to the template");
   const readme = readFileSync(join(project, "README.md"), "utf8");
   const topology = JSON.parse(readFileSync(join(project, "deployment-topology.json"), "utf8"));
-  const secretName = topology.secrets[0].name;
+  const incident = topology.secrets.find((entry) => entry.name === "INCIDENT_MAINTAINER_TOKEN");
+  const repair = topology.secrets.find((entry) => entry.name === "REPAIR_OPERATOR_TOKEN");
+  assert(incident !== undefined, "topology is missing INCIDENT_MAINTAINER_TOKEN");
+  assert(repair !== undefined, "topology is missing REPAIR_OPERATOR_TOKEN");
+  assert(
+    incident.optional === true && incident.ownership === "runtime-owned" && incident.forbiddenIn === "vars",
+    "incident secret entry changed",
+  );
+  assert(
+    !Object.hasOwn(incident, "verification") && !Object.hasOwn(incident, "requiredWhen"),
+    "incident secret gained conditional fields",
+  );
+  assert(
+    repair.optional === true && repair.ownership === "runtime-owned" && repair.forbiddenIn === "vars",
+    "repair secret entry is not optional and external",
+  );
+  assert(repair.verification === "external", "repair secret verification is not external");
+  assert(
+    JSON.stringify(repair.requiredWhen) === JSON.stringify(["operator-route-mounted", "runtime-fetch-direct"]),
+    "repair secret conditions changed",
+  );
   const deployment = readFileSync(join(project, "DEPLOYMENT.md"), "utf8");
-  assert(!readme.includes(secretName), "starter README leaked the incident secret name");
-  assert(deployment.includes(`wrangler secret put ${secretName}`), "DEPLOYMENT.md omitted incident secret setup");
+  const agents = readFileSync(join(project, "AGENTS.md"), "utf8");
+  const templateWorker = readFileSync(join(root, "packages/create-dcb/template/src/worker.ts"));
+  assert(templateWorker.equals(Buffer.from(worker)), "generated worker source drifted from the template");
+  assert(worker.includes('extraPrefixes: ["/maintenance"]'), "generated worker dropped the maintenance prefix");
+  assert(!worker.includes("extraPaths"), "generated worker added extraPaths");
+  assert(!readme.includes(incident.name), "starter README leaked the incident secret name");
+  assert(deployment.includes(`wrangler secret put ${incident.name}`), "DEPLOYMENT.md omitted incident secret setup");
+  assert(deployment.includes("npx wrangler secret put REPAIR_OPERATOR_TOKEN"), "DEPLOYMENT.md omitted repair secret setup");
+  for (const [label, text] of [["README", readme], ["DEPLOYMENT", deployment], ["AGENTS", agents]]) {
+    assert(text.includes("REPAIR_OPERATOR_TOKEN"), `${label} omitted the repair prerequisite`);
+    assert(text.includes("extraPath") && text.includes("extraPrefix"), `${label} omitted the source triggers`);
+    assert(text.includes("/operator"), `${label} omitted the unmounted route`);
+    assert(text.includes("does not verify remote state"), `${label} omitted the offline-only boundary`);
+  }
   assert(
     readme.includes("DEPLOYMENT.md") && deployment.includes("Do not") && deployment.includes("vars"),
     "starter secret boundary guidance is incomplete",
@@ -437,7 +469,7 @@ function canonical(value) {
   return JSON.stringify(value);
 }
 
-function receiptTopology(authority) {
+export function receiptTopology(authority) {
   return [
     ...authority.d1.map((entry) => ({
       kind: "d1", binding: entry.binding, databaseName: entry.databaseName, migrationsDir: entry.migrationsDir,
@@ -499,6 +531,37 @@ export function validateDeployCheckReceipt(receipt, authority) {
     !JSON.stringify(receipt).match(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/i),
     "receipt exposed a configured resource ID",
   );
+  const repairEntry = Array.isArray(authority.secrets)
+    ? authority.secrets.find((entry) => entry?.name === "REPAIR_OPERATOR_TOKEN")
+    : undefined;
+  if (repairEntry !== undefined) {
+    receiptAssert(
+      canonical(receipt.runtimeExposure) === canonical({ operatorRoutes: "unmounted", directRuntimeFetch: false }),
+      "runtime exposure receipt is not the unmounted default",
+    );
+    receiptAssert(
+      Array.isArray(receipt.externalPrerequisites) && receipt.externalPrerequisites.length === 1,
+      "modern receipt must contain one external prerequisite",
+    );
+    receiptAssert(
+      canonical(receipt.externalPrerequisites[0]) === canonical({
+        name: "REPAIR_OPERATOR_TOKEN",
+        required: false,
+        verification: "external",
+        remoteStateChecked: false,
+      }),
+      "modern prerequisite receipt fields drifted",
+    );
+    for (const name of ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "REPAIR_OPERATOR_TOKEN"]) {
+      receiptAssert(
+        Array.isArray(receipt.removedCredentialVariables) && receipt.removedCredentialVariables.includes(name),
+        `removed credential list is missing ${name}`,
+      );
+    }
+    return;
+  }
+  receiptAssert(receipt.runtimeExposure === undefined, "published receipt includes runtime exposure");
+  receiptAssert(receipt.externalPrerequisites === undefined, "published receipt includes external prerequisites");
 }
 
 function assertDeployCheckReceipt(receipt, authority) {

@@ -216,15 +216,43 @@ function validateAuthority(authority) {
   for (const key of Object.keys(authority.vars)) assert(!authoritySecretNames.has(key), "secret-in-vars");
   const vars = object(authority.vars, "$.vars", ["DOMAIN_DELIVERY_CLASS", "SDT_SERVICE_ID"]);
   for (const [key, value] of Object.entries(vars)) string(value, `$.vars.${key}`);
+  const repairConditions = ["operator-route-mounted", "runtime-fetch-direct"];
   const secrets = array(authority.secrets, "$.secrets");
   for (const [index, entry] of secrets.entries()) {
-    object(entry, `$.secrets[${index}]`, ["name", "optional", "ownership", "forbiddenIn"]);
-    string(entry.name, `$.secrets[${index}].name`);
-    assert(typeof entry.optional === "boolean", "authority-shape", `$.secrets[${index}].optional`);
-    string(entry.ownership, `$.secrets[${index}].ownership`);
-    assert(entry.forbiddenIn === "vars", "authority-secret-boundary", `$.secrets[${index}].forbiddenIn`);
+    const path = `$.secrets[${index}]`;
+    const hasVerification = Object.hasOwn(entry, "verification");
+    const hasRequiredWhen = Object.hasOwn(entry, "requiredWhen");
+    assert(hasVerification === hasRequiredWhen, "authority-secret-fields", path);
+    const allowedKeys = hasVerification
+      ? ["name", "optional", "ownership", "forbiddenIn", "verification", "requiredWhen"]
+      : ["name", "optional", "ownership", "forbiddenIn"];
+    object(entry, path, allowedKeys);
+    string(entry.name, `${path}.name`);
+    assert(typeof entry.optional === "boolean", "authority-shape", `${path}.optional`);
+    string(entry.ownership, `${path}.ownership`);
+    assert(entry.forbiddenIn === "vars", "authority-secret-boundary", `${path}.forbiddenIn`);
     assert(!Object.hasOwn(vars, entry.name), "secret-in-vars");
+    if (!hasVerification) continue;
+    assert(entry.verification === "external", "authority-secret-verification", `${path}.verification`);
+    const conditions = array(entry.requiredWhen, `${path}.requiredWhen`);
+    assert(conditions.length > 0, "authority-secret-conditions", `${path}.requiredWhen`);
+    conditions.forEach((value, conditionIndex) => string(value, `${path}.requiredWhen[${conditionIndex}]`));
+    unique(conditions, `${path}.requiredWhen`);
+    for (const value of conditions) {
+      assert(repairConditions.includes(value), "authority-secret-conditions", `${path}.requiredWhen`);
+    }
+    assert(conditions.length === repairConditions.length, "authority-secret-conditions", `${path}.requiredWhen`);
+    for (const value of repairConditions) {
+      assert(conditions.includes(value), "authority-secret-conditions", `${path}.requiredWhen`);
+    }
   }
+  const repairEntries = secrets.filter((entry) => entry.name === "REPAIR_OPERATOR_TOKEN");
+  assert(repairEntries.length === 1, "authority-repair-entry", "$.secrets");
+  assert(
+    Object.hasOwn(repairEntries[0], "verification") && Object.hasOwn(repairEntries[0], "requiredWhen"),
+    "authority-repair-entry",
+    "$.secrets[name=REPAIR_OPERATOR_TOKEN]",
+  );
   return authority;
 }
 
@@ -389,6 +417,40 @@ function propertyNames(node) {
     .map((entry) => (ts.isIdentifier(entry.name) || ts.isStringLiteral(entry.name) ? entry.name.text : ""));
 }
 
+function isOperatorMount(value) {
+  return value === "/operator" || value.startsWith("/operator/");
+}
+
+function externalPrerequisiteDiagnostic(structure) {
+  const source = [...structure.source].sort((left, right) => (
+    left.property.localeCompare(right.property)
+    || left.value.localeCompare(right.value)
+    || left.line - right.line
+  ));
+  return {
+    code: "missing-external-prerequisite",
+    path: "$.secrets[name=REPAIR_OPERATOR_TOKEN]",
+    prerequisite: "REPAIR_OPERATOR_TOKEN",
+    triggers: [...structure.triggers].sort(),
+    source,
+    verification: "external",
+    remoteStateChecked: false,
+  };
+}
+
+function assertExternalPrerequisite(structure) {
+  if (structure.triggers.length === 0) return;
+  fail("missing-external-prerequisite", JSON.stringify(externalPrerequisiteDiagnostic(structure)));
+}
+
+function unresolvedSourceShape(property, line) {
+  fail("unresolved-source-shape", JSON.stringify({
+    code: "unresolved-source-shape",
+    property,
+    line,
+  }));
+}
+
 function workerStructure(authority, source, label) {
   const worker = sourceFile(label, source);
   const expectedClasses = authority.durableObjects.bindings.map((entry) => entry.className).sort();
@@ -396,7 +458,37 @@ function workerStructure(authority, source, label) {
   let composedWorker = null;
   let exportedWorker = false;
   const runtimeDeclarations = new Map();
+  const initializers = new Map();
+  const defaultExpressions = [];
   const handlers = { application: false, fetch: false, queue: false, scheduled: false };
+  const exposure = [];
+  let operatorMounted = false;
+  let directRuntimeFetch = false;
+  function lineOf(node) {
+    return worker.getLineAndCharacterOfPosition(node.getStart(worker)).line + 1;
+  }
+  function propertyText(name) {
+    if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)) return name.text;
+    return undefined;
+  }
+  function isRuntimeIdentifier(node) {
+    return ts.isIdentifier(node) && runtimeDeclarations.has(node.text);
+  }
+  function isRuntimeFetch(node) {
+    return ts.isPropertyAccessExpression(node)
+      && isRuntimeIdentifier(node.expression)
+      && node.name.text === "fetch";
+  }
+  function staticStringArray(node) {
+    if (!ts.isArrayLiteralExpression(node)) return undefined;
+    const values = [];
+    for (const element of node.elements) {
+      if (ts.isSpreadElement(element)) return undefined;
+      if (!ts.isStringLiteral(element) && !ts.isNoSubstitutionTemplateLiteral(element)) return undefined;
+      values.push({ value: element.text, line: lineOf(element) });
+    }
+    return values;
+  }
   function containsCall(node, name) {
     let found = false;
     function inspect(child) {
@@ -417,6 +509,7 @@ function workerStructure(authority, source, label) {
       for (const specifier of node.exportClause.elements) exports.push((specifier.propertyName ?? specifier.name).text);
     }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      if (node.initializer) initializers.set(node.name.text, node.initializer);
       if (node.name.text === "worker" && node.initializer && ts.isCallExpression(node.initializer) &&
           ts.isIdentifier(node.initializer.expression) && node.initializer.expression.text === "composeHandlers") {
         composedWorker = node.initializer;
@@ -425,9 +518,9 @@ function workerStructure(authority, source, label) {
         runtimeDeclarations.set(node.name.text, node.initializer);
       }
     }
-    if (ts.isExportAssignment(node) && !node.isExportEquals && ts.isIdentifier(node.expression) &&
-        node.expression.text === "worker") {
-      exportedWorker = true;
+    if (ts.isExportAssignment(node) && !node.isExportEquals) {
+      defaultExpressions.push(node.expression);
+      if (ts.isIdentifier(node.expression) && node.expression.text === "worker") exportedWorker = true;
     }
     ts.forEachChild(node, visit);
   }
@@ -443,6 +536,19 @@ function workerStructure(authority, source, label) {
     }
     if (property.name.text === "sekiban" && ts.isObjectLiteralExpression(property.initializer)) {
       for (const entry of property.initializer.properties) {
+        if (ts.isSpreadAssignment(entry)) unresolvedSourceShape("sekiban", lineOf(entry));
+        if (entry.name && ts.isComputedPropertyName(entry.name)) unresolvedSourceShape("sekiban", lineOf(entry));
+        const name = entry.name ? propertyText(entry.name) : undefined;
+        if (name === "extraPaths" || name === "extraPrefixes") {
+          if (!ts.isPropertyAssignment(entry)) unresolvedSourceShape(name, lineOf(entry));
+          const values = staticStringArray(entry.initializer);
+          if (values === undefined) unresolvedSourceShape(name, lineOf(entry));
+          for (const item of values) {
+            if (!isOperatorMount(item.value)) continue;
+            operatorMounted = true;
+            exposure.push({ property: name, value: item.value, line: item.line });
+          }
+        }
         if (!ts.isPropertyAssignment(entry) || !ts.isIdentifier(entry.name)) continue;
         if (entry.name.text === "fetch") handlers.fetch = runtimeProperty(entry.initializer, runtimeNames, "fetch");
         if (entry.name.text === "queue") handlers.queue = runtimeProperty(entry.initializer, runtimeNames, "queue");
@@ -452,6 +558,58 @@ function workerStructure(authority, source, label) {
       }
     }
   }
+  function classifyDefault(node, seen) {
+    if (ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isParenthesizedExpression(node)) {
+      classifyDefault(node.expression, seen);
+      return;
+    }
+    if (isRuntimeIdentifier(node)) {
+      directRuntimeFetch = true;
+      exposure.push({ property: "default", value: node.text, line: lineOf(node) });
+      return;
+    }
+    if (ts.isIdentifier(node)) {
+      if (seen.has(node.text)) return;
+      seen.add(node.text);
+      const next = initializers.get(node.text);
+      if (next === undefined) return;
+      if (isRuntimeIdentifier(next)) {
+        directRuntimeFetch = true;
+        exposure.push({ property: node.text, value: next.text, line: lineOf(next) });
+        return;
+      }
+      classifyDefault(next, seen);
+      return;
+    }
+    if (!ts.isObjectLiteralExpression(node)) return;
+    for (const property of node.properties) {
+      if (ts.isSpreadAssignment(property)) unresolvedSourceShape("default", lineOf(property));
+      if (property.name && ts.isComputedPropertyName(property.name)) unresolvedSourceShape("default", lineOf(property));
+      if (!ts.isPropertyAssignment(property) || propertyText(property.name) !== "fetch") continue;
+      if (isRuntimeFetch(property.initializer)) {
+        directRuntimeFetch = true;
+        exposure.push({
+          property: "fetch",
+          value: `${property.initializer.expression.text}.fetch`,
+          line: lineOf(property.initializer),
+        });
+        continue;
+      }
+      if (ts.isElementAccessExpression(property.initializer) || ts.isCallExpression(property.initializer)) {
+        unresolvedSourceShape("fetch", lineOf(property.initializer));
+      }
+    }
+  }
+  for (const expression of defaultExpressions) classifyDefault(expression, new Set());
+  const triggers = [];
+  if (operatorMounted) triggers.push("operator-route-mounted");
+  if (directRuntimeFetch) triggers.push("runtime-fetch-direct");
+  triggers.sort();
+  exposure.sort((left, right) => (
+    left.property.localeCompare(right.property)
+    || left.value.localeCompare(right.value)
+    || left.line - right.line
+  ));
   let composedUsesRuntime = false;
   function inspectComposed(node) {
     if (ts.isIdentifier(node) && runtimeNames.has(node.text)) composedUsesRuntime = true;
@@ -459,7 +617,16 @@ function workerStructure(authority, source, label) {
   }
   if (composedWorker) inspectComposed(composedWorker);
   const composition = exportedWorker && composedWorker !== null && composedUsesRuntime;
-  return { exports: exports.sort(), expectedClasses, composition, handlers };
+  return {
+    exports: exports.sort(),
+    expectedClasses,
+    composition,
+    handlers,
+    operatorRoutes: operatorMounted ? "mounted" : "unmounted",
+    directRuntimeFetch,
+    triggers,
+    source: exposure,
+  };
 }
 
 function sourceParity(authority, overrides = new Map()) {
@@ -467,6 +634,7 @@ function sourceParity(authority, overrides = new Map()) {
   assert(existsSync(workerPath), "worker-source-missing", authority.worker.entrypoint);
   const readSource = (path) => overrides.get(path) ?? readFileSync(path, "utf8");
   const structure = workerStructure(authority, readSource(workerPath), authority.worker.entrypoint);
+  assertExternalPrerequisite(structure);
   assert(canonical(structure.exports) === canonical(structure.expectedClasses), "worker-do-exports");
   assert(structure.composition, "worker-runtime-composition");
   assert(structure.handlers.application && structure.handlers.fetch && structure.handlers.queue && structure.handlers.scheduled, "worker-handler-registration");
@@ -520,6 +688,10 @@ function sourceParity(authority, overrides = new Map()) {
     runtimeComposition: structure.composition,
     handlers: ["fetch", "queue", "scheduled"],
     optionalAssets: "unused",
+    runtimeExposure: {
+      operatorRoutes: structure.operatorRoutes,
+      directRuntimeFetch: structure.directRuntimeFetch,
+    },
   };
 }
 
@@ -669,12 +841,12 @@ function validateNoCfDependency(manifest, gateText) {
   assert(!/(?:spawnSync|execFileSync)\(\s*["']cf["']/.test(executableGate), "cf-gate-invocation");
 }
 
-function validateProject({ authority, config, runbook, requireConfigured = false }) {
+function validateProject({ authority, config, runbook, requireConfigured = false, sourceOverrides = new Map() }) {
   validateAuthority(authority);
   compareTopology(authority, config);
   const migrations = migrationCounts(authority);
   const placeholders = configuredD1Ids(authority, config, requireConfigured);
-  const source = sourceParity(authority);
+  const source = sourceParity(authority, sourceOverrides);
   const table = compareRunbook(authority, runbook);
   validateNoCfDependency(parseJsonc(readFileSync(join(project, "package.json"), "utf8"), "package.json"), readFileSync(fileURLToPath(import.meta.url), "utf8"));
   return { migrations, placeholders, source, table };
@@ -692,12 +864,22 @@ function safeArgs(args) {
 function sanitizeEnvironment(source) {
   const env = { ...source };
   const removed = [];
-  for (const name of ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"]) {
-    if (name in env) removed.push(name);
+  for (const name of ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "REPAIR_OPERATOR_TOKEN"]) {
+    if (Object.hasOwn(env, name)) removed.push(name);
     delete env[name];
   }
   return { env, removed };
 }
+
+function renderFailure(error) {
+  return `${error instanceof Error ? error.stack ?? error.message : String(error)}\n`;
+}
+
+const removedCredentialVariables = [
+  "CLOUDFLARE_API_TOKEN",
+  "CLOUDFLARE_ACCOUNT_ID",
+  "REPAIR_OPERATOR_TOKEN",
+];
 
 function readProject() {
   const authority = parseJsonc(readFileSync(topologyPath, "utf8"), "deployment-topology.json");
@@ -715,6 +897,10 @@ function receipt(validation, placeholders, removedCredentials) {
     replacement: entry.replacement,
   }));
   assertPlaceholderReceipt(placeholders, locations);
+  assert(
+    removedCredentials.every((name) => removedCredentialVariables.includes(name)),
+    "credential-sanitization",
+  );
   return {
     command: ["deploy", "--config", "wrangler.jsonc", "--dry-run", "--outdir", "<owned-temp-dir>", "--outfile", "<owned-temp-dir>/worker.js"],
     topology: expectedTopology(readProject().authority).sort((a, b) => canonical(a).localeCompare(canonical(b))),
@@ -724,12 +910,23 @@ function receipt(validation, placeholders, removedCredentials) {
       locations,
     },
     bundle: { projectLocalWrangler: true, dryRun: true, createRoom: true, reserveRoom: true },
-    removedCredentialVariables: removedCredentials,
+    removedCredentialVariables: [...removedCredentialVariables],
+    runtimeExposure: validation.source.runtimeExposure,
+    externalPrerequisites: [{
+      name: "REPAIR_OPERATOR_TOKEN",
+      required: false,
+      verification: "external",
+      remoteStateChecked: false,
+    }],
   };
 }
 
-function runGate(requireConfigured) {
-  const validation = validateProject({ ...readProject(), requireConfigured });
+function runGate(requireConfigured, options = {}) {
+  const validation = validateProject({
+    ...readProject(),
+    requireConfigured,
+    sourceOverrides: options.sourceOverrides ?? new Map(),
+  });
   const outdir = mkdtempSync(join(tmpdir(), "create-dcb-deploy-check-"));
   const outfile = join(outdir, "worker.js");
   const args = ["deploy", "--config", "wrangler.jsonc", "--dry-run", "--outdir", outdir, "--outfile", outfile];
@@ -737,10 +934,21 @@ function runGate(requireConfigured) {
     safeArgs(args);
     const wrangler = join(project, "node_modules/wrangler/bin/wrangler.js");
     assert(existsSync(wrangler), "project-local-wrangler-missing");
-    const sanitized = sanitizeEnvironment({ ...process.env, CI: "true", WRANGLER_SEND_METRICS: "false" });
+    const sanitized = sanitizeEnvironment({
+      ...(options.env ?? process.env),
+      CI: "true",
+      WRANGLER_SEND_METRICS: "false",
+    });
     const env = sanitized.env;
     const removedCredentials = sanitized.removed;
-    const result = spawnSync(process.execPath, [wrangler, ...args], { cwd: project, env, encoding: "utf8", shell: false, maxBuffer: 64 * 1024 * 1024 });
+    const spawn = options.spawn ?? spawnSync;
+    const result = spawn(process.execPath, [wrangler, ...args], {
+      cwd: project,
+      env,
+      encoding: "utf8",
+      shell: false,
+      maxBuffer: 64 * 1024 * 1024,
+    });
     assert(result.status === 0, "wrangler-dry-run", wranglerFailure(result));
     assert(existsSync(outfile), "bundle-missing");
     const bundle = readFileSync(outfile, "utf8");
@@ -750,6 +958,77 @@ function runGate(requireConfigured) {
   } finally {
     rmSync(outdir, { recursive: true, force: true });
   }
+}
+
+function assertRepairBindingNameOnly(source) {
+  const binding = "REPAIR_OPERATOR_TOKEN";
+  const end = source.indexOf("\nfunction selfTest(");
+  assert(end > 0, "repair-binding-value-inspection");
+  const executable = source.slice(0, end);
+  const withoutLiterals = executable.replace(/`(?:\\.|[^`\\])*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, "\"\"");
+  assert(!withoutLiterals.includes(binding), "repair-binding-value-inspection");
+  const direct = new RegExp(`(?:source|env|process\\.env)\\.${binding}\\b`);
+  const computed = new RegExp(`(?:source|env|process\\.env)\\s*\\[\\s*["']${binding}["']\\s*\\]`);
+  assert(!direct.test(executable), "repair-binding-value-inspection");
+  assert(!computed.test(executable), "repair-binding-value-inspection");
+  const start = executable.indexOf("\nfunction sanitizeEnvironment(");
+  const readProjectAt = executable.indexOf("\nfunction readProject(");
+  assert(start >= 0 && readProjectAt > start, "repair-binding-value-inspection");
+  const sanitize = executable.slice(start, readProjectAt);
+  const allowed = sanitize.replace(/Object\.hasOwn\(env,\s*name\)/g, "").replace(/delete env\[name\]/g, "");
+  assert(!/env\[name\]/.test(allowed), "repair-binding-value-inspection");
+  assert(!/source\[/.test(sanitize), "repair-binding-value-inspection");
+}
+
+function captureWrites(action) {
+  const stdout = [];
+  const stderr = [];
+  const originalOut = process.stdout.write;
+  const originalErr = process.stderr.write;
+  process.stdout.write = (chunk) => {
+    stdout.push(String(chunk));
+    return true;
+  };
+  process.stderr.write = (chunk) => {
+    stderr.push(String(chunk));
+    return true;
+  };
+  try {
+    action();
+  } finally {
+    process.stdout.write = originalOut;
+    process.stderr.write = originalErr;
+  }
+  return { stdout: stdout.join(""), stderr: stderr.join("") };
+}
+
+function prerequisiteFailure(action, expected) {
+  let error;
+  try {
+    action();
+  } catch (caught) {
+    error = caught;
+  }
+  if (!(error instanceof Error) || !error.message.startsWith("deploy-check:missing-external-prerequisite: ")) {
+    fail("self-test-trigger-missing", error instanceof Error ? error.message : "no error");
+  }
+  const json = JSON.parse(error.message.slice("deploy-check:missing-external-prerequisite: ".length));
+  assert(json.code === "missing-external-prerequisite", "self-test-diagnostic-shape");
+  assert(json.path === "$.secrets[name=REPAIR_OPERATOR_TOKEN]", "self-test-diagnostic-shape");
+  assert(json.prerequisite === "REPAIR_OPERATOR_TOKEN", "self-test-diagnostic-shape");
+  assert(json.verification === "external", "self-test-diagnostic-shape");
+  assert(json.remoteStateChecked === false, "self-test-diagnostic-shape");
+  assert(canonical(json.triggers) === canonical(expected.triggers), "self-test-diagnostic-shape");
+  assert(!JSON.stringify(json).toLowerCase().includes("absent"), "self-test-diagnostic-shape");
+  for (const entry of expected.source) {
+    const match = json.source.find((item) => item.property === entry.property && item.value === entry.value);
+    assert(match !== undefined && Number.isInteger(match.line) && match.line > 0, "self-test-diagnostic-shape");
+    assert(canonical(Object.keys(match).sort()) === canonical(["line", "property", "value"]), "self-test-diagnostic-shape");
+  }
+  const rendered = renderFailure(error);
+  assert(rendered.includes('"remoteStateChecked":false'), "self-test-diagnostic-shape");
+  assert(!rendered.includes("remote secret is absent"), "self-test-diagnostic-shape");
+  throw error;
 }
 
 function expectFailure(name, action) {
@@ -818,6 +1097,63 @@ function selfTest() {
   )));
   checks.push(expectFailure("secret-in-vars", () => validateAuthority(
     mutate((candidate) => { candidate.authority.vars[candidate.authority.secrets[0].name] = "bad"; }).authority,
+  )));
+  checks.push(expectFailure("secret-in-vars", () => validateAuthority(
+    mutate((candidate) => { candidate.authority.vars.REPAIR_OPERATOR_TOKEN = "not-a-real-secret"; }).authority,
+  )));
+  checks.push(expectFailure("authority-repair-entry", () => validateAuthority(
+    mutate((candidate) => {
+      candidate.authority.secrets = candidate.authority.secrets.filter((entry) => entry.name !== "REPAIR_OPERATOR_TOKEN");
+    }).authority,
+  )));
+  checks.push(expectFailure("authority-repair-entry", () => validateAuthority(
+    mutate((candidate) => {
+      const repair = candidate.authority.secrets.find((entry) => entry.name === "REPAIR_OPERATOR_TOKEN");
+      delete repair.verification;
+      delete repair.requiredWhen;
+    }).authority,
+  )));
+  checks.push(expectFailure("authority-secret-fields", () => validateAuthority(
+    mutate((candidate) => {
+      const repair = candidate.authority.secrets.find((entry) => entry.name === "REPAIR_OPERATOR_TOKEN");
+      delete repair.requiredWhen;
+    }).authority,
+  )));
+  checks.push(expectFailure("authority-secret-fields", () => validateAuthority(
+    mutate((candidate) => {
+      const repair = candidate.authority.secrets.find((entry) => entry.name === "REPAIR_OPERATOR_TOKEN");
+      delete repair.verification;
+    }).authority,
+  )));
+  checks.push(expectFailure("authority-secret-verification", () => validateAuthority(
+    mutate((candidate) => {
+      const repair = candidate.authority.secrets.find((entry) => entry.name === "REPAIR_OPERATOR_TOKEN");
+      repair.verification = "remote";
+    }).authority,
+  )));
+  checks.push(expectFailure("authority-secret-conditions", () => validateAuthority(
+    mutate((candidate) => {
+      const repair = candidate.authority.secrets.find((entry) => entry.name === "REPAIR_OPERATOR_TOKEN");
+      repair.requiredWhen = ["operator-route-mounted"];
+    }).authority,
+  )));
+  checks.push(expectFailure("authority-secret-conditions", () => validateAuthority(
+    mutate((candidate) => {
+      const repair = candidate.authority.secrets.find((entry) => entry.name === "REPAIR_OPERATOR_TOKEN");
+      repair.requiredWhen = ["operator-route-mounted", "unknown-condition"];
+    }).authority,
+  )));
+  checks.push(expectFailure("duplicate-collection-key", () => validateAuthority(
+    mutate((candidate) => {
+      const repair = candidate.authority.secrets.find((entry) => entry.name === "REPAIR_OPERATOR_TOKEN");
+      repair.requiredWhen = ["operator-route-mounted", "operator-route-mounted"];
+    }).authority,
+  )));
+  checks.push(expectFailure("authority-key", () => validateAuthority(
+    mutate((candidate) => {
+      const repair = candidate.authority.secrets.find((entry) => entry.name === "REPAIR_OPERATOR_TOKEN");
+      repair.extra = true;
+    }).authority,
   )));
   checks.push(expectFailure("authority-key", () => validateAuthority(
     mutate((candidate) => { candidate.authority.account_id = "bad"; }).authority,
@@ -950,12 +1286,214 @@ function selfTest() {
   } finally {
     rmSync(stubDir, { recursive: true, force: true });
   }
-  const inherited = { CLOUDFLARE_API_TOKEN: "canary", CLOUDFLARE_ACCOUNT_ID: "canary", KEEP: "yes" };
+  const inherited = {
+    CLOUDFLARE_API_TOKEN: "obvious-fake-cloudflare-token",
+    CLOUDFLARE_ACCOUNT_ID: "obvious-fake-cloudflare-account",
+    REPAIR_OPERATOR_TOKEN: "obvious-fake-repair-token",
+    KEEP: "yes",
+  };
   const sanitized = sanitizeEnvironment(inherited);
-  assert(!Object.hasOwn(sanitized.env, "CLOUDFLARE_API_TOKEN") && !Object.hasOwn(sanitized.env, "CLOUDFLARE_ACCOUNT_ID") && sanitized.env.KEEP === "yes", "credential-sanitization");
-  assert(canonical(sanitized.removed) === canonical(["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"]), "credential-sanitization");
+  assert(!Object.hasOwn(sanitized.env, "CLOUDFLARE_API_TOKEN"), "credential-sanitization");
+  assert(!Object.hasOwn(sanitized.env, "CLOUDFLARE_ACCOUNT_ID"), "credential-sanitization");
+  assert(!Object.hasOwn(sanitized.env, "REPAIR_OPERATOR_TOKEN"), "credential-sanitization");
+  assert(sanitized.env.KEEP === "yes", "credential-sanitization");
+  assert(canonical(sanitized.removed) === canonical([
+    "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID",
+    "REPAIR_OPERATOR_TOKEN",
+  ]), "credential-sanitization");
   checks.push("fresh-template-control", "credential-sanitization");
-  process.stdout.write(`${JSON.stringify({ result: "deploy-check-self-test-passed", checks }, null, 2)}\n`);
+
+  const incident = baseline.authority.secrets.find((entry) => entry.name === "INCIDENT_MAINTAINER_TOKEN");
+  assert(canonical(Object.keys(incident).sort()) === canonical(["forbiddenIn", "name", "optional", "ownership"]), "incident-secret-shape");
+  assert(incident.optional === true && incident.ownership === "runtime-owned" && incident.forbiddenIn === "vars", "incident-secret-shape");
+  checks.push("incident-secret-shape");
+
+  const unchanged = workerStructure(baseline.authority, workerText, baseline.authority.worker.entrypoint);
+  assert(unchanged.operatorRoutes === "unmounted", "runtime-exposure");
+  assert(unchanged.directRuntimeFetch === false, "runtime-exposure");
+  assert(unchanged.triggers.length === 0, "runtime-exposure");
+  checks.push("runtime-exposure");
+
+  const maintenanceLine = '    extraPrefixes: ["/maintenance"],';
+  function withMount(text) {
+    return workerText.replace(maintenanceLine, text);
+  }
+  function requirePrerequisite(mutant, expected) {
+    return () => prerequisiteFailure(
+      () => sourceParity(baseline.authority, new Map([[workerPath, mutant]])),
+      expected,
+    );
+  }
+  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
+    withMount('    extraPaths: ["/operator/repair"],\n    extraPrefixes: ["/maintenance"],'),
+    { triggers: ["operator-route-mounted"], source: [{ property: "extraPaths", value: "/operator/repair" }] },
+  )));
+  checks.push("extra-path-prerequisite");
+  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
+    withMount('    extraPaths: ["/operator"],\n    extraPrefixes: ["/maintenance"],'),
+    { triggers: ["operator-route-mounted"], source: [{ property: "extraPaths", value: "/operator" }] },
+  )));
+  checks.push("exact-operator-path");
+  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
+    withMount('    extraPrefixes: ["/operator/bootstrap"],'),
+    { triggers: ["operator-route-mounted"], source: [{ property: "extraPrefixes", value: "/operator/bootstrap" }] },
+  )));
+  checks.push("extra-prefix-prerequisite");
+  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
+    workerText.replace("export default worker;", "export default runtime;"),
+    { triggers: ["runtime-fetch-direct"], source: [{ property: "default", value: "runtime" }] },
+  )));
+  checks.push("direct-exposure-prerequisite");
+  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
+    workerText.replace(
+      "const worker: ExportedHandler<StarterEnvironment> = composeHandlers<StarterEnvironment>({",
+      "const worker = runtime;\nconst composed = composeHandlers<StarterEnvironment>({",
+    ),
+    { triggers: ["runtime-fetch-direct"], source: [{ property: "worker", value: "runtime" }] },
+  )));
+  checks.push("runtime-alias-prerequisite");
+  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
+    workerText.replace("export default worker;", "export default { fetch: runtime.fetch };"),
+    { triggers: ["runtime-fetch-direct"], source: [{ property: "fetch", value: "runtime.fetch" }] },
+  )));
+  checks.push("runtime-fetch-property-prerequisite");
+  checks.push(expectFailure("missing-external-prerequisite", requirePrerequisite(
+    withMount('    extraPaths: ["/operator/repair"],\n    extraPrefixes: ["/maintenance"],')
+      .replace("export default worker;", "export default runtime;"),
+    {
+      triggers: ["operator-route-mounted", "runtime-fetch-direct"],
+      source: [
+        { property: "extraPaths", value: "/operator/repair" },
+        { property: "default", value: "runtime" },
+      ],
+    },
+  )));
+  checks.push("combined-triggers");
+
+  const lookalike = workerStructure(
+    baseline.authority,
+    withMount('    extraPrefixes: ["/operators"],'),
+    "operator-lookalike.ts",
+  );
+  assert(lookalike.operatorRoutes === "unmounted", "operator-lookalike");
+  assert(lookalike.directRuntimeFetch === false, "operator-lookalike");
+  assert(lookalike.triggers.length === 0, "operator-lookalike");
+  sourceParity(baseline.authority, new Map([[workerPath, withMount('    extraPrefixes: ["/operator-bootstrap"],')]]));
+  checks.push("operator-lookalike");
+
+  checks.push(expectFailure("unresolved-source-shape", () => {
+    workerStructure(baseline.authority, withMount('    extraPaths: [...["/health"]],\n    extraPrefixes: ["/maintenance"],'), "unresolved-extra-paths.ts");
+    fail("self-test-unresolved-accepted", "extraPaths");
+  }));
+  checks.push("unresolved-extra-paths");
+  checks.push(expectFailure("unresolved-source-shape", () => {
+    workerStructure(baseline.authority, withMount("    extraPrefixes: configuredPrefixes,"), "unresolved-extra-prefixes.ts");
+    fail("self-test-unresolved-accepted", "extraPrefixes");
+  }));
+  checks.push("unresolved-extra-prefixes");
+  checks.push(expectFailure("unresolved-source-shape", () => {
+    workerStructure(
+      baseline.authority,
+      workerText.replace("  sekiban: {\n", "  sekiban: {\n    ...sekibanMount,\n"),
+      "unresolved-sekiban-spread.ts",
+    );
+    fail("self-test-unresolved-accepted", "sekiban");
+  }));
+  checks.push("unresolved-sekiban-spread");
+
+  const gateSource = readFileSync(fileURLToPath(import.meta.url), "utf8");
+  assertRepairBindingNameOnly(gateSource);
+  checks.push("repair-binding-name-only");
+  checks.push(expectFailure("repair-binding-value-inspection", () => assertRepairBindingNameOnly(
+    gateSource.replace(
+      "function sanitizeEnvironment(source) {",
+      "function sanitizeEnvironment(source) { const leaked = source.REPAIR_OPERATOR_TOKEN; void leaked;",
+    ),
+  )));
+  checks.push(expectFailure("repair-binding-value-inspection", () => assertRepairBindingNameOnly(
+    gateSource.replace(
+      "function sanitizeEnvironment(source) {",
+      "function sanitizeEnvironment(source) { const leaked = source[\"REPAIR_OPERATOR_TOKEN\"]; void leaked;",
+    ),
+  )));
+  checks.push(expectFailure("repair-binding-value-inspection", () => assertRepairBindingNameOnly(
+    gateSource.replace(
+      "delete env[name];",
+      "const leaked = env[name]; void leaked; delete env[name];",
+    ),
+  )));
+  checks.push("repair-binding-value-inspection");
+
+  const repairCanary = "obvious-fake-repair-canary";
+  const canaryEnv = {
+    REPAIR_OPERATOR_TOKEN: repairCanary,
+    CLOUDFLARE_API_TOKEN: repairCanary,
+    CLOUDFLARE_ACCOUNT_ID: repairCanary,
+    UNRELATED_CONTROL: "kept-control",
+  };
+  let failureSpawnCalls = 0;
+  let failureText = "";
+  const failureOutput = captureWrites(() => {
+    try {
+      runGate(false, {
+        sourceOverrides: new Map([[
+          workerPath,
+          withMount('    extraPaths: ["/operator/repair"],\n    extraPrefixes: ["/maintenance"],'),
+        ]]),
+        env: canaryEnv,
+        spawn() {
+          failureSpawnCalls += 1;
+          return { status: 0, stdout: "", stderr: "" };
+        },
+      });
+    } catch (error) {
+      failureText = renderFailure(error);
+    }
+  });
+  assert(failureText.includes("deploy-check:missing-external-prerequisite:"), "prerequisite-before-wrangler");
+  assert(failureSpawnCalls === 0, "prerequisite-before-wrangler");
+  assert(!failureText.includes(repairCanary), "canary-redaction");
+  assert(!failureOutput.stdout.includes(repairCanary) && !failureOutput.stderr.includes(repairCanary), "canary-redaction");
+  checks.push("prerequisite-before-wrangler");
+
+  let capturedEnv;
+  const successOutput = captureWrites(() => {
+    runGate(false, {
+      env: canaryEnv,
+      spawn(_command, spawnArgs, spawnOptions) {
+        capturedEnv = spawnOptions.env;
+        const outfile = spawnArgs[spawnArgs.indexOf("--outfile") + 1];
+        writeFileSync(outfile, "create-room\nreserve-room\n");
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+  });
+  assert(capturedEnv !== undefined, "spawn-environment");
+  assert(!Object.hasOwn(capturedEnv, "REPAIR_OPERATOR_TOKEN"), "spawn-environment");
+  assert(!Object.hasOwn(capturedEnv, "CLOUDFLARE_API_TOKEN"), "spawn-environment");
+  assert(!Object.hasOwn(capturedEnv, "CLOUDFLARE_ACCOUNT_ID"), "spawn-environment");
+  assert(capturedEnv.UNRELATED_CONTROL === "kept-control", "spawn-environment");
+  const successReceipt = JSON.parse(successOutput.stdout);
+  assert(successReceipt.runtimeExposure.operatorRoutes === "unmounted", "receipt-shape");
+  assert(successReceipt.runtimeExposure.directRuntimeFetch === false, "receipt-shape");
+  assert(canonical(successReceipt.externalPrerequisites) === canonical([{
+    name: "REPAIR_OPERATOR_TOKEN",
+    required: false,
+    verification: "external",
+    remoteStateChecked: false,
+  }]), "receipt-shape");
+  for (const name of removedCredentialVariables) {
+    assert(successReceipt.removedCredentialVariables.includes(name), "receipt-shape");
+  }
+  assert(!successOutput.stdout.includes(repairCanary), "canary-redaction");
+  assert(!successOutput.stderr.includes(repairCanary), "canary-redaction");
+  assert(!JSON.stringify(successReceipt).includes(repairCanary), "canary-redaction");
+  checks.push("spawn-environment", "receipt-shape", "canary-redaction");
+
+  const serialized = JSON.stringify({ result: "deploy-check-self-test-passed", checks });
+  assert(!serialized.includes(repairCanary), "canary-redaction");
+  process.stdout.write(`${serialized}\n`);
 }
 
 try {
@@ -968,6 +1506,6 @@ try {
     runGate(args.includes("--require-configured"));
   }
 } catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+  process.stderr.write(renderFailure(error));
   process.exitCode = 1;
 }
