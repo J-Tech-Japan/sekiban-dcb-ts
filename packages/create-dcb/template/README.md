@@ -2,7 +2,9 @@
 
 This project is a named Cloudflare Worker starter with a deliberately visible
 booking demo. It creates rooms, reserves them, cancels reservations, releases
-rooms, and exposes both tag-state and list/query reads. The demo is a teaching
+rooms, and exposes a keyed room tag-state read plus the reservation list query.
+`GET /api/read/room?roomId=...` returns the decoded room state, its version, and
+`lastSortedUniqueId`. Reservations stay on list query. The demo is a teaching
 surface: see [REPLACE.md](./REPLACE.md) for the exact files to swap when the
 application gets its own domain.
 

@@ -42,3 +42,6 @@ accepts `queryBacking: "d1-mv"` (and the optional typed
 routes both serialized query endpoints through `readRowsFromBacking`. MV rows
 are converted to the existing V1 list/query result shape and ordered by their
 opaque source SUID, so selecting D1 MV does not add or rename wire fields.
+Unsupported query parameters are refused before backing selection, so a D1 MV
+read never observes them. `RoomProjector` is registered as a scalar projector
+and is read by tag state, not as a parameterized room query.

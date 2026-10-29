@@ -3,8 +3,8 @@
 ## Unreleased matched set 0.2.2
 
 Package versions in this repository stay at 0.2.1. The matched set moves to
-0.2.2 only in a later release-preparation change, after this fix and the
-separate issue #287 interim fix are both merged. A later composition and
+0.2.2 only in a later release-preparation change that ships both changes
+below together. A later composition and
 starter change will pass the request environment into the authorization
 callback, document conditional `REPAIR_OPERATOR_TOKEN` setup for generated
 projects, and keep the generated starter's current exact `/operator/*` 404
@@ -30,6 +30,15 @@ boundary. This changelog entry does not publish a package.
   Optional conformance provisioning uses the same file rule. The sample
   wrapper's `--dry-run` and `-- --dry-run` forms bundle only and perform no
   remote action.
+
+### Serialized query parameters
+
+- A scalar serialized query accepts only a parsed empty object. Any other parsed value is HTTP 400 `query_params_unsupported` with the message "The selected query does not support these parameters." The check runs after the query is resolved and before projector lookup, provider initialization, or a store read. A caller-supplied `{}` keeps the existing count result.
+- A list query accepts only `PageNumber`, `PageSize`, `NewestFirst`, and `consistency`. An unknown own key receives the same 400. Callers that previously sent ignored list keys must stop sending them. `waitForSortableUniqueId` stays an outer request field. Value checks and defaults are unchanged.
+- `@sekiban/dcb-client` maps `query_params_unsupported` to that same message and classifies the code as `invalid`. The thrown `ClientError` shape is unchanged.
+- The meeting-room sample reads one room through `GET /api/read/room?roomId=...`, which returns the decoded `RoomProjector` tag state, its version, and `lastSortedUniqueId`.
+- The create-dcb template uses the same keyed room read and returns `lastSortedUniqueId`. That template correction reaches npm with a later `@sekiban/create-dcb` release; the published `0.1.3` creator is unchanged.
+- Typed query handlers are planned for `0.3.0`. Their API is not defined in this change. The V1 response envelope is unchanged.
 
 ## @sekiban/dcb-domain 0.2.1 (matched release)
 

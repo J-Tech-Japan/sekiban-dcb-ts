@@ -138,6 +138,44 @@ function parseRequest(value: unknown): { value?: QueryRequest; error?: string } 
   };
 }
 
+const QUERY_PARAMS_UNSUPPORTED_MESSAGE = "The selected query does not support these parameters.";
+const LIST_QUERY_PARAM_KEYS = new Set(["PageNumber", "PageSize", "NewestFirst", "consistency"]);
+
+/**
+ * Scalar queries have no parameter interpreter, so only an empty plain object
+ * is a supported no-parameter call. List queries keep the four existing
+ * controls and leave their value checks to paginationFrom. Non-object list
+ * input is also left to paginationFrom so that validation response stays put.
+ */
+function unsupportedQueryParams(
+  endpoint: QueryEndpoint,
+  queryParams: unknown,
+): { status: number; code: string; error: string } | undefined {
+  if (endpoint === "query") {
+    if (isObject(queryParams) && Object.keys(queryParams).length === 0) {
+      return undefined;
+    }
+    return {
+      status: 400,
+      code: "query_params_unsupported",
+      error: QUERY_PARAMS_UNSUPPORTED_MESSAGE,
+    };
+  }
+  if (!isObject(queryParams)) {
+    return undefined;
+  }
+  for (const key of Object.keys(queryParams)) {
+    if (!LIST_QUERY_PARAM_KEYS.has(key)) {
+      return {
+        status: 400,
+        code: "query_params_unsupported",
+        error: QUERY_PARAMS_UNSUPPORTED_MESSAGE,
+      };
+    }
+  }
+  return undefined;
+}
+
 function paginationFrom(value: unknown): { value?: Pagination; error?: string } {
   if (!isObject(value)) {
     return { error: "list-query queryParamsJson must contain an object" };
@@ -434,6 +472,10 @@ export async function handleSerializedQuery(
   const definition = registry.resolve(parsed.value.queryType);
   if (definition === undefined || definition.endpoint !== endpoint) {
     return error(400, "validation_error", "queryType is not mapped for this endpoint");
+  }
+  const unsupported = unsupportedQueryParams(endpoint, parsed.value.queryParams);
+  if (unsupported !== undefined) {
+    return error(unsupported.status, unsupported.code, unsupported.error);
   }
   if (!definition.enabled || (options.projectors ?? DEPLOYED_PROJECTOR_REGISTRY).resolve(definition.tagProjector) === undefined) {
     return error(503, "projection_unavailable", "The mapped query projection is unavailable");

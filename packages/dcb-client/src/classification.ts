@@ -37,6 +37,7 @@ export const FAILURE_KINDS: Readonly<Record<string, FailureKind>> = Object.freez
   invalid_consistency: "invalid",
   invalid_execute_options: "invalid",
   invalid_query_request: "invalid",
+  query_params_unsupported: "invalid",
   "scope.mismatch": "invalid",
   unsupported_command: "invalid",
   unsupported_capability: "invalid",

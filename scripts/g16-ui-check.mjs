@@ -108,23 +108,43 @@ function checkStaticMarkers(root) {
     'id="reservation-list-panel"',
     'id="reservations-refresh"',
     'id="reservations-body"',
-    'id="room-query-panel"',
-    'id="room-query-form"',
-    'id="room-query-result"',
+    'id="room-state-panel"',
+    'id="room-state-form"',
+    'id="room-state-result"',
     'src="/app.js"',
   ]) {
     requireContract(html.includes(marker), `missing static UI marker: ${marker}`);
   }
   for (const marker of [
     '"/api/read/reservations"',
-    "/api/read/room-query?roomId=",
+    "/api/read/room?roomId=",
     '"#reservations-refresh"',
-    '"#room-query-form"',
+    '"#room-state-form"',
     "reservationListView",
-    "roomQueryView",
+    "roomStateView",
   ]) {
     requireContract(app.includes(marker), `missing query UI behavior: ${marker}`);
   }
+  const retired = `${html}\n${app}`;
+  for (const marker of [
+    'id="room-query-panel"',
+    "/api/read/room-query",
+    "roomQueryView",
+    "GetRoomStateQuery",
+    "resultJson",
+    "lastSortableUniqueId",
+  ]) {
+    requireContract(!retired.includes(marker), `retired room-query marker survived: ${marker}`);
+  }
+  const model = readFileSync(resolve(root, "public/ui-model.js"), "utf8");
+  const roomViewStart = model.indexOf("export function roomStateView");
+  const roomViewEnd = model.indexOf("export function snapshotKey");
+  requireContract(roomViewStart >= 0 && roomViewEnd > roomViewStart, "room state view is missing");
+  const roomView = model.slice(roomViewStart, roomViewEnd);
+  requireContract(roomView.includes("body.lastSortedUniqueId"), "room state view dropped lastSortedUniqueId");
+  requireContract(!roomView.includes("lastSortableUniqueId"), "room state view still reads lastSortableUniqueId");
+  requireContract(!roomView.includes("resultJson"), "room state view still parses a scalar count");
+  requireContract(!roomView.includes("readHeadFrom"), "room state view still accepts a generic read head");
 }
 
 function checkWorkerContract(root, configText) {

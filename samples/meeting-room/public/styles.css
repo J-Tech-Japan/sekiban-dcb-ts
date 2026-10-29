@@ -12,9 +12,9 @@ button:hover { background: #1a4383; }
 .table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; margin-top: .75rem; }
 th, td { text-align: left; padding: .45rem; border-bottom: 1px solid #e3e7ef; white-space: nowrap; }
-#reservations-state[data-kind="error"], #room-query-state[data-kind="error"] { color: #a21c1c; }
+#reservations-state[data-kind="error"], #room-state-status[data-kind="error"] { color: #a21c1c; }
 #reservations-state[data-kind="empty"] { color: #53627a; }
-#room-query-result { min-height: 4rem; overflow: auto; white-space: pre-wrap; background: #101827; color: #d9e4f5; padding: .75rem; border-radius: .5rem; }
+#room-state-result { min-height: 4rem; overflow: auto; white-space: pre-wrap; background: #101827; color: #d9e4f5; padding: .75rem; border-radius: .5rem; }
 #status { margin: 1rem 0; padding: .8rem; border-radius: .5rem; background: #e7edf7; }
 #status[data-kind="success"] { background: #dcf5e5; }
 #status[data-kind="pending"] { background: #fff2c7; }

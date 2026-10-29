@@ -41,6 +41,14 @@ const mutations = Object.freeze([
     oracle: "AC4: foreign command partial-write keeps only validated retry metadata",
     reason: "only the validated partial-write facts may cross the boundary",
   },
+  {
+    id: "query-params-safe-message-deleted",
+    sourceFile: "packages/dcb-client/src/errors.ts",
+    from: "  query_params_unsupported: \"The selected query does not support these parameters.\",\n",
+    to: "",
+    oracle: "AC4: query_params_unsupported stays a sanitized client error on every query path",
+    reason: "the canonical safe message must stay on the allowlist",
+  },
 ]);
 
 let reports;
@@ -208,16 +216,21 @@ function selfTest() {
     try { requireRed(result, mutation); accepted = true; } catch { /* expected rejection */ }
     assert(!accepted, `validator accepted ${label}`);
   }
-  process.stdout.write(`${JSON.stringify({
+  return {
     mutations: mutations.map(({ id }) => id),
     selfTest: "anchors-and-structured-red-receipts",
     rejectedCases: rejected.map(([label]) => label),
-  })}\n`);
+  };
 }
 
 try {
-  if (process.argv.includes("--self-test")) selfTest();
-  else process.stdout.write(`${JSON.stringify({ result: "all-g78-sanitization-mutants-red", rows: mutations.map(runMutation) })}\n`);
+  const synthetic = process.argv.includes("--self-test") ? selfTest() : undefined;
+  const rows = mutations.map(runMutation);
+  process.stdout.write(`${JSON.stringify({
+    result: "all-g78-sanitization-mutants-red",
+    ...(synthetic === undefined ? {} : { selfTest: synthetic }),
+    rows,
+  })}\n`);
 } finally {
   if (reports !== undefined) rmSync(reports, { recursive: true, force: true });
 }

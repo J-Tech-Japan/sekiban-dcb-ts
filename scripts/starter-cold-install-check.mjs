@@ -292,6 +292,18 @@ function finishInstall(work, env, mode, artifact, receipt) {
   assertGeneratedFileSet(walkFiles(project), artifact.createdExpected);
   const corePath = "scripts/offline-provider-validation.mjs";
   if (mode === "pack") {
+    const routes = readFileSync(join(project, "src/booking-routes.ts"), "utf8");
+    const domain = readFileSync(join(project, "src/booking-domain.ts"), "utf8");
+    assert(routes.includes('"/api/read/room"'), "packed room read is missing the keyed route");
+    assert(routes.includes("RoomProjector"), "packed room read is missing RoomProjector");
+    assert(routes.includes("/api/sekiban/serialized/tag-state"), "packed room read is missing the tag-state endpoint");
+    assert(routes.includes("lastSortedUniqueId"), "packed room read dropped lastSortedUniqueId");
+    assert(routes.includes('"/api/read/reservations"'), "packed reservation list route is missing");
+    assert(domain.includes("GetReservationListQuery"), "packed reservation list query is missing");
+    assert(!routes.includes("/api/read/room-query"), "packed routes still dispatch /api/read/room-query");
+    assert(!routes.includes("GetRoomStateQuery"), "packed routes still name GetRoomStateQuery");
+    assert(!domain.includes("GetRoomStateQuery"), "packed domain still registers GetRoomStateQuery");
+    assert(!routes.includes("record.lastSortableUniqueId"), "packed room read still uses lastSortableUniqueId");
     assert(artifact.createdExpected.includes(corePath), "creator pack omitted the offline validation core");
     const sourceCore = readFileSync(join(root, "scripts/lib/offline-provider-validation.mjs"));
     const templateCore = readFileSync(join(root, "packages/create-dcb/template", corePath));

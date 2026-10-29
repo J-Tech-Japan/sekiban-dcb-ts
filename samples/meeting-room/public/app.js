@@ -7,7 +7,7 @@ import {
   commandSnapshots as buildCommandSnapshots,
   reconcileOccupiedAgainstRead,
   reservationListView,
-  roomQueryView,
+  roomStateView,
   snapshotInputValue,
   snapshotKey,
   snapshotLooksOccupied,
@@ -27,10 +27,10 @@ const reservationsRefresh = document.querySelector("#reservations-refresh");
 const reservationsState = document.querySelector("#reservations-state");
 const reservationsHead = document.querySelector("#reservations-head");
 const reservationsBody = document.querySelector("#reservations-body");
-const roomQueryForm = document.querySelector("#room-query-form");
-const roomQueryState = document.querySelector("#room-query-state");
-const roomQueryHead = document.querySelector("#room-query-head");
-const roomQueryResult = document.querySelector("#room-query-result");
+const roomStateForm = document.querySelector("#room-state-form");
+const roomStateStatus = document.querySelector("#room-state-status");
+const roomStateHead = document.querySelector("#room-state-head");
+const roomStateResult = document.querySelector("#room-state-result");
 
 // The browser keeps only portable, JSON-safe projector snapshots.  A commit
 // response is authoritative for its per-tag heads; a list/query read head is
@@ -392,37 +392,35 @@ async function loadReservations() {
   }
 }
 
-async function queryRoom(roomId) {
-  setQueryState(roomQueryState, "Loading room query…", "pending");
+async function readRoomState(roomId) {
+  setQueryState(roomStateStatus, "Loading room state…", "pending");
   try {
-    const response = await fetch(`/api/read/room-query?roomId=${encodeURIComponent(roomId)}`, {
+    const response = await fetch(`/api/read/room?roomId=${encodeURIComponent(roomId)}`, {
       headers: { Accept: "application/json" },
     });
-    const view = roomQueryView(response.status, await responseBody(response));
-    setReadHead(roomQueryHead, view.readHead);
+    const view = roomStateView(response.status, await responseBody(response));
+    setReadHead(roomStateHead, view.readHead);
     if (view.kind === "error") {
-      roomQueryResult.textContent = "No room result.";
-      setQueryState(roomQueryState, `Error: ${view.error}`, "error");
+      roomStateResult.textContent = "No room state.";
+      setQueryState(roomStateStatus, `Error: ${view.error}`, "error");
       return;
     }
-    roomQueryResult.textContent = JSON.stringify(view.result, null, 2);
-    if (typeof view.readHead === "string" && view.result && typeof view.result === "object") {
-      if (view.result.status === "empty") {
-        forgetSnapshot("RoomProjector", `room:${roomId}`);
-      } else {
-        rememberSnapshot({
-          projectorId: "RoomProjector",
-          tag: `room:${roomId}`,
-          head: view.readHead,
-          exists: true,
-          state: view.result,
-        });
-      }
+    roomStateResult.textContent = JSON.stringify(view.state, null, 2);
+    if (view.state.status === "empty") {
+      forgetSnapshot("RoomProjector", `room:${roomId}`);
+    } else {
+      rememberSnapshot({
+        projectorId: "RoomProjector",
+        tag: `room:${roomId}`,
+        head: view.readHead,
+        exists: true,
+        state: view.state,
+      });
     }
-    setQueryState(roomQueryState, "Room query ready", "ready");
+    setQueryState(roomStateStatus, "Room state ready", "ready");
   } catch (error) {
-    roomQueryResult.textContent = "No room result.";
-    setQueryState(roomQueryState, `Error: ${error instanceof Error ? error.message : "Network request failed"}`, "error");
+    roomStateResult.textContent = "No room state.";
+    setQueryState(roomStateStatus, `Error: ${error instanceof Error ? error.message : "Network request failed"}`, "error");
   }
 }
 
@@ -457,11 +455,11 @@ reservationsRefresh.addEventListener("click", () => {
   void loadReservations();
 });
 
-roomQueryForm.addEventListener("submit", (event) => {
+roomStateForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  const form = new FormData(roomQueryForm);
+  const form = new FormData(roomStateForm);
   const roomId = form.get("roomId");
-  if (typeof roomId === "string" && roomId.length > 0) void queryRoom(roomId);
+  if (typeof roomId === "string" && roomId.length > 0) void readRoomState(roomId);
 });
 
 void loadReservations();

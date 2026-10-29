@@ -125,7 +125,7 @@ function projectionPath(kind, id) {
 // query endpoints are a separate safe-lane witness and must be captured too;
 // a safe MV head alone is not proof that the public query returned the event.
 function publicQueryPath(kind, id, waitForSuid = null) {
-  if (kind === "room") return `/api/read/room-query?roomId=${encodeURIComponent(id)}`;
+  if (kind === "room") return `/api/read/room?roomId=${encodeURIComponent(id)}`;
   const path = "/api/read/reservations?pageNumber=1&pageSize=100&newestFirst=true";
   return waitForSuid === null ? path : `${path}&waitForSortableUniqueId=${encodeURIComponent(waitForSuid)}`;
 }
@@ -245,6 +245,7 @@ function readHeadFromBody(body) {
 
 function queryObservation(result) {
   const body = bodyObject(result.body);
+  const state = body.state !== null && typeof body.state === "object" && !Array.isArray(body.state) ? body.state : null;
   return {
     status: result.status,
     responseMs: result.elapsedMs,
@@ -253,6 +254,32 @@ function queryObservation(result) {
     readHead: readHeadFromBody(body),
     result: parseJsonField(body, "resultJson", null),
     rows: parseJsonField(body, "itemsJson", null),
+    state,
+    version: Number.isSafeInteger(body.version) ? body.version : null,
+    lastSortedUniqueId: typeof body.lastSortedUniqueId === "string" ? body.lastSortedUniqueId : null,
+    tagStateId: typeof body.tagStateId === "string" ? body.tagStateId : null,
+  };
+}
+
+function roomReadMatches(observation, expected) {
+  if (expected === null || observation?.status !== 200) return false;
+  if (observation.tagStateId !== `room:${expected.roomId}:RoomProjector`) return false;
+  if (observation.lastSortedUniqueId !== expected.lastSortedUniqueId) return false;
+  if (observation.version !== expected.state.version) return false;
+  return JSON.stringify(observation.state) === JSON.stringify(expected.state);
+}
+
+function expectedRoomRead(sample) {
+  const name = typeof sample.commit?.input?.name === "string" ? sample.commit.input.name : "";
+  return {
+    roomId: sample.target.id,
+    lastSortedUniqueId: sample.commit.suid,
+    state: {
+      status: sample.target.expectedStatus,
+      version: 1,
+      roomId: sample.target.id,
+      name,
+    },
   };
 }
 
@@ -279,7 +306,7 @@ async function tagState(options, tag, projector, expectedVersion, expectedSuid) 
 }
 
 async function queryReads(options, roomId) {
-  const room = await requestJson(options.baseUrl, `/api/read/room-query?roomId=${encodeURIComponent(roomId)}`, { headers: publicHeaders() });
+  const room = await requestJson(options.baseUrl, `/api/read/room?roomId=${encodeURIComponent(roomId)}`, { headers: publicHeaders() });
   const reservations = await requestJson(options.baseUrl, "/api/read/reservations?pageNumber=1&pageSize=100&newestFirst=true", { headers: publicHeaders() });
   return {
     room: queryObservation(room),
@@ -291,8 +318,10 @@ async function publicQuery(options, target, waitForSuid = null) {
   const result = await requestJson(options.baseUrl, publicQueryPath(target.kind, target.id, waitForSuid), { headers: publicHeaders() });
   return {
     ...queryObservation(result),
-    surface: target.kind === "reservation" ? "public-reservations" : "public-room-query",
-    consistency: target.kind === "reservation" && waitForSuid !== null ? "safe-after-wait" : "unsafe-merge-or-room-query",
+    surface: target.kind === "reservation" ? "public-reservations" : "public-room-state",
+    consistency: target.kind === "reservation"
+      ? (waitForSuid !== null ? "safe-after-wait" : "list-query")
+      : "keyed-tag-state",
     waitForSuid,
   };
 }
@@ -356,10 +385,9 @@ function tagStateEvidence(tag) {
     && atLeast(tag.lastSortedUniqueId, tag.expectedSuid);
 }
 
-function queryShowsTarget(target, queryReads, expectedSuid = null) {
+function queryShowsTarget(target, queryReads, expectedSuid = null, expectedRoom = null) {
   if (target.kind === "room") {
-    const result = queryReads?.room?.result;
-    return queryReads?.room?.status === 200 && result !== null && typeof result === "object" && Number(result.count) === 1;
+    return roomReadMatches(queryReads?.room, expectedRoom);
   }
   const rows = Array.isArray(queryReads?.reservations?.rows) ? queryReads.reservations.rows : [];
   return queryReads?.reservations?.status === 200
@@ -413,7 +441,9 @@ async function unsafeProbe(options, target, sample) {
         body,
       };
     }
-    const visible = queryShowsTarget(target, target.kind === "reservation" ? { reservations: query } : { room: query });
+    const visible = target.kind === "room"
+      ? roomReadMatches(query, expectedRoomRead(sample))
+      : queryShowsTarget(target, { reservations: query });
     const observedAtMs = Math.max(query.completedAtMs, projection?.completedAtMs ?? query.completedAtMs);
     observations.push({
       completedAtMs: observedAtMs,
@@ -443,8 +473,12 @@ async function safeProbe(options, safePredicate, sample, report) {
     sample.healthSnapshots.push(current);
     const safeHead = safeHeadFor(current, safePredicate.projector);
     const safeQuery = await publicQuery(options, safePredicate, sample.commit.suid);
-    const publicQueryVisible = queryShowsTarget(safePredicate, safePredicate.kind === "reservation" ? { reservations: safeQuery } : { room: safeQuery });
-    const readHeadReached = safePredicate.kind === "room" || atLeast(safeQuery.readHead, sample.commit.suid);
+    const publicQueryVisible = safePredicate.kind === "room"
+      ? roomReadMatches(safeQuery, expectedRoomRead(sample))
+      : queryShowsTarget(safePredicate, { reservations: safeQuery });
+    const readHeadReached = safePredicate.kind === "room"
+      ? safeQuery.lastSortedUniqueId === sample.commit.suid
+      : atLeast(safeQuery.readHead, sample.commit.suid);
     if (atLeast(safeHead, sample.commit.suid) && publicQueryVisible && readHeadReached) {
       const observedAtMs = Math.max(current.receivedAtMs, safeQuery.completedAtMs);
       const withinBound = observedAtMs <= deadlineMs;
@@ -569,10 +603,23 @@ function summarizeReport(report) {
     tagStateAndQueryReads: rows.every((row) => Array.isArray(row.tagReads) && row.tagReads.length > 0
       && row.tagReads.every(tagStateEvidence)
       && row.queryReads?.room?.status === 200 && row.queryReads?.reservations?.status === 200
-      && queryShowsTarget(row.safePredicate ?? row.target, row.queryReads)
-      && (row.target.kind === "room" || atLeast(row.queryReads.reservations.readHead, row.commit.suid))),
+      && (row.target.kind === "room"
+        ? roomReadMatches(row.queryReads.room, {
+          roomId: row.ids.roomId,
+          lastSortedUniqueId: row.commit.suid,
+          state: {
+            status: "created",
+            version: 1,
+            roomId: row.ids.roomId,
+            name: row.commit.input.name,
+          },
+        })
+        : queryShowsTarget(row.safePredicate ?? row.target, row.queryReads))
+      && (row.target.kind === "room"
+        ? row.queryReads.room.lastSortedUniqueId === row.commit.suid
+        : atLeast(row.queryReads.reservations.readHead, row.commit.suid))),
     coverageAndFrontierObserved: report.healthSnapshots.length > 0 && report.healthSnapshots.every((entry) => entry.coverage !== undefined && Array.isArray(entry.coverageHistory) && Array.isArray(entry.safeLanePasses)),
-    publicUnsafeAndSafeReads: rows.every((row) => Array.isArray(row.unsafe?.observations) && row.unsafe.observations.length > 0 && row.unsafe?.publicQuery?.status === 200 && row.safe?.publicQuery?.status === 200 && row.safe?.safeHead !== undefined && (row.target.kind === "room" || atLeast(row.safe.publicQuery.readHead, row.commit.suid))),
+    publicUnsafeAndSafeReads: rows.every((row) => Array.isArray(row.unsafe?.observations) && row.unsafe.observations.length > 0 && row.unsafe?.publicQuery?.status === 200 && row.safe?.publicQuery?.status === 200 && row.safe?.safeHead !== undefined && (row.target.kind === "room" ? row.safe.publicQuery.lastSortedUniqueId === row.commit.suid : atLeast(row.safe.publicQuery.readHead, row.commit.suid))),
   };
 }
 
@@ -703,7 +750,30 @@ export function selfTest() {
   for (const requiredText of ["read-through", "snapshot-only", "coverageHistory", "safeLanePasses", "censored", "writeReceipt(options.reportPath, report)"]) {
     if (!source.includes(requiredText)) throw new Error(`G66 harness self-test missing ${requiredText}`);
   }
-  process.stdout.write(`${JSON.stringify({ selfTest: "sdt-g66-public-e2e" })}\n`);
+  const retiredRoomPath = ["/api/read", "room-query"].join("/");
+  if (source.includes(retiredRoomPath)) throw new Error("retired room-query path survived");
+  if (!source.includes("/api/read/room?roomId=")) throw new Error("keyed room path is missing");
+  if (!source.includes('"/api/read/reservations?pageNumber=1&pageSize=100&newestFirst=true"')) {
+    throw new Error("reservation list query path is missing");
+  }
+  const fixtureHead = "063923995692002000000693137501";
+  const fixtureState = { status: "created", version: 1, roomId: "room-1", name: "Boardroom" };
+  const fixture = {
+    status: 200,
+    state: fixtureState,
+    version: 1,
+    lastSortedUniqueId: fixtureHead,
+    tagStateId: "room:room-1:RoomProjector",
+  };
+  const expected = { roomId: "room-1", lastSortedUniqueId: fixtureHead, state: fixtureState };
+  if (!roomReadMatches(fixture, expected)) throw new Error("keyed room fixture was rejected");
+  if (roomReadMatches({ ...fixture, lastSortedUniqueId: "wrong-head" }, expected)) {
+    throw new Error("wrong room read head was accepted");
+  }
+  if (roomReadMatches({ ...fixture, state: { status: "created" } }, expected)) {
+    throw new Error("partial room state was accepted");
+  }
+  process.stdout.write(`${JSON.stringify({ selfTest: "sdt-g66-public-e2e", roomHead: fixtureHead })}\n`);
 }
 
 async function main() {

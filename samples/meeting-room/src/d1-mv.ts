@@ -430,9 +430,10 @@ function configuredViewCount(value: string | undefined): number {
 }
 
 function fanoutViewId(index: number, viewCount = DEFAULT_FANOUT_VIEW_COUNT): string {
-  // The one-view remote topology must still exercise the opted-in list view;
-  // RoomProjector is a scalar projection and cannot satisfy the G26 visibility
-  // oracle by itself.
+  // The one-view remote topology must still exercise the opted-in list view.
+  // RoomProjector is registered as a scalar projector; it is not a
+  // parameterized room query and cannot satisfy the G26 visibility oracle
+  // by itself.
   if (viewCount === 1 && index === 0) return reservationMaterializer.id;
   const base = materializers()[index];
   if (base !== undefined) return base.id;
