@@ -28,7 +28,10 @@ Until that coordinated change, the stock gate reports `generated runtime mount
 is not maintenance-only` before Wrangler. A default export that is not the
 single const `composeHandlers` call, any other use of that binding, or a second
 default export is an unresolved source shape before Wrangler. A nested
-declaration of the same name is rejected. Do not read the secret, log it, or place its value in
+declaration of the same name is rejected. `deploy:check` attests that static
+source shape and does not interpret dynamically evaluated code (`eval` or
+`Function`), so a customization must keep the mount defined statically.
+Do not read the secret, log it, or place its value in
 `vars`. `deploy:check` classifies source only and does not verify remote state.
 The stock mount has no `extraPaths` member and one `extraPrefixes` entry.
 

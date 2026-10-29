@@ -46,7 +46,10 @@ entry does not publish a package.
   const initializer, is an unresolved source shape before Wrangler. That
   binding's name may appear only on the const and on that one default export.
   Any other use, including a nested declaration of the same name, or a second
-  default export, is an unresolved source shape before Wrangler.
+  default export, is an unresolved source shape before Wrangler. Each default
+  specifier and each default function or class counts toward that one export.
+  The check reads the static source and does not interpret dynamically
+  evaluated code.
 
 ### @sekiban/dcb-runtime
 

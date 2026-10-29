@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { SERIALIZED_PATHS } from "../packages/dcb-cloudflare/src/compose";
 
 const { authorizeSpy, runtimeFetch } = vi.hoisted(() => ({
@@ -61,10 +61,6 @@ function spellings(path: string): Array<{ label: string; pathname: string }> {
   ];
 }
 
-const matrix = SERIALIZED_PATHS.flatMap((path) => methods.flatMap((method) => (
-  spellings(path).map((spelling) => ({ path, method, ...spelling }))
-)));
-
 type WorkerFetch = (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
 
 describe("generated starter HTTP surface", () => {
@@ -75,42 +71,38 @@ describe("generated starter HTTP surface", () => {
     workerFetch = worker.default.fetch as WorkerFetch;
   });
 
-  beforeEach(() => {
+  async function expectQuiet(
+    boundary: "mounted" | "bare",
+    path: string,
+    method: string,
+    label: string,
+    pathname: string,
+  ): Promise<void> {
+    const mounted = boundary === "mounted";
+    const detail = `${path} ${method} ${label} ${mounted ? "under /internal/sekiban" : "at the bare application path"}`;
     authorizeSpy.mockClear();
     runtimeFetch.mockClear();
+    const response = await workerFetch(
+      new Request(`https://starter.test${mounted ? "/internal/sekiban" : ""}${pathname}`, { method }),
+      {},
+      {} as ExecutionContext,
+    );
+    expect(response.status, detail).toBe(404);
+    await expect(response.text(), detail).resolves.toBe(
+      mounted ? "runtime route is not forwarded" : "Not found",
+    );
+    expect(authorizeSpy, detail).not.toHaveBeenCalled();
+    expect(authorizeSpy.mock.calls, detail).toHaveLength(0);
+    expect(runtimeFetch, detail).not.toHaveBeenCalled();
+    expect(runtimeFetch.mock.calls, detail).toHaveLength(0);
+  }
+
+  it.each(SERIALIZED_PATHS)("serialized route matrix stays unmounted for %s", async (path) => {
+    for (const method of methods) {
+      for (const spelling of spellings(path)) {
+        await expectQuiet("mounted", path, method, spelling.label, spelling.pathname);
+        await expectQuiet("bare", path, method, spelling.label, spelling.pathname);
+      }
+    }
   });
-
-  it.each(matrix)(
-    "serialized route matrix stays unmounted for $path $method $label under /internal/sekiban",
-    async ({ method, pathname }) => {
-      const response = await workerFetch(
-        new Request(`https://starter.test/internal/sekiban${pathname}`, { method }),
-        {},
-        {} as ExecutionContext,
-      );
-      expect(response.status, pathname).toBe(404);
-      await expect(response.text(), pathname).resolves.toBe("runtime route is not forwarded");
-      expect(authorizeSpy, pathname).not.toHaveBeenCalled();
-      expect(authorizeSpy.mock.calls, pathname).toHaveLength(0);
-      expect(runtimeFetch, pathname).not.toHaveBeenCalled();
-      expect(runtimeFetch.mock.calls, pathname).toHaveLength(0);
-    },
-  );
-
-  it.each(matrix)(
-    "serialized route matrix stays unmounted for $path $method $label at the bare application path",
-    async ({ method, pathname }) => {
-      const response = await workerFetch(
-        new Request(`https://starter.test${pathname}`, { method }),
-        {},
-        {} as ExecutionContext,
-      );
-      expect(response.status, pathname).toBe(404);
-      await expect(response.text(), pathname).resolves.toBe("Not found");
-      expect(authorizeSpy, pathname).not.toHaveBeenCalled();
-      expect(authorizeSpy.mock.calls, pathname).toHaveLength(0);
-      expect(runtimeFetch, pathname).not.toHaveBeenCalled();
-      expect(runtimeFetch.mock.calls, pathname).toHaveLength(0);
-    },
-  );
 });

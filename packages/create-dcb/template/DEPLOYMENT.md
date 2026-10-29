@@ -70,7 +70,10 @@ Until that coordinated change, the stock gate reports `generated runtime mount
 is not maintenance-only` before Wrangler. A default export that is not the
 single const `composeHandlers` call, any other use of that binding, or a second
 default export is an unresolved source shape before Wrangler. A nested
-declaration of the same name is rejected. `deploy:check` classifies that source. It does not read
+declaration of the same name is rejected. `deploy:check` attests that static
+source shape and does not interpret dynamically evaluated code (`eval` or
+`Function`), so a customization must keep the mount defined statically.
+`deploy:check` classifies that source. It does not read
 a secret value and does not verify remote state. The stock mount has no
 `extraPaths` member and one `extraPrefixes` entry. See
 [Conditional repair secret](#conditional-repair-secret).
@@ -196,7 +199,10 @@ coordinated change, the stock gate reports `generated runtime mount is not
 maintenance-only` before Wrangler. A default export that is not the single
 const `composeHandlers` call, any other use of that binding, or a second
 default export is an unresolved source shape before Wrangler. A nested
-declaration of the same name is rejected. When that coordinated `/operator`
+declaration of the same name is rejected. `deploy:check` attests that static
+source shape and does not interpret dynamically evaluated code (`eval` or
+`Function`), so a customization must keep the mount defined statically. When
+that coordinated `/operator`
 change is in place, set the
 secret through Wrangler:
 
