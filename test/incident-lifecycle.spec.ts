@@ -826,6 +826,29 @@ describe("SDT-G124 authentication, reads, concurrency, and routing", () => {
     await expect(incidents.json()).resolves.toMatchObject({ code: "incident_maintenance_unavailable" });
     expect(maintenance.reads.INCIDENT_MAINTAINER_TOKEN ?? 0).toBeGreaterThan(0);
     expectQuiet(maintenance.reads, ["INCIDENT_MAINTAINER_TOKEN"]);
+
+    const configured = watchedEnv();
+    const token = "configured-incident-token";
+    const configuredEnv = new Proxy({}, {
+      get(_target, property) {
+        if (typeof property === "string") {
+          configured.reads[property] = (configured.reads[property] ?? 0) + 1;
+        }
+        if (property === "INCIDENT_MAINTAINER_TOKEN") return token;
+        return undefined;
+      },
+    });
+    const wrongBearer = await starterFetch(
+      new Request("https://starter.test/internal/sekiban/maintenance/incidents", {
+        headers: { authorization: "Bearer wrong-token" },
+      }),
+      configuredEnv,
+      {} as ExecutionContext,
+    );
+    expect(wrongBearer.status).toBe(401);
+    await expect(wrongBearer.json()).resolves.toMatchObject({ code: "incident_auth_required" });
+    expect(configured.reads.INCIDENT_MAINTAINER_TOKEN ?? 0).toBeGreaterThan(0);
+    expectQuiet(configured.reads, ["INCIDENT_MAINTAINER_TOKEN"]);
   });
 
   it("keeps exact filters, encoded detail, and generated-starter lookalikes on their intended routes", async () => {

@@ -82,7 +82,60 @@ const oneArgumentWorker: ExportedHandler<Env> = composeHandlers<Env>({
   },
 });
 
+const omittedForwarding: ExportedHandler<Env> = composeHandlers<Env>({
+  application: { fetch: application },
+  sekiban: {
+    prefix: "/internal/sekiban",
+    fetch: runtime.fetch,
+    authorize: () => true,
+    queue: runtime.queue,
+    scheduled: runtime.scheduled,
+  },
+});
+
+const explicitForwarding: ExportedHandler<Env> = composeHandlers<Env>({
+  application: { fetch: application },
+  sekiban: {
+    prefix: "/internal/sekiban",
+    fetch: runtime.fetch,
+    authorize: () => true,
+    forwardSerializedRoutes: true,
+    queue: runtime.queue,
+    scheduled: runtime.scheduled,
+  },
+});
+
+const maintenanceOnly: ExportedHandler<Env> = composeHandlers<Env>({
+  application: { fetch: application },
+  sekiban: {
+    prefix: "/internal/sekiban",
+    fetch: runtime.fetch,
+    authorize: () => true,
+    forwardSerializedRoutes: false,
+    extraPrefixes: ["/maintenance"],
+    queue: runtime.queue,
+    scheduled: runtime.scheduled,
+  },
+});
+
+const nonBooleanForwarding: ExportedHandler<Env> = composeHandlers<Env>({
+  application: { fetch: application },
+  sekiban: {
+    prefix: "/internal/sekiban",
+    fetch: runtime.fetch,
+    authorize: () => true,
+    // @ts-expect-error forwardSerializedRoutes accepts only a boolean.
+    forwardSerializedRoutes: "false",
+    queue: runtime.queue,
+    scheduled: runtime.scheduled,
+  },
+});
+
 void worker;
 void validWorker;
 void contextWorker;
 void oneArgumentWorker;
+void omittedForwarding;
+void explicitForwarding;
+void maintenanceOnly;
+void nonBooleanForwarding;
