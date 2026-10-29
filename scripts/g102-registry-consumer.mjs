@@ -142,7 +142,8 @@ async function helperProbes() {
   const denial = await request(denied, "/sekiban/api/sekiban/serialized/query");
   probes["authorize-denial"] = { status: denial.status, body: await denial.text(), called };
   if (probes["authorize-denial"].called !== false) fail("response denial invoked runtime fetch");
-  probes["zero-argument-authorize"] = forwarded.status === 200;
+  if (forwarded.status !== 200) fail("zero-argument authorize did not admit the request");
+  probes["zero-argument-authorize"] = true;
 
   const identityEnv = { marker: "env-identity" };
   const identityCtx = { marker: "ctx-identity" };

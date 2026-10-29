@@ -441,6 +441,7 @@ function baseLockfile() {
 }
 
 function selfTest() {
+  const checks = [];
   const work = "/tmp/starter-cold-install-self-test";
   const fixture = {
     npm_config_userconfig: "bad-lower",
@@ -457,15 +458,21 @@ function selfTest() {
   assert(greenEnvironment.npm_config_userconfig === join(work, ".npmrc") && greenEnvironment.npm_config_cache === join(work, ".npm-cache") && greenEnvironment.npm_config_registry === registry, "child environment green control is incorrect");
   assert(!Object.keys(greenEnvironment).some((key) => key.toLowerCase().startsWith("npm_") && key !== key.toLowerCase()), "child environment green control keeps an uppercase npm variable");
   assert(!["NODE_AUTH_TOKEN", "NPM_TOKEN", "CLOUDFLARE_API_TOKEN", "NODE_ENV"].some((key) => key in greenEnvironment), "child environment green control keeps a removed token");
+  checks.push("child-environment-green-control");
   const environmentRed = { ...greenEnvironment, NPM_CONFIG_USERCONFIG: "leak" };
   expectFailure(() => {
     if ("NPM_CONFIG_USERCONFIG" in environmentRed) fail("child environment keeps NPM_CONFIG_USERCONFIG");
   }, "child environment keeps NPM_CONFIG_USERCONFIG");
+  checks.push("child-environment-uppercase-npm");
 
   expectFailure(() => assertViewOutput("npm error code E404", helperPackage, "0.1.0"), `starter package ${helperPackage}@0.1.0 is not on the registry`);
+  checks.push("registry-view-missing");
   assertViewOutput("0.1.0", helperPackage, "0.1.0");
+  checks.push("registry-view-present");
   expectFailure(() => assertHelperRange("^0.1.0", "0.2.0"), `generated dependency ${helperPackage} range ^0.1.0 is not satisfied by packed version 0.2.0`);
+  checks.push("helper-range-rejected");
   assertHelperRange("^0.1.0", "0.1.0");
+  checks.push("helper-range-accepted");
 
   const lock = baseLockfile();
   const installed = [
@@ -473,23 +480,30 @@ function selfTest() {
     { name: runtimePackage, path: "/tmp/node_modules/@sekiban/dcb-runtime" },
   ];
   assertLockfile(lock, "pack", { helperTarball: "/tmp/dcb-cloudflare.tgz", helperVersion: "0.1.0", lockfileDirectory: "/tmp", installedPackages: installed });
+  checks.push("pack-lockfile-accepted");
   const rootNotPacked = structuredClone(lock);
   rootNotPacked.packages[""].dependencies[helperPackage] = "file:/tmp/wrong-helper.tgz";
   expectFailure(() => assertLockfile(rootNotPacked, "pack", { helperTarball: "/tmp/dcb-cloudflare.tgz", helperVersion: "0.1.0", lockfileDirectory: "/tmp", installedPackages: installed }), `generated root dependency ${helperPackage} is not the packed tarball specifier`);
+  checks.push("pack-root-not-packed");
   const runtimeOutsideRegistry = structuredClone(lock);
   runtimeOutsideRegistry.packages[`node_modules/${runtimePackage}`].resolved = "file:/tmp/runtime.tgz";
   expectFailure(() => assertLockfile(runtimeOutsideRegistry, "pack", { helperTarball: "/tmp/dcb-cloudflare.tgz", helperVersion: "0.1.0", lockfileDirectory: "/tmp", installedPackages: installed }), `installed package ${runtimePackage} resolved outside the registry`);
+  checks.push("pack-runtime-outside-registry");
   const helperNotPacked = structuredClone(lock);
   helperNotPacked.packages[`node_modules/${helperPackage}`].resolved = `${registry}@sekiban/dcb-cloudflare/-/dcb-cloudflare-0.1.0.tgz`;
   expectFailure(() => assertLockfile(helperNotPacked, "pack", { helperTarball: "/tmp/dcb-cloudflare.tgz", helperVersion: "0.1.0", lockfileDirectory: "/tmp", installedPackages: installed }), `installed package ${helperPackage} did not resolve to the packed tarball`);
+  checks.push("pack-helper-not-packed");
   const insideRepository = installed.map((entry) => entry.name === "@sekiban/dcb-core" ? { ...entry, path: root } : entry);
   expectFailure(() => assertOutsideRepository(insideRepository), "installed package @sekiban/dcb-core resolved inside the repository");
+  checks.push("installed-package-inside-repository");
   const link = structuredClone(lock);
   link.packages["node_modules/@sekiban/dcb-domain"].link = true;
   expectFailure(() => assertLockfile(link, "pack", { helperTarball: "/tmp/dcb-cloudflare.tgz", helperVersion: "0.1.0", lockfileDirectory: "/tmp", installedPackages: installed }), "lockfile entry node_modules/@sekiban/dcb-domain is a link");
+  checks.push("pack-lockfile-link");
   const duplicate = structuredClone(lock);
   duplicate.packages[`node_modules/other/node_modules/${runtimePackage}`] = { version: "0.2.0", resolved: `${registry}@sekiban/dcb-runtime/-/dcb-runtime-0.2.0.tgz` };
   expectFailure(() => assertLockfile(duplicate, "pack", { helperTarball: "/tmp/dcb-cloudflare.tgz", helperVersion: "0.1.0", lockfileDirectory: "/tmp", installedPackages: installed }), `${runtimePackage} is installed more than once`);
+  checks.push("pack-runtime-duplicate");
 
   const graphArtifacts = [...matchedSet, helperPackage].map((name) => ({
     name,
@@ -510,6 +524,7 @@ function selfTest() {
     ]),
   };
   assertExactLocalDependencyGraph(graphLock, "/tmp", graphArtifacts);
+  checks.push("exact-local-dependency-graph");
   const graphFailure = (label, mutate, message) => {
     const mutant = structuredClone(graphLock);
     mutate(mutant);
@@ -518,6 +533,7 @@ function selfTest() {
       new RegExp(message),
       label,
     );
+    checks.push(label);
   };
   graphFailure(
     "missing local tarball",
@@ -552,12 +568,18 @@ function selfTest() {
     /missing local tarball/,
     "missing local tarball artifact must be rejected before installation",
   );
+  checks.push("missing-tarball-artifact");
 
   assertTarballFiles(helperPackage, ["dist/cli.js", "dist/index.js"]);
+  checks.push("helper-tarball-files");
   expectFailure(() => assertTarballFiles(helperPackage, ["dist/cli.js", "dist/index.js", "src/index.ts"]), `tarball ${helperPackage} contains source path src/index.ts`);
+  checks.push("helper-tarball-rejects-source");
   assertTarballFiles(createPackage, ["bin/create-dcb.mjs", "template/package.json", "template/DEPLOYMENT.md", "template/deployment-topology.json", "template/scripts/deploy-check.mjs"]);
+  checks.push("creator-tarball-files");
   assertGeneratedFileSet(["package.json", "src/index.ts"], ["package.json", "src/index.ts"]);
+  checks.push("generated-file-set");
   expectFailure(() => assertGeneratedFileSet(["package.json", "src/index.ts", "README.md"], ["package.json", "src/index.ts"]), "generated project files differ from the packed template");
+  checks.push("generated-file-set-mismatch");
 
   function receiptAuthority(includeRepair) {
     const secrets = [{
@@ -627,6 +649,7 @@ function selfTest() {
     }],
   });
   validateDeployCheckReceipt(modernReceipt, modernAuthority);
+  checks.push("modern-receipt");
   const missingPrerequisite = structuredClone(modernReceipt);
   delete missingPrerequisite.externalPrerequisites;
   nodeAssert.throws(
@@ -634,6 +657,7 @@ function selfTest() {
     /external prerequisite/,
     "modern authority accepted a receipt without the prerequisite",
   );
+  checks.push("modern-receipt-missing-prerequisite");
   const changedPrerequisite = structuredClone(modernReceipt);
   changedPrerequisite.externalPrerequisites[0].required = true;
   nodeAssert.throws(
@@ -641,6 +665,7 @@ function selfTest() {
     /prerequisite/,
     "modern authority accepted a changed prerequisite",
   );
+  checks.push("modern-receipt-changed-prerequisite");
   const extraPrerequisiteField = structuredClone(modernReceipt);
   extraPrerequisiteField.externalPrerequisites[0].note = "extra";
   nodeAssert.throws(
@@ -648,10 +673,12 @@ function selfTest() {
     /prerequisite/,
     "modern authority accepted an extra prerequisite field",
   );
+  checks.push("modern-receipt-extra-field");
   const publishedAuthority = receiptAuthority(false);
   const publishedReceipt = receiptFor(publishedAuthority);
   delete publishedReceipt.removedCredentialVariables;
   validateDeployCheckReceipt(publishedReceipt, publishedAuthority);
+  checks.push("published-receipt");
   const publishedWithExposure = structuredClone(publishedReceipt);
   publishedWithExposure.runtimeExposure = { operatorRoutes: "unmounted", directRuntimeFetch: false };
   nodeAssert.throws(
@@ -659,7 +686,11 @@ function selfTest() {
     /published receipt/,
     "published authority accepted a modern exposure field",
   );
-  console.log(JSON.stringify({ result: "starter-cold-install-self-test-passed", checks: 23 }));
+  checks.push("published-receipt-rejects-exposure");
+  console.log(JSON.stringify({
+    result: "starter-cold-install-self-test-passed",
+    checks: checks.length,
+  }));
 }
 
 function main() {
