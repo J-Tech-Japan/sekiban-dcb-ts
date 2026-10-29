@@ -39,8 +39,9 @@ provisions `REPAIR_OPERATOR_TOKEN` through Wrangler and updates the gate,
 receipt expectations, route tests, and applicable runbook policy together.
 Until that coordinated change, the stock gate reports `generated runtime mount
 is not maintenance-only` before Wrangler. A default export that is not the
-single const `composeHandlers` call is an unresolved source shape before
-Wrangler. Do not put the value in source, topology, `vars`,
+single const `composeHandlers` call, any other use of that binding, or a second
+default export is an unresolved source shape before Wrangler. A nested
+declaration of the same name is rejected. Do not put the value in source, topology, `vars`,
 generated output, command arguments, or logs. `deploy:check` reports that
 source state and does not verify remote state. The stock mount has no
 `extraPaths` member and one `extraPrefixes` entry.

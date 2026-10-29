@@ -43,7 +43,10 @@ entry does not publish a package.
   `/maintenance` extra prefix.
 - `deploy:check` inspects the composition bound to the default export. More
   than one `composeHandlers` call, or a default export that is not that single
-  const initializer, is an unresolved source shape before Wrangler.
+  const initializer, is an unresolved source shape before Wrangler. That
+  binding's name may appear only on the const and on that one default export.
+  Any other use, including a nested declaration of the same name, or a second
+  default export, is an unresolved source shape before Wrangler.
 
 ### @sekiban/dcb-runtime
 

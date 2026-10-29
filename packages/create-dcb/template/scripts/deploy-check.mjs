@@ -590,22 +590,98 @@ function workerStructure(authority, source, label) {
       && ts.isVariableStatement(statement)
       && ts.isSourceFile(statement.parent);
     if (!topLevelConst) unresolvedSourceShape("composeHandlers", lineOf(call));
-    const sameName = [];
-    function collectNames(node) {
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === owner.name.text) {
-        sameName.push(node);
+    const bindingName = owner.name.text;
+    function isNonValueName(node) {
+      const parent = node.parent;
+      if (!parent) return false;
+      if (ts.isPropertyAccessExpression(parent) && parent.name === node) return true;
+      if (ts.isQualifiedName(parent) && parent.right === node) return true;
+      if (ts.isPropertyAssignment(parent) && parent.name === node) return true;
+      if (ts.isBindingElement(parent) && parent.propertyName === node) return true;
+      if (ts.isEnumMember(parent) && parent.name === node) return true;
+      if ((ts.isMethodDeclaration(parent) || ts.isGetAccessorDeclaration(parent) || ts.isSetAccessorDeclaration(parent)
+          || ts.isPropertyDeclaration(parent) || ts.isMethodSignature(parent) || ts.isPropertySignature(parent))
+          && parent.name === node) return true;
+      if (ts.isExportSpecifier(parent) && parent.propertyName && parent.name === node) return true;
+      if (ts.isImportSpecifier(parent) && parent.propertyName === node) return true;
+      return false;
+    }
+    function isCommonJsDefaultAssignment(node) {
+      if (!ts.isBinaryExpression(node) || node.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return false;
+      function exportsTarget(target) {
+        if (ts.isIdentifier(target) && target.text === "exports") return true;
+        if (!ts.isPropertyAccessExpression(target)) return false;
+        if (target.name.text === "default") return exportsTarget(target.expression);
+        return target.name.text === "exports"
+          && ts.isIdentifier(target.expression)
+          && target.expression.text === "module";
       }
-      ts.forEachChild(node, collectNames);
+      return exportsTarget(node.left);
     }
-    collectNames(worker);
-    if (sameName.length !== 1) unresolvedSourceShape("composeHandlers", lineOf(owner));
-    if (defaultExpressions.length !== 1) {
-      unresolvedSourceShape("default", lineOf(defaultExpressions[0] ?? worker));
+    function isDefaultExportForm(node) {
+      if (ts.isExportAssignment(node)) return true;
+      if (ts.isExportDeclaration(node) && node.exportClause && ts.isNamedExports(node.exportClause)) {
+        return node.exportClause.elements.some((specifier) => specifier.name.text === "default");
+      }
+      if (ts.isExportDeclaration(node) && node.exportClause && ts.isNamespaceExport(node.exportClause)) {
+        return node.exportClause.name.text === "default";
+      }
+      return isCommonJsDefaultAssignment(node);
     }
-    const exported = unwrapParens(defaultExpressions[0]);
-    if (!ts.isIdentifier(exported) || exported.text !== owner.name.text) {
-      unresolvedSourceShape("default", lineOf(defaultExpressions[0]));
+    function unwrapExportExpression(node) {
+      let current = unwrapParens(node);
+      while (ts.isAsExpression(current) || ts.isSatisfiesExpression(current)
+          || ts.isTypeAssertionExpression(current) || ts.isNonNullExpression(current)) {
+        current = unwrapParens(current.expression);
+      }
+      return current;
     }
+    function directExportIdentifier(form) {
+      if (ts.isExportAssignment(form)) {
+        const expression = unwrapExportExpression(form.expression);
+        return ts.isIdentifier(expression) ? expression : undefined;
+      }
+      if (ts.isExportDeclaration(form) && form.exportClause && ts.isNamedExports(form.exportClause)
+          && !form.moduleSpecifier) {
+        const specifier = form.exportClause.elements.find((item) => item.name.text === "default");
+        const local = specifier ? (specifier.propertyName ?? specifier.name) : undefined;
+        return local && ts.isIdentifier(local) ? local : undefined;
+      }
+      if (isCommonJsDefaultAssignment(form)) {
+        const expression = unwrapExportExpression(form.right);
+        return ts.isIdentifier(expression) ? expression : undefined;
+      }
+      return undefined;
+    }
+    function insideDefaultExport(node) {
+      let current = node.parent;
+      while (current) {
+        if (isDefaultExportForm(current)) return true;
+        current = current.parent;
+      }
+      return false;
+    }
+    const defaultExports = [];
+    const bindingReferences = [];
+    function collectExportFacts(node) {
+      if (isDefaultExportForm(node)) defaultExports.push(node);
+      if (ts.isIdentifier(node) && node.text === bindingName && node !== owner.name && !isNonValueName(node)) {
+        bindingReferences.push(node);
+      }
+      ts.forEachChild(node, collectExportFacts);
+    }
+    collectExportFacts(worker);
+    // Exactly one default-export form, and it must name this binding directly.
+    if (defaultExports.length !== 1) {
+      unresolvedSourceShape("default", lineOf(defaultExports[1] ?? defaultExports[0] ?? worker));
+    }
+    const allowed = directExportIdentifier(defaultExports[0]);
+    if (!allowed || allowed.text !== bindingName) {
+      unresolvedSourceShape("default", lineOf(defaultExports[0]));
+    }
+    // Any other reference, including a nested declaration of the same name, is rejected.
+    const outside = bindingReferences.filter((node) => !insideDefaultExport(node));
+    if (outside.length !== 0) unresolvedSourceShape(bindingName, lineOf(outside[0]));
     return call;
   }
   composedWorker = resolveExportedComposition();
@@ -1551,6 +1627,34 @@ function selfTest() {
     "default-export-object",
     workerText.replace("export default worker;", "export default { fetch: runtime.fetch };"),
   );
+  const bindingMemberMutation = workerText.replace(
+    "export default worker;",
+    "worker.fetch = runtime.fetch;\nexport default worker;",
+  );
+  const duplicateDefaultExport = workerText.replace(
+    "export default worker;",
+    "export { worker as default };\nexport default worker;",
+  );
+  unresolvedCase("binding-member-mutation", bindingMemberMutation);
+  unresolvedCase("duplicate-default-export", duplicateDefaultExport);
+  unresolvedCase(
+    "binding-alias",
+    workerText.replace("export default worker;", "const w = worker;\nexport default worker;"),
+  );
+  unresolvedCase(
+    "binding-passed-to-function",
+    workerText.replace(
+      "export default worker;",
+      "function useWorker(value) { return value; }\nuseWorker(worker);\nexport default worker;",
+    ),
+  );
+  unresolvedCase(
+    "binding-shadowed-in-nested-scope",
+    workerText.replace(
+      "export default worker;",
+      "function nestedScope() { const worker = 1; }\nexport default worker;",
+    ),
+  );
   unresolvedCase(
     "combined-export-not-resolvable",
     operatorRepair.replace("export default worker;", "export default runtime;"),
@@ -1754,6 +1858,19 @@ function selfTest() {
     "canary-redaction",
   );
   checks.push("decoy-before-wrangler");
+  const memberGate = rejectedGate(bindingMemberMutation);
+  assert(memberGate.text.includes("deploy-check:unresolved-source-shape"), "member-mutation-before-wrangler");
+  assert(memberGate.spawnCalls === 0, "member-mutation-before-wrangler");
+  assert(!memberGate.text.includes(repairCanary), "canary-redaction");
+  checks.push("member-mutation-before-wrangler");
+  const duplicateDefaultGate = rejectedGate(duplicateDefaultExport);
+  assert(
+    duplicateDefaultGate.text.includes("deploy-check:unresolved-source-shape"),
+    "duplicate-default-before-wrangler",
+  );
+  assert(duplicateDefaultGate.spawnCalls === 0, "duplicate-default-before-wrangler");
+  assert(!duplicateDefaultGate.text.includes(repairCanary), "canary-redaction");
+  checks.push("duplicate-default-before-wrangler");
 
   let capturedEnv;
   const successOutput = captureWrites(() => {
