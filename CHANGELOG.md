@@ -13,8 +13,8 @@ boundary. This changelog entry does not publish a package.
 ### @sekiban/dcb-runtime
 
 - Shared bearer checks fail closed when a binding is missing, empty, or
-  whitespace-only, and compare the full credential with one WebCrypto SHA-256
-  digest.
+  whitespace-only. They hash both complete credentials with SHA-256 and
+  compare every digest byte without early exit.
 - `/operator/bootstrap/*` and both meeting-room conformance gates keep exact
   configured bytes. Unconfigured bindings return 404. Configured missing or
   wrong credentials keep 404/403 for bootstrap and 403 for conformance.

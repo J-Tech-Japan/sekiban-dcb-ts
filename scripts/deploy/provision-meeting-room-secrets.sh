@@ -27,9 +27,12 @@ require_secret_file() {
 }
 
 require_secret_file "REPAIR_OPERATOR_TOKEN" "${REPAIR_FILE}"
+if [[ -n "${CONFORMANCE_FILE}" ]]; then
+  require_secret_file "CONFORMANCE_TOKEN" "${CONFORMANCE_FILE}"
+fi
+
 "${WRANGLER_BIN}" secret put REPAIR_OPERATOR_TOKEN --name "${WORKER_NAME}" < "${REPAIR_FILE}"
 
 if [[ -n "${CONFORMANCE_FILE}" ]]; then
-  require_secret_file "CONFORMANCE_TOKEN" "${CONFORMANCE_FILE}"
   "${WRANGLER_BIN}" secret put CONFORMANCE_TOKEN --name "${WORKER_NAME}" < "${CONFORMANCE_FILE}"
 fi

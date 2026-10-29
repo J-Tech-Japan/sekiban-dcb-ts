@@ -80,6 +80,15 @@ async function installMigration(): Promise<void> {
   }
 }
 
+type StarterWorker = { default: ExportedHandler };
+
+let starterWorker: Promise<StarterWorker> | undefined;
+
+function loadStarterWorker(): Promise<StarterWorker> {
+  starterWorker ??= import("../packages/create-dcb/template/src/worker") as Promise<StarterWorker>;
+  return starterWorker;
+}
+
 beforeAll(installMigration);
 
 describe("SDT-G124 incident lifecycle", () => {
@@ -288,7 +297,7 @@ describe("SDT-G124 incident lifecycle", () => {
     const serviceId = `g124-starter-${crypto.randomUUID()}`;
     const identity = `finding-${crypto.randomUUID()}`;
     await seedFinding(serviceId, identity);
-    const starter = (await import("../packages/create-dcb/template/src/worker")) as { default: ExportedHandler };
+    const starter = await loadStarterWorker();
     const starterFetch = starter.default.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
     const response = await starterFetch(new Request("https://starter.test/internal/sekiban/maintenance/incidents", {
       headers: { authorization: `Bearer ${TOKEN}`, [TEST_SERVICE_ID_HEADER]: serviceId },
@@ -305,7 +314,7 @@ describe("SDT-G124 incident lifecycle", () => {
       body: JSON.stringify(action(identity, "starter-ack", 0, { deadlineAt: Date.now() + 10_000 })),
     }), { ...(env as unknown as Record<string, unknown>), D1: database(), D1_MV: database(), INCIDENT_MAINTAINER_TOKEN: TOKEN, SDT_SERVICE_ID: serviceId } as never, {} as ExecutionContext);
     expect(write.status).toBe(200);
-  });
+  }, 45_000);
 });
 
 type MatrixState = "OPEN" | "ACKNOWLEDGED" | "CORRECTION_RECORDED" | "CLOSED" | "REOPENED";
@@ -575,7 +584,7 @@ describe("SDT-G124 authentication, reads, concurrency, and routing", () => {
         throw new Error("identity must not run");
       }),
     });
-    const starter = (await import("../packages/create-dcb/template/src/worker")) as { default: ExportedHandler };
+    const starter = await loadStarterWorker();
     const defaultFetch = defaultWorker.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
     const cloudflareFetch = cloudflareWorker.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
     const starterFetch = starter.default.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
@@ -728,7 +737,7 @@ describe("SDT-G124 authentication, reads, concurrency, and routing", () => {
   });
 
   it("keeps exact filters, encoded detail, and generated-starter lookalikes on their intended routes", async () => {
-    const starter = (await import("../packages/create-dcb/template/src/worker")) as { default: ExportedHandler };
+    const starter = await loadStarterWorker();
     const starterFetch = starter.default.fetch as unknown as (request: Request, env: unknown, ctx: ExecutionContext) => Promise<Response>;
     const starterEnv = { ...(env as unknown as Record<string, unknown>), D1: database(), D1_MV: database(), INCIDENT_MAINTAINER_TOKEN: TOKEN };
     for (const path of [

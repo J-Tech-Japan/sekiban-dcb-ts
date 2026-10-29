@@ -84,6 +84,12 @@ function assertSharedProvision(source) {
     source.includes('secret put CONFORMANCE_TOKEN --name "${WORKER_NAME}" < "${CONFORMANCE_FILE}"'),
     "conformance secret must be written from stdin",
   );
+  const conformanceCheck = source.indexOf('require_secret_file "CONFORMANCE_TOKEN"');
+  const repairWrite = source.indexOf("secret put REPAIR_OPERATOR_TOKEN");
+  requireGate(
+    conformanceCheck >= 0 && repairWrite >= 0 && conformanceCheck < repairWrite,
+    "provision must validate a supplied conformance file before any secret write",
+  );
   requireGate(!source.includes("$(<") && !/\bcat\b/.test(source), "provision must not print or capture a secret");
   requireGate(!source.includes("--var"), "provision must not place a secret in a Wrangler var");
 }
@@ -284,6 +290,9 @@ function proveProtectedProvisioning() {
     moveAllAfter(packed, "provision-meeting-room-secrets.sh", "npx wrangler deploy"),
   ));
   expectGateFailure("omit packed-consumer provisioning", () => assertPackedDryRunSource(packed.replaceAll("provision-meeting-room-secrets.sh", "missing-provision.sh")));
+  expectGateFailure("omit conformance file check", () => assertSharedProvision(
+    provision.replace('  require_secret_file "CONFORMANCE_TOKEN" "${CONFORMANCE_FILE}"\n', "  :\n"),
+  ));
 
   for (const args of [["--dry-run"], ["--", "--dry-run"]]) {
     const run = runSampleDryRun(args);
@@ -331,6 +340,23 @@ function proveProtectedProvisioning() {
     requireGate(both.recorded.length === 2, "optional conformance provisioning must call wrangler twice");
     requireGate(JSON.stringify(both.recorded[1]) === JSON.stringify(["secret", "put", "CONFORMANCE_TOKEN", "--name", "sekiban-dcb-meeting-room-cloudflare-only"]), "conformance secret argv drifted");
     assertSecretNotDisclosed(both, [FAKE_REPAIR, FAKE_CONFORMANCE]);
+    const badConformance = [
+      ["missing conformance file", join(scratch, "missing-conformance")],
+      ["empty conformance file", emptyFile],
+      ["whitespace-only conformance file", blankFile],
+    ];
+    for (const [label, conformance] of badConformance) {
+      const rejected = runProvision({ repair: repairFile, conformance });
+      requireGate(rejected.status !== 0, `${label} must fail`);
+      requireGate(rejected.recorded.length === 0, `${label} must not call wrangler`);
+      const rendered = `${rejected.stdout}\n${rejected.stderr}\n${JSON.stringify(rejected.recorded)}`;
+      requireGate(!rendered.includes(FAKE_REPAIR), `${label} printed the repair secret`);
+      requireGate(!rendered.includes(FAKE_CONFORMANCE), `${label} printed the conformance secret`);
+      requireGate(
+        !rejected.recorded.some((argv) => argv.includes("CONFORMANCE_TOKEN") || argv.includes("REPAIR_OPERATOR_TOKEN")),
+        `${label} invoked secret put`,
+      );
+    }
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
