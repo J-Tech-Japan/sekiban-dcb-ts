@@ -197,6 +197,18 @@ function assertInventory(project) {
   }
   const uiText = ["public/index.html", "public/app.js"].map((file) => readFileSync(join(project, file), "utf8")).join("\n");
   assert(uiText.includes("data-command=\"create-room\"") && uiText.includes("/api/read/reservations"), "booking UI surface is incomplete");
+  const routes = readFileSync(join(project, "src/booking-routes.ts"), "utf8");
+  const domain = readFileSync(join(project, "src/booking-domain.ts"), "utf8");
+  assert(routes.includes('"/api/read/room"'), "generated room read is missing the keyed route");
+  assert(routes.includes("RoomProjector"), "generated room read is missing RoomProjector");
+  assert(routes.includes("/api/sekiban/serialized/tag-state"), "generated room read is missing the tag-state endpoint");
+  assert(routes.includes("lastSortedUniqueId"), "generated room read dropped lastSortedUniqueId");
+  assert(routes.includes('"/api/read/reservations"'), "generated reservation list route is missing");
+  assert(domain.includes("GetReservationListQuery"), "generated reservation list query is missing");
+  assert(!routes.includes("/api/read/room-query"), "generated routes still dispatch /api/read/room-query");
+  assert(!routes.includes("GetRoomStateQuery"), "generated routes still name GetRoomStateQuery");
+  assert(!domain.includes("GetRoomStateQuery"), "generated domain still registers GetRoomStateQuery");
+  assert(!routes.includes("record.lastSortableUniqueId"), "generated room read still uses lastSortableUniqueId");
 
   const worker = readFileSync(join(project, "src/worker.ts"), "utf8");
   for (const forbidden of forbiddenWorkerSource) assert(!worker.includes(forbidden), `worker imports or contains forbidden surface: ${forbidden}`);

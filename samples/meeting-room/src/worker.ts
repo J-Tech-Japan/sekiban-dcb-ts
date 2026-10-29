@@ -183,33 +183,27 @@ async function readApplicationQuery(
 ): Promise<Response> {
   if (request.method !== "GET") return json({ error: "Query routes require GET", code: "validation_error" }, 400);
   const url = new URL(request.url);
-  const isReservations = url.pathname === "/api/read/reservations";
-  const isRoomQuery = url.pathname === "/api/read/room-query";
-  if (!isReservations && !isRoomQuery) return json({ error: "Query route was not found", code: "not_found" }, 404);
-
-  let queryParams: Record<string, unknown>;
-  let waitForSortableUniqueId: string | undefined;
-  if (isReservations) {
-    const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), "pageNumber", 1);
-    if (pageNumber instanceof Response) return pageNumber;
-    const pageSize = positiveInteger(url.searchParams.get("pageSize"), "pageSize", 20);
-    if (pageSize instanceof Response) return pageSize;
-    const newestFirst = url.searchParams.get("newestFirst");
-    if (newestFirst !== null && newestFirst !== "true" && newestFirst !== "false") {
-      return json({ error: "newestFirst must be true or false", code: "validation_error" }, 400);
-    }
-    const requestedWait = url.searchParams.get("waitForSortableUniqueId");
-    if (requestedWait !== null && requestedWait.length === 0) {
-      return json({ error: "waitForSortableUniqueId must be non-empty", code: "validation_error" }, 400);
-    }
-    waitForSortableUniqueId = requestedWait ?? undefined;
-    queryParams = { PageNumber: pageNumber, PageSize: pageSize, ...(newestFirst === "true" ? { NewestFirst: true } : {}) };
-  } else {
-    const roomId = url.searchParams.get("roomId");
-    queryParams = roomId === null || roomId.length === 0 ? {} : { roomId };
+  if (url.pathname !== "/api/read/reservations") {
+    return json({ error: "Query route was not found", code: "not_found" }, 404);
   }
 
-  const queryType = isReservations ? "GetReservationListQuery" : "GetRoomStateQuery";
+  const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), "pageNumber", 1);
+  if (pageNumber instanceof Response) return pageNumber;
+  const pageSize = positiveInteger(url.searchParams.get("pageSize"), "pageSize", 20);
+  if (pageSize instanceof Response) return pageSize;
+  const newestFirst = url.searchParams.get("newestFirst");
+  if (newestFirst !== null && newestFirst !== "true" && newestFirst !== "false") {
+    return json({ error: "newestFirst must be true or false", code: "validation_error" }, 400);
+  }
+  const requestedWait = url.searchParams.get("waitForSortableUniqueId");
+  if (requestedWait !== null && requestedWait.length === 0) {
+    return json({ error: "waitForSortableUniqueId must be non-empty", code: "validation_error" }, 400);
+  }
+  const queryParams = {
+    PageNumber: pageNumber,
+    PageSize: pageSize,
+    ...(newestFirst === "true" ? { NewestFirst: true } : {}),
+  };
   // Keep the public sample route GET-shaped, but make the read itself use the
   // published client executor.  In particular, the immediate lane is an
   // executor listQuery option rather than an untyped serialized field.
@@ -219,19 +213,11 @@ async function readApplicationQuery(
   );
   const executor = createSekibanExecutor(runtimeTransport, { serviceId: env.SDT_SERVICE_ID });
   try {
-    if (isReservations) {
-      const result = await executor.listQuery({
-        queryType,
-        queryParamsJson: JSON.stringify(queryParams),
-        ...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId }),
-      }, { consistency: "unsafe" });
-      return json(result);
-    }
-    const result = await executor.query({
-      queryType,
+    const result = await executor.listQuery({
+      queryType: "GetReservationListQuery",
       queryParamsJson: JSON.stringify(queryParams),
-      ...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId }),
-    });
+      ...(requestedWait === null ? {} : { waitForSortableUniqueId: requestedWait }),
+    }, { consistency: "unsafe" });
     return json(result);
   } catch (error) {
     if (error instanceof ClientError) return json({ error: error.message, code: error.code }, error.status ?? 502);
@@ -306,7 +292,7 @@ export function createMeetingRoomWorker(options: MeetingRoomWorkerOptions = {}):
       if (path === "/api/read/room" || path === "/api/read/reservation") {
         return readApplicationProjection(request, env, ctx, runtimeHandler);
       }
-      if (path === "/api/read/reservations" || path === "/api/read/room-query") {
+      if (path === "/api/read/reservations") {
         return readApplicationQuery(request, env, ctx, runtimeHandler);
       }
       if (path.startsWith("/api/commands/")) return commandRequest(request, env, ctx, runtimeHandler);

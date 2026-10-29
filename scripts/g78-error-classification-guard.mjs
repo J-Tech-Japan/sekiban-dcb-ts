@@ -37,6 +37,11 @@ const classifications = Object.freeze({
   http_error: { class: "malformed-or-unknown", action: "inspect the typed status/code; never infer definiteness from 5xx" },
   partial_write: { class: "definite-refusal", action: "reconcile the committed/failed facts; never blindly retry" },
   projection_unavailable: { class: "deadline-or-unknown", action: "renew the read budget before retrying projection work" },
+  query_params_unsupported: {
+    class: "definite-refusal",
+    action: "remove the unsupported query parameters",
+    exactKind: "invalid",
+  },
   read_unavailable: { class: "deadline-or-unknown", action: "retry a read only under a renewed budget" },
   "scope.mismatch": { class: "definite-refusal", action: "fix the executor/transport service scope" },
   timeout: { class: "deadline-or-unknown", action: "reconcile a command; retry a read only under a renewed budget" },
@@ -79,22 +84,26 @@ function derive(sourceMap) {
   return found;
 }
 
-function check(sourceMap) {
+function check(sourceMap, table = classifications) {
   const found = derive(sourceMap);
-  const expected = new Set(Object.keys(classifications));
+  const expected = new Set(Object.keys(table));
   for (const code of found.keys()) assert(expected.has(code), `source code ${code} has no classification row`);
   for (const code of expected) assert(found.has(code), `classification row ${code} is not derived from client source`);
   return { codes: [...found.keys()].sort(), sourceLocations: Object.fromEntries(found) };
 }
 
-function checkKinds(codes, kinds) {
+function checkKinds(codes, kinds, table = classifications) {
   const result = {};
   for (const code of codes) {
     const kind = Object.prototype.hasOwnProperty.call(kinds, code) ? kinds[code] : undefined;
     assert(typeof kind === "string", `source code ${code} has no result kind in the shared classification module`);
-    const codeClass = classifications[code]?.class;
+    const codeClass = table[code]?.class;
     assert(codeClass !== undefined, `source code ${code} has no classification row`);
     assert(allowedKinds[codeClass].includes(kind), `source code ${code} maps to kind ${kind}, outside its ${codeClass} class (${allowedKinds[codeClass].join(", ")})`);
+    const exactKind = table[code]?.exactKind;
+    if (exactKind !== undefined) {
+      assert(kind === exactKind, `source code ${code} maps to kind ${kind}, not the required exact kind ${exactKind}`);
+    }
     result[code] = kind;
   }
   return result;
@@ -121,11 +130,19 @@ if (process.argv.includes("--self-test")) {
   const mutant = { ...sourceMap, "g78-self-test.ts": `${sourceMap["executor.ts"]}\nthrow new Error(new ClientError("unclassified_future_code", "mutant"));\n` };
   const withoutKind = { ...kinds };
   delete withoutKind.transport;
+  const withoutQueryParamsRow = { ...classifications };
+  delete withoutQueryParamsRow.query_params_unsupported;
+  const withoutQueryParamsKind = { ...kinds };
+  delete withoutQueryParamsKind.query_params_unsupported;
   result.selfTest = [
     rejects("unclassified-code", () => check(mutant)),
     rejects("injected-code-without-kind", () => checkKinds([...result.codes, "unclassified_future_code"], kinds)),
     rejects("deleted-kind", () => checkKinds(result.codes, withoutKind)),
     rejects("kind-outside-class", () => checkKinds(result.codes, { ...kinds, aborted: "invalid" })),
+    rejects("missing-query-params-row", () => check(sourceMap, withoutQueryParamsRow)),
+    rejects("missing-query-params-kind", () => checkKinds(result.codes, withoutQueryParamsKind)),
+    rejects("wrong-exact-query-params-kind", () => checkKinds(result.codes, { ...kinds, query_params_unsupported: "rejected" })),
+    rejects("query-params-kind-outside-class", () => checkKinds(result.codes, { ...kinds, query_params_unsupported: "transport" })),
   ];
 }
 process.stdout.write(`${JSON.stringify({ status: "g78-error-classification-valid", ...result }, null, 2)}\n`);

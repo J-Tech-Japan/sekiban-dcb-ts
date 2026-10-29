@@ -232,15 +232,6 @@ export const releaseRoomCommand = command({
   },
 });
 
-const roomQuery = {
-  id: "GetRoomStateQuery",
-  version: 1,
-  queryType: "GetRoomStateQuery",
-  endpoint: "query",
-  tagGroup: "room",
-  tagProjector: "RoomProjector",
-} satisfies { readonly id: string; readonly version: number; readonly queryType: string; readonly endpoint: "query"; readonly tagGroup: string; readonly tagProjector: string };
-
 const reservationQuery = {
   id: "GetReservationListQuery",
   version: 1,
@@ -267,7 +258,7 @@ export const bookingDomain: RuntimeDomainDefinition = toRuntimeDomain(bookingAut
 export const bookingRuntimeConfig = {
   deliveryClass: "immediate-preferred",
   projectorPayloadNames: { RoomProjector: "RoomState", ReservationProjector: "ReservationState" },
-  queries: [roomQuery, reservationQuery],
+  queries: [reservationQuery],
 } satisfies {
   readonly deliveryClass: "immediate-preferred" | "queued";
   readonly projectorPayloadNames: Readonly<Record<string, string>>;

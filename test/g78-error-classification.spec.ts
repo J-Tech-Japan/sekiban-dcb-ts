@@ -6,9 +6,11 @@ import {
   ClaimLedgerExecutor,
   createHttpTransport,
   createSekibanExecutor,
+  SerializedDcbClient,
   type ClientCommandContext,
   type SerializedDcbTransport,
 } from "../packages/dcb-client/src/index";
+import { failureKindForCode } from "../packages/dcb-client/src/classification";
 import { command, done, event, readSet, tagFamily } from "@sekiban/dcb-domain";
 
 const queryRequest = { queryType: "G78Fixture", queryParamsJson: "{}" };
@@ -329,6 +331,64 @@ describe("SDT-G78 public error classification", () => {
         expect(facadePartial, `${row.reply} partial via SekibanExecutor`).toEqual(row.partial);
       }
     }
+  });
+
+  it("AC4: query_params_unsupported stays a sanitized client error on every query path", async () => {
+    const secret = "g135-secret-query-params";
+    const canonical = "The selected query does not support these parameters.";
+    const hostileBody = {
+      code: "query_params_unsupported",
+      error: secret,
+      roomId: "leaked-room",
+      detail: secret,
+      cause: { secret },
+      partial: { committed: false, secret },
+      extra: secret,
+    };
+    const headers = { "content-type": "application/json", "x-secret": secret };
+    const scalarRequest = {
+      queryType: "GetTestCountQuery",
+      queryParamsJson: JSON.stringify({ roomId: "room-1" }),
+    };
+    const listRequest = {
+      queryType: "GetTestListQuery",
+      queryParamsJson: JSON.stringify({ PageNumber: 1, roomId: "room-1" }),
+    };
+    const assertSanitized = (value: unknown): void => {
+      expect(value).toBeInstanceOf(ClientError);
+      const error = value as ClientError & Record<string, unknown>;
+      expect(error.message).toBe(canonical);
+      expect(error.code).toBe("query_params_unsupported");
+      expect(error.status).toBe(400);
+      expect(error.name).toBe("ClientError");
+      expect(error.cause).toBeUndefined();
+      expect(error.headers).toBeUndefined();
+      expect(error.detail).toBeUndefined();
+      expect(error.extra).toBeUndefined();
+      expect(error.partial).toBeUndefined();
+      expect(error.kind).toBeUndefined();
+      expect(Object.prototype.hasOwnProperty.call(error, "kind")).toBe(false);
+      expect(JSON.stringify(error)).not.toContain(secret);
+      expect(JSON.stringify(error)).not.toContain("leaked-room");
+    };
+
+    const direct = new SerializedDcbClient("https://g135.test", async () => new Response(JSON.stringify(hostileBody), {
+      status: 400,
+      headers,
+    }));
+    const executor = createSekibanExecutor(baseTransport({
+      query: async () => ({ status: 400, headers, body: hostileBody }),
+      listQuery: async () => ({ status: 400, headers, body: hostileBody }),
+    }));
+    const errors = [
+      await direct.query(scalarRequest).catch((value: unknown) => value),
+      await direct.listQuery(listRequest).catch((value: unknown) => value),
+      await executor.query(scalarRequest).catch((value: unknown) => value),
+      await executor.listQuery(listRequest).catch((value: unknown) => value),
+    ];
+    for (const error of errors) assertSanitized(error);
+    expect(new Set(errors).size).toBe(errors.length);
+    expect(failureKindForCode("query_params_unsupported")).toBe("invalid");
   });
 
   it("AC3/AC4: rejects malformed public responses without turning them into absence or refusal", async () => {

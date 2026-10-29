@@ -15,7 +15,7 @@ describe("SDT-G14 meeting-room consumer", () => {
     ]);
     expect(meetingRoomAuthoringDomain.commands).toHaveLength(4);
     expect(meetingRoomDomain.projectors).toHaveLength(2);
-    expect(meetingRoomRuntimeConfig.queries).toHaveLength(2);
+    expect(meetingRoomRuntimeConfig.queries.map((query) => query.queryType)).toEqual(["GetReservationListQuery"]);
 
     const command = (id: string) => {
       const selected = meetingRoomDomain.commands.find((candidate) => candidate.id === id);

@@ -9,6 +9,11 @@ The `0.2.1` package depends on the matched `@sekiban/dcb-core` and
 
 It is not the earlier, unrelated `@sekiban/core` package line.
 
+`query_params_unsupported` is a known transport code. `query` and `listQuery`
+surface it as a `ClientError` whose message is "The selected query does not
+support these parameters." and whose `code` is `query_params_unsupported`.
+The public `ClientError` fields stay `code`, `status`, and `partial`.
+
 ## License
 
 Elastic License 2.0. See [LICENSE](./LICENSE).

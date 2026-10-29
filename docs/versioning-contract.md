@@ -20,3 +20,10 @@ Consumers must treat these as four independent compatibility axes:
 These axes are intentionally orthogonal: a package release does not by itself
 change V1, event identities, or read-side identities, and a new read-side
 version does not require a new wire protocol.
+
+Serialized query requests now reject parameters the selected query does not
+accept. A scalar query accepts only `{}`. A list query accepts only
+`PageNumber`, `PageSize`, `NewestFirst`, and `consistency`. This is a V1
+request-acceptance rule. Response envelopes, event identities, and
+projector/query/materialized-view identity pairs stay the same. Typed query
+handlers are planned for `0.3.0`; their API is not defined yet.

@@ -12,6 +12,15 @@ The experimental Cosmos provider is never selected by environment values. A
 consumer must import `createCosmosStoreProvider` from `/cosmos` and pass it as
 `createRuntimeWorker({ storeProvider })`.
 
+A scalar query accepts only a parsed empty object. A list query accepts only
+`PageNumber`, `PageSize`, `NewestFirst`, and `consistency`. Any other parsed
+scalar value, and any unknown list key, is HTTP 400 `query_params_unsupported`
+with the message "The selected query does not support these parameters." The
+check runs after JSON parsing and endpoint matching and before projector
+lookup or a store read, on every backing. The V1 response envelope is
+unchanged. Typed query handlers are planned for `0.3.0`; their API is not
+defined here.
+
 ## License
 
 Elastic License 2.0. See [LICENSE](./LICENSE).
