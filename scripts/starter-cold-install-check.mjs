@@ -103,14 +103,6 @@ export function assertViewOutput(output, name, version) {
   }
 }
 
-function assertViewResult(result, name, version) {
-  if (result.status !== 0) {
-    assertViewOutput(commandOutput(result), name, version);
-    fail(`npm view failed for ${name}@${version}: ${commandOutput(result)}`);
-  }
-  assertViewOutput(commandOutput(result), name, version);
-}
-
 function versionParts(value) {
   const match = String(value).match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
   return match ? match.slice(1, 4).map(Number) : null;
@@ -131,6 +123,120 @@ export function satisfiesRange(range, version) {
 
 export function assertHelperRange(range, packedVersion) {
   assert(satisfiesRange(range, packedVersion), `generated dependency ${helperPackage} range ${range} is not satisfied by packed version ${packedVersion}`);
+}
+
+export function compareVersions(left, right) {
+  const a = versionParts(left);
+  const b = versionParts(right);
+  if (!a || !b) return String(left).localeCompare(String(right));
+  for (let index = 0; index < 3; index += 1) {
+    if (a[index] !== b[index]) return a[index] - b[index];
+  }
+  return 0;
+}
+
+export function greatestVersion(versions) {
+  assert(Array.isArray(versions) && versions.length > 0, "version list is empty");
+  return [...versions].sort(compareVersions).at(-1);
+}
+
+export function greatestCommonVersion(creatorVersions, helperVersions) {
+  const helper = new Set(helperVersions);
+  const common = creatorVersions.filter((version) => helper.has(version));
+  if (common.length === 0) fail("no common published creator and helper version");
+  return greatestVersion(common);
+}
+
+export function selectRegistryPair({ creatorTarget, helperTarget, creatorVersions, helperVersions }) {
+  assert(typeof creatorTarget === "string" && creatorTarget.length > 0, "creator target version is missing");
+  assert(typeof helperTarget === "string" && helperTarget.length > 0, "helper target version is missing");
+  assert(Array.isArray(creatorVersions) && Array.isArray(helperVersions), "registry version lists are missing");
+  if (creatorVersions.includes(creatorTarget) && helperVersions.includes(helperTarget)) {
+    return { creatorVersion: creatorTarget, helperVersion: helperTarget, selection: "manifest-target" };
+  }
+  const version = greatestCommonVersion(creatorVersions, helperVersions);
+  return { creatorVersion: version, helperVersion: version, selection: "published-baseline" };
+}
+
+function exactVersion(value) {
+  return /^\d+\.\d+\.\d+$/.test(String(value ?? ""));
+}
+
+export function prepareRegistryManifest(manifest, helperVersion) {
+  const dependencies = manifest?.dependencies ?? {};
+  const originalRange = dependencies[helperPackage];
+  assertHelperRange(originalRange, helperVersion);
+  const matchedSpecifiers = {};
+  for (const name of matchedSet) {
+    const specifier = dependencies[name];
+    assert(exactVersion(specifier), `selected creator template dependency ${name} is not an exact version`);
+    matchedSpecifiers[name] = specifier;
+  }
+  const rewritten = structuredClone(manifest);
+  rewritten.dependencies[helperPackage] = helperVersion;
+  return { manifest: rewritten, originalRange, matchedSpecifiers };
+}
+
+function registryLockEntries(lockfile, name) {
+  return Object.entries(lockfile?.packages ?? {}).filter(([key]) => key === `node_modules/${name}` || key.endsWith(`/node_modules/${name}`));
+}
+
+function registryResolution(resolved) {
+  return String(resolved ?? "").startsWith(registry);
+}
+
+export function assertRegistryInstalledGraph({
+  manifest,
+  lockfile,
+  helperVersion,
+  matchedSpecifiers,
+  installedVersions,
+  installedHelperVersion,
+}) {
+  const rootSpecifier = manifest?.dependencies?.[helperPackage];
+  assert(exactVersion(rootSpecifier), `generated root dependency ${helperPackage} is a loose specifier`);
+  assert(rootSpecifier === helperVersion, `generated root dependency ${helperPackage} is not the exact selected helper`);
+  const lockRoot = lockfile?.packages?.[""]?.dependencies?.[helperPackage];
+  assert(exactVersion(lockRoot), `lockfile root specifier ${helperPackage} is a loose specifier`);
+  assert(lockRoot === helperVersion, `lockfile root specifier ${helperPackage} is not the exact selected helper`);
+  const helperEntries = registryLockEntries(lockfile, helperPackage);
+  assert(helperEntries.length !== 0, "helper lock entry is missing");
+  assert(helperEntries.length === 1, "helper lock entry is duplicated");
+  const helperEntry = helperEntries[0][1];
+  assert(helperEntry?.version === helperVersion, "helper lock entry version is not the selected helper");
+  assert(registryResolution(helperEntry?.resolved), "helper lock entry is not a registry resolution");
+  assert(installedHelperVersion === helperVersion, "installed helper version is not the selected helper");
+  for (const name of matchedSet) {
+    const expected = matchedSpecifiers?.[name];
+    assert(exactVersion(expected), `selected creator template dependency ${name} is not an exact version`);
+    assert(installedVersions?.[name] === expected, `${name} installed version drifted from the selected creator template`);
+    const entries = registryLockEntries(lockfile, name);
+    assert(entries.length !== 0, `${name} lock entry is missing`);
+    assert(entries.length === 1, `${name} lock entry is duplicated or mixed-version`);
+    const entry = entries[0][1];
+    assert(entry?.version === expected, `${name} locked version drifted from the selected creator template`);
+    assert(registryResolution(entry?.resolved), `${name} is not a registry resolution`);
+  }
+}
+
+export function registryReceiptFacts({ creatorVersion, helperVersion, matchedVersions }) {
+  return {
+    packages: {
+      [createPackage]: creatorVersion,
+      [helperPackage]: helperVersion,
+    },
+    matchedDependencies: { ...matchedVersions },
+  };
+}
+
+export function assertRegistryReceipt(receipt, { creatorVersion, helperVersion, matchedSpecifiers, installedVersions }) {
+  assert(receipt?.packages?.[createPackage] === creatorVersion, "receipt creator version drifted from the selected creator");
+  assert(receipt?.packages?.[helperPackage] === helperVersion, "receipt helper version drifted from the selected helper");
+  for (const name of matchedSet) {
+    const recorded = receipt?.matchedDependencies?.[name];
+    assert(recorded === matchedSpecifiers?.[name], `receipt matched version for ${name} drifted from the selected creator template`);
+    assert(recorded === installedVersions?.[name], `receipt matched version for ${name} drifted from the installed package`);
+  }
 }
 
 export function assertTarballFiles(name, paths) {
@@ -256,23 +362,53 @@ function packMode(work, env) {
   return { artifacts, helper, creator, createdExpected };
 }
 
-function registryMode(work, env) {
-  const creatorVersion = packageVersion(createPackage);
-  const helperVersion = packageVersion(helperPackage);
-  for (const [name, version] of [[createPackage, creatorVersion], [helperPackage, helperVersion]]) {
-    const result = spawnSync("npm", ["view", `${name}@${version}`, "version"], { cwd: work, env, encoding: "utf8", maxBuffer: 1024 * 1024 });
-    assertViewResult(result, name, version);
+function publishedVersionList(name, env, cwd) {
+  const result = spawnSync("npm", ["view", name, "versions", "--json"], {
+    cwd,
+    env,
+    encoding: "utf8",
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    assertViewOutput(commandOutput(result), name, "versions");
+    fail(`npm view versions failed for ${name}: ${commandOutput(result)}`);
   }
-  run("npm", ["exec", "--yes", "--package", `${createPackage}@${creatorVersion}`, "--", "create-dcb", "Cold Start Booking"], { cwd: work, env });
+  let parsed;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch (error) {
+    fail(`npm view versions for ${name} did not return JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const versions = Array.isArray(parsed) ? parsed : [parsed];
+  assert(
+    versions.length > 0 && versions.every((version) => typeof version === "string" && version.length > 0),
+    `npm view versions for ${name} is not a version list`,
+  );
+  return versions;
+}
+
+function registryMode(work, env) {
+  const creatorTarget = packageVersion(createPackage);
+  const helperTarget = packageVersion(helperPackage);
+  const selected = selectRegistryPair({
+    creatorTarget,
+    helperTarget,
+    creatorVersions: publishedVersionList(createPackage, env, work),
+    helperVersions: publishedVersionList(helperPackage, env, work),
+  });
+  const creatorVersion = selected.creatorVersion;
+  const helperVersion = selected.helperVersion;
   const packDirectory = join(work, "registry-pack");
   mkdirSync(packDirectory, { recursive: true });
   const packed = JSON.parse(run("npm", ["pack", "--json", "--silent", "--pack-destination", packDirectory, `${createPackage}@${creatorVersion}`], { cwd: work, env }).stdout)[0];
   const files = packed.files.map((file) => file.path.replace(/^package\//, ""));
   assertTarballFiles(createPackage, files);
+  run("npm", ["exec", "--yes", "--package", `${createPackage}@${creatorVersion}`, "--", "create-dcb", "Cold Start Booking"], { cwd: work, env });
   return {
     helper: { name: helperPackage, version: helperVersion },
     creator: { name: createPackage, version: creatorVersion, files },
     createdExpected: files.filter((path) => path.startsWith("template/")).map((path) => path.slice("template/".length)),
+    selection: selected.selection,
   };
 }
 
@@ -377,6 +513,12 @@ function finishInstall(work, env, mode, artifact, receipt) {
   const manifest = packageJson(manifestPath);
   const helperRange = manifest.dependencies?.[helperPackage];
   assertHelperRange(helperRange, artifact.helper.version);
+  let matchedSpecifiers;
+  if (mode === "registry") {
+    const prepared = prepareRegistryManifest(manifest, artifact.helper.version);
+    matchedSpecifiers = prepared.matchedSpecifiers;
+    writeFileSync(manifestPath, `${JSON.stringify(prepared.manifest, null, 2)}\n`);
+  }
   if (mode === "pack") {
     Object.assign(manifest, rewriteStarterDependencies(manifest, artifact.artifacts));
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -393,6 +535,36 @@ function finishInstall(work, env, mode, artifact, receipt) {
     lockfileDirectory: project,
     installedPackages,
   });
+  if (mode === "registry") {
+    const installedManifest = packageJson(manifestPath);
+    const installedVersions = Object.fromEntries(matchedSet.map((name) => [
+      name,
+      packageJson(join(project, "node_modules", name, "package.json")).version,
+    ]));
+    const installedHelperVersion = packageJson(join(project, "node_modules", helperPackage, "package.json")).version;
+    assertRegistryInstalledGraph({
+      manifest: installedManifest,
+      lockfile,
+      helperVersion: artifact.helper.version,
+      matchedSpecifiers,
+      installedVersions,
+      installedHelperVersion,
+    });
+    const facts = registryReceiptFacts({
+      creatorVersion: artifact.creator.version,
+      helperVersion: artifact.helper.version,
+      matchedVersions: installedVersions,
+    });
+    assertRegistryReceipt(facts, {
+      creatorVersion: artifact.creator.version,
+      helperVersion: artifact.helper.version,
+      matchedSpecifiers,
+      installedVersions,
+    });
+    receipt.packages = facts.packages;
+    receipt.matchedDependencies = facts.matchedDependencies;
+    receipt.selection = artifact.selection;
+  }
 
   run("npm", ["run", "typecheck"], { cwd: project, env });
   assert(existsSync(join(project, "node_modules/.bin/dcb-cloudflare")), "generated project is missing dcb-cloudflare bin");
@@ -726,6 +898,260 @@ function selfTest() {
     "published authority accepted a modern exposure field",
   );
   checks.push("published-receipt-rejects-exposure");
+
+  const published = "0.4.2";
+  const target = "0.4.3";
+  const higher = "0.4.9";
+  const matched = "1.5.0";
+  const matchedSpecifiers = Object.fromEntries(matchedSet.map((name) => [name, matched]));
+  const admittingRange = `^${published}`;
+  assert(satisfiesRange(admittingRange, published) && satisfiesRange(admittingRange, target), "fixture helper range must admit both the published pair and the helper-only target");
+
+  const complete = selectRegistryPair({
+    creatorTarget: target,
+    helperTarget: target,
+    creatorVersions: [published, target, higher],
+    helperVersions: [published, target, higher],
+  });
+  assert(complete.selection === "manifest-target", "complete target pair did not select the manifest targets");
+  assert(complete.creatorVersion === target && complete.helperVersion === target, "complete target pair was not selected");
+  assert(complete.helperVersion !== higher, "complete target pair fell through to a higher common version");
+  checks.push("registry-complete-target-pair");
+
+  const baseline = selectRegistryPair({
+    creatorTarget: target,
+    helperTarget: target,
+    creatorVersions: ["0.4.0", published],
+    helperVersions: ["0.4.0", published],
+  });
+  const baselineCommon = greatestCommonVersion(["0.4.0", published], ["0.4.0", published]);
+  assert(baseline.selection === "published-baseline", "published baseline used the manifest target path");
+  assert(baseline.creatorVersion === baselineCommon && baseline.helperVersion === baselineCommon, "published baseline did not select the greatest common version");
+  assert(baseline.creatorVersion !== target && baseline.helperVersion !== target, "published baseline selected an unpublished target");
+  checks.push("registry-published-baseline");
+
+  const creatorVersions = ["0.4.0", published];
+  const helperVersions = ["0.4.0", published, target];
+  const partial = selectRegistryPair({
+    creatorTarget: target,
+    helperTarget: target,
+    creatorVersions,
+    helperVersions,
+  });
+  const partialCommon = greatestCommonVersion(creatorVersions, helperVersions);
+  assert(partial.selection === "published-baseline", "partial visibility treated the helper-only target as the release pair");
+  assert(
+    partial.creatorVersion === partialCommon && partial.helperVersion === partialCommon,
+    "partial visibility selected the helper-only target instead of the greatest common published pair",
+  );
+  assert(partial.helperVersion !== target, "partial visibility installed the helper target while the creator target is absent");
+  assert(!creatorVersions.includes(target) && helperVersions.includes(target), "partial-visibility fixture did not hide the creator target");
+  const generated = {
+    dependencies: {
+      ...matchedSpecifiers,
+      [helperPackage]: admittingRange,
+    },
+  };
+  const prepared = prepareRegistryManifest(generated, partial.helperVersion);
+  assert(prepared.originalRange === admittingRange, "partial visibility did not capture the original helper range");
+  assert(satisfiesRange(prepared.originalRange, target), "partial visibility fixture range does not admit the visible helper target");
+  assert(prepared.manifest.dependencies[helperPackage] === partial.helperVersion, "partial visibility did not rewrite the helper to the exact selected version");
+  assert(prepared.manifest.dependencies[helperPackage] !== target, "partial visibility pinned the visible helper target");
+  assert(prepared.manifest.dependencies[helperPackage] !== admittingRange, "exact helper pin was dropped");
+  for (const name of matchedSet) {
+    assert(prepared.manifest.dependencies[name] === matchedSpecifiers[name], "registry rewrite changed a matched specifier");
+  }
+  checks.push("registry-partial-visibility-exact-rewrite");
+
+  expectFailure(() => selectRegistryPair({
+    creatorTarget: "3.0.0",
+    helperTarget: "3.0.0",
+    creatorVersions: ["1.0.0"],
+    helperVersions: ["2.0.0"],
+  }), "no common published creator and helper version");
+  checks.push("registry-no-common-version");
+
+  const incompatible = {
+    dependencies: {
+      ...matchedSpecifiers,
+      [helperPackage]: "^9.0.0",
+    },
+  };
+  const incompatibleSnapshot = structuredClone(incompatible);
+  expectFailure(
+    () => prepareRegistryManifest(incompatible, published),
+    `generated dependency ${helperPackage} range ^9.0.0 is not satisfied by packed version ${published}`,
+  );
+  assert(JSON.stringify(incompatible) === JSON.stringify(incompatibleSnapshot), "incompatible helper range mutated the generated manifest");
+  checks.push("registry-incompatible-helper-range");
+
+  function registryGraph(options = {}) {
+    const helperVersion = options.helperVersion ?? published;
+    const specifiers = options.matchedSpecifiers ?? matchedSpecifiers;
+    const installedVersions = options.installedVersions ?? { ...specifiers };
+    const rootSpecifier = options.rootSpecifier ?? helperVersion;
+    const lockRootSpecifier = options.lockRootSpecifier ?? helperVersion;
+    const helperLockVersion = options.helperLockVersion ?? helperVersion;
+    const helperResolved = options.helperResolved ?? `${registry}@sekiban/dcb-cloudflare/-/dcb-cloudflare-${helperLockVersion}.tgz`;
+    const packages = {
+      "": { dependencies: { ...specifiers, [helperPackage]: lockRootSpecifier } },
+    };
+    if (options.omitHelperLock !== true) {
+      packages[`node_modules/${helperPackage}`] = { version: helperLockVersion, resolved: helperResolved };
+    }
+    for (const name of matchedSet) {
+      if (options.omitLock?.[name] === true) continue;
+      const short = name.slice("@sekiban/".length);
+      const locked = options.lockedVersions?.[name] ?? specifiers[name];
+      const resolved = options.resolved?.[name] ?? `${registry}@sekiban/${short}/-/${short}-${locked}.tgz`;
+      packages[`node_modules/${name}`] = { version: locked, resolved };
+    }
+    return {
+      manifest: { dependencies: { ...specifiers, [helperPackage]: rootSpecifier } },
+      lockfile: { packages },
+      helperVersion,
+      matchedSpecifiers: specifiers,
+      installedVersions,
+      installedHelperVersion: options.installedHelperVersion ?? helperVersion,
+    };
+  }
+
+  assertRegistryInstalledGraph(registryGraph());
+  checks.push("registry-lock-accepted");
+  const pinnedGraph = registryGraph({
+    helperVersion: prepared.manifest.dependencies[helperPackage],
+    rootSpecifier: prepared.manifest.dependencies[helperPackage],
+    lockRootSpecifier: prepared.manifest.dependencies[helperPackage],
+  });
+  assertRegistryInstalledGraph(pinnedGraph);
+  checks.push("registry-partial-visibility-installed-graph");
+  expectFailure(
+    () => assertRegistryInstalledGraph(registryGraph({ rootSpecifier: admittingRange })),
+    `generated root dependency ${helperPackage} is a loose specifier`,
+  );
+  checks.push("registry-loose-root-specifier");
+  expectFailure(
+    () => assertRegistryInstalledGraph(registryGraph({ rootSpecifier: target })),
+    `generated root dependency ${helperPackage} is not the exact selected helper`,
+  );
+  checks.push("registry-wrong-root-specifier");
+  expectFailure(
+    () => assertRegistryInstalledGraph(registryGraph({ lockRootSpecifier: admittingRange })),
+    `lockfile root specifier ${helperPackage} is a loose specifier`,
+  );
+  checks.push("registry-loose-lock-root-specifier");
+  expectFailure(
+    () => assertRegistryInstalledGraph(registryGraph({ lockRootSpecifier: target })),
+    `lockfile root specifier ${helperPackage} is not the exact selected helper`,
+  );
+  checks.push("registry-wrong-lock-root-specifier");
+  expectFailure(
+    () => assertRegistryInstalledGraph(registryGraph({ omitHelperLock: true })),
+    "helper lock entry is missing",
+  );
+  checks.push("registry-missing-helper-lock");
+  expectFailure(
+    () => assertRegistryInstalledGraph(registryGraph({ helperLockVersion: target })),
+    "helper lock entry version is not the selected helper",
+  );
+  checks.push("registry-wrong-helper-lock");
+  expectFailure(
+    () => assertRegistryInstalledGraph(registryGraph({ helperResolved: "file:/tmp/helper.tgz" })),
+    "helper lock entry is not a registry resolution",
+  );
+  checks.push("registry-non-registry-helper-lock");
+  const duplicateHelper = registryGraph();
+  duplicateHelper.lockfile.packages[`node_modules/nested/node_modules/${helperPackage}`] = {
+    version: published,
+    resolved: `${registry}@sekiban/dcb-cloudflare/-/dcb-cloudflare-${published}.tgz`,
+  };
+  expectFailure(() => assertRegistryInstalledGraph(duplicateHelper), "helper lock entry is duplicated");
+  checks.push("registry-duplicate-helper-lock");
+  const driftedName = matchedSet[0];
+  expectFailure(
+    () => assertRegistryInstalledGraph(registryGraph({ omitLock: { [driftedName]: true } })),
+    `${driftedName} lock entry is missing`,
+  );
+  checks.push("registry-missing-matched-lock");
+  expectFailure(
+    () => assertRegistryInstalledGraph(registryGraph({ installedHelperVersion: target })),
+    "installed helper version is not the selected helper",
+  );
+  checks.push("registry-installed-helper-drift");
+  expectFailure(
+    () => assertRegistryInstalledGraph(registryGraph({
+      installedVersions: { ...matchedSpecifiers, [driftedName]: target },
+    })),
+    `${driftedName} installed version drifted from the selected creator template`,
+  );
+  checks.push("registry-matched-installed-drift");
+  expectFailure(
+    () => assertRegistryInstalledGraph(registryGraph({
+      lockedVersions: { [driftedName]: target },
+    })),
+    `${driftedName} locked version drifted from the selected creator template`,
+  );
+  checks.push("registry-matched-lock-drift");
+  expectFailure(
+    () => assertRegistryInstalledGraph(registryGraph({
+      resolved: { [driftedName]: "file:/tmp/matched.tgz" },
+    })),
+    `${driftedName} is not a registry resolution`,
+  );
+  checks.push("registry-non-registry-matched");
+  const mixed = registryGraph();
+  mixed.lockfile.packages[`node_modules/nested/node_modules/${driftedName}`] = {
+    version: target,
+    resolved: `${registry}@sekiban/dcb-core/-/dcb-core-${target}.tgz`,
+  };
+  expectFailure(
+    () => assertRegistryInstalledGraph(mixed),
+    `${driftedName} lock entry is duplicated or mixed-version`,
+  );
+  checks.push("registry-matched-mixed-version");
+  const receiptFacts = registryReceiptFacts({
+    creatorVersion: partial.creatorVersion,
+    helperVersion: partial.helperVersion,
+    matchedVersions: matchedSpecifiers,
+  });
+  assertRegistryReceipt(receiptFacts, {
+    creatorVersion: partial.creatorVersion,
+    helperVersion: partial.helperVersion,
+    matchedSpecifiers,
+    installedVersions: matchedSpecifiers,
+  });
+  assert(receiptFacts.packages[createPackage] === partialCommon, "receipt creator version is not the selected published pair");
+  assert(receiptFacts.packages[helperPackage] === partialCommon, "receipt helper version is not the selected published pair");
+  assert(receiptFacts.packages[helperPackage] !== target, "receipt recorded the helper-only target");
+  for (const name of matchedSet) {
+    assert(receiptFacts.matchedDependencies[name] === matchedSpecifiers[name], "receipt matched version is not the selected creator template");
+  }
+  checks.push("registry-exact-receipt");
+  const driftedReceipt = structuredClone(receiptFacts);
+  driftedReceipt.matchedDependencies[driftedName] = target;
+  expectFailure(
+    () => assertRegistryReceipt(driftedReceipt, {
+      creatorVersion: partial.creatorVersion,
+      helperVersion: partial.helperVersion,
+      matchedSpecifiers,
+      installedVersions: matchedSpecifiers,
+    }),
+    `receipt matched version for ${driftedName} drifted from the selected creator template`,
+  );
+  checks.push("registry-receipt-drift");
+  const helperReceipt = structuredClone(receiptFacts);
+  helperReceipt.packages[helperPackage] = target;
+  expectFailure(
+    () => assertRegistryReceipt(helperReceipt, {
+      creatorVersion: partial.creatorVersion,
+      helperVersion: partial.helperVersion,
+      matchedSpecifiers,
+      installedVersions: matchedSpecifiers,
+    }),
+    "receipt helper version drifted from the selected helper",
+  );
+  checks.push("registry-receipt-helper-drift");
+
   console.log(JSON.stringify({
     result: "starter-cold-install-self-test-passed",
     checks: checks.length,

@@ -54,9 +54,8 @@ byte-checked offline validation core. The starter imports only its local copy
 and keeps `deployment-topology.json` as its sole deployment data authority;
 the shared core does not reconcile declared files with live Cloudflare state.
 
-The template's keyed room read returns `lastSortedUniqueId`. That correction
-is in this repository's template and reaches npm with a later
-`@sekiban/create-dcb` release. The published `0.1.3` creator is unchanged.
+The `0.1.4` creator publishes the keyed room tag-state read, which returns
+`lastSortedUniqueId`.
 
 The generated project includes `cosmos.experimental.json` as an experimental,
 read-only layout and binding descriptor. It does not activate Cosmos: the
