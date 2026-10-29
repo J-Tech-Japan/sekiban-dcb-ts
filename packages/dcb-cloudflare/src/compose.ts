@@ -27,8 +27,14 @@ export type ScheduledHandler<
   Controller = ScheduledController,
 > = (controller: Controller, env: Env, ctx: Ctx) => Promise<void> | void;
 export type AuthorizeResult = boolean | Response;
-export type Authorize<RequestType extends Request = IncomingRequest> = (
+export type Authorize<
+  RequestType extends Request = IncomingRequest,
+  Env = unknown,
+  Ctx = ExecutionContext,
+> = (
   request: RequestType,
+  env: Env,
+  ctx: Ctx,
 ) => AuthorizeResult | Promise<AuthorizeResult>;
 
 export interface SekibanMount<
@@ -40,7 +46,7 @@ export interface SekibanMount<
 > {
   prefix: string;
   fetch: FetchHandler<Env, Ctx, Request>;
-  authorize: Authorize<RequestType>;
+  authorize: Authorize<RequestType, Env, Ctx>;
   extraPaths?: readonly string[];
   extraPrefixes?: readonly string[];
   queue?: QueueHandler<Env, Ctx, Batch>;
@@ -147,7 +153,7 @@ export function composeFetch<
     const stripped = stripPrefix(url.pathname, mount.prefix);
     const prefixAllowed = extraPrefixes.some((prefix) => segmentPrefix(stripped, prefix));
     if (!allowed.has(stripped) && !prefixAllowed) return new Response("runtime route is not forwarded", { status: 404 });
-    const decision = await mount.authorize(request);
+    const decision = await mount.authorize(request, env, ctx);
     if (decision instanceof Response) return decision;
     if (decision !== true) return new Response("runtime route denied", { status: 403 });
     return mount.fetch(rewriteRequest(request, stripped), env, ctx);

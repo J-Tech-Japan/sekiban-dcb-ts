@@ -74,8 +74,8 @@ function walk(dir) {
   return files;
 }
 
-async function request(handler, path, init = {}) {
-  return handler(new Request(`https://caller.example${path}`, init), {}, {});
+async function request(handler, path, init = {}, env = {}, ctx = {}) {
+  return handler(new Request(`https://caller.example${path}`, init), env, ctx);
 }
 
 async function helperProbes() {
@@ -141,6 +141,133 @@ async function helperProbes() {
   });
   const denial = await request(denied, "/sekiban/api/sekiban/serialized/query");
   probes["authorize-denial"] = { status: denial.status, body: await denial.text(), called };
+  if (probes["authorize-denial"].called !== false) fail("response denial invoked runtime fetch");
+  probes["zero-argument-authorize"] = forwarded.status === 200;
+
+  const identityEnv = { marker: "env-identity" };
+  const identityCtx = { marker: "ctx-identity" };
+  const admitted = new Request("https://caller.example/sekiban/custom-health");
+  let authorizeArguments;
+  let identityRuntimeCalls = 0;
+  const identityFetch = composeFetch({
+    application,
+    sekiban: {
+      prefix: "/sekiban",
+      extraPaths: ["/custom-health"],
+      fetch: async (runtimeRequest, runtimeEnv, runtimeCtx) => {
+        identityRuntimeCalls += 1;
+        return new Response(JSON.stringify({
+          path: new URL(runtimeRequest.url).pathname,
+          sameEnv: runtimeEnv === identityEnv,
+          sameCtx: runtimeCtx === identityCtx,
+        }));
+      },
+      authorize: (authorizeRequest, gotEnv, gotCtx) => {
+        authorizeArguments = { request: authorizeRequest, env: gotEnv, ctx: gotCtx };
+        return true;
+      },
+    },
+  });
+  const admittedResponse = await identityFetch(admitted, identityEnv, identityCtx);
+  const admittedBody = JSON.parse(await admittedResponse.text());
+  if (authorizeArguments?.request !== admitted) fail("authorize did not receive the exact request");
+  if (authorizeArguments?.env !== identityEnv) fail("authorize did not receive the exact env object");
+  if (authorizeArguments?.ctx !== identityCtx) fail("authorize did not receive the exact ctx object");
+  if (identityRuntimeCalls !== 1 || admittedBody.path !== "/custom-health") fail("allowed request did not call runtime once");
+  if (admittedBody.sameEnv !== true || admittedBody.sameCtx !== true) fail("runtime did not receive the exact env and ctx");
+  probes["authorize-identity"] = {
+    request: true,
+    env: true,
+    ctx: true,
+    runtimeCalls: identityRuntimeCalls,
+    rewrittenPath: admittedBody.path,
+  };
+
+  let falseRuntimeCalls = 0;
+  const falseRoute = composeFetch({
+    application,
+    sekiban: {
+      prefix: "/sekiban",
+      fetch: async () => {
+        falseRuntimeCalls += 1;
+        return new Response("runtime");
+      },
+      authorize: () => false,
+    },
+  });
+  const falseResponse = await request(falseRoute, "/sekiban/api/sekiban/serialized/query");
+  const falseBody = await falseResponse.text();
+  if (falseResponse.status !== 403 || falseBody !== "runtime route denied" || falseRuntimeCalls !== 0) {
+    fail("false authorization did not stay on the existing 403 path");
+  }
+  probes["authorize-false"] = { status: falseResponse.status, body: falseBody, runtimeCalls: falseRuntimeCalls };
+
+  async function responseDenial(decision) {
+    let runtimeCalls = 0;
+    const route = composeFetch({
+      application,
+      sekiban: {
+        prefix: "/sekiban",
+        fetch: async () => {
+          runtimeCalls += 1;
+          return new Response("runtime");
+        },
+        authorize: () => decision,
+      },
+    });
+    const response = await request(route, "/sekiban/api/sekiban/serialized/query");
+    return { response, runtimeCalls };
+  }
+  const missingPage = new Response("missing-page", { status: 404 });
+  const unavailable = new Response("unavailable", { status: 503 });
+  const missingDenial = await responseDenial(missingPage);
+  const unavailableDenial = await responseDenial(unavailable);
+  if (missingDenial.response !== missingPage || missingDenial.runtimeCalls !== 0) fail("404 decision was not returned by identity");
+  if (unavailableDenial.response !== unavailable || unavailableDenial.runtimeCalls !== 0) fail("503 decision was not returned by identity");
+  probes["authorize-404"] = { same: true, status: missingPage.status, runtimeCalls: 0 };
+  probes["authorize-503"] = { same: true, status: unavailable.status, runtimeCalls: 0 };
+
+  let hiddenAuthorizeCalls = 0;
+  let hiddenRuntimeCalls = 0;
+  const hiddenRoute = composeFetch({
+    application,
+    sekiban: {
+      prefix: "/sekiban",
+      extraPaths: ["/custom-health"],
+      fetch: async () => {
+        hiddenRuntimeCalls += 1;
+        return new Response("runtime");
+      },
+      authorize: () => {
+        hiddenAuthorizeCalls += 1;
+        return true;
+      },
+    },
+  });
+  const hidden = await request(hiddenRoute, "/sekiban/not-listed");
+  const hiddenBody = await hidden.text();
+  if (hidden.status !== 404 || hiddenBody !== "runtime route is not forwarded") fail("unlisted path was not denied before authorization");
+  if (hiddenAuthorizeCalls !== 0) fail("authorization ran before path admission");
+  if (hiddenRuntimeCalls !== 0) fail("runtime fetch ran for an unlisted path");
+  probes["path-not-admitted"] = { status: hidden.status, authorizeCalls: hiddenAuthorizeCalls, runtimeCalls: hiddenRuntimeCalls };
+
+  let oneArgumentRuntimeCalls = 0;
+  const oneArgument = composeFetch({
+    application,
+    sekiban: {
+      prefix: "/sekiban",
+      fetch: async () => {
+        oneArgumentRuntimeCalls += 1;
+        return new Response("runtime");
+      },
+      authorize: (authorizeRequest) => authorizeRequest.headers.get("x-allow") === "yes",
+    },
+  });
+  const oneArgumentResponse = await request(oneArgument, "/sekiban/api/sekiban/serialized/commit", {
+    headers: { "x-allow": "yes" },
+  });
+  if (oneArgumentResponse.status !== 200 || oneArgumentRuntimeCalls !== 1) fail("one-argument authorize did not admit the request");
+  probes["one-argument-authorize"] = oneArgumentResponse.status;
   const plain = composeFetch({ application });
   probes["no-mount"] = await (await request(plain, "/sekiban/api/sekiban/serialized/commit")).text();
   let swallowed = false;

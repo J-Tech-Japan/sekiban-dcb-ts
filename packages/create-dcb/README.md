@@ -22,6 +22,13 @@ After generation, follow the project's [DEPLOYMENT.md](template/DEPLOYMENT.md)
 for the complete topology, offline `npm run deploy:check`, and future
 deployment steps. The generated check creates no Cloudflare resources.
 
+The generated topology carries `REPAIR_OPERATOR_TOKEN` as a conditional
+external prerequisite. It is optional while `/operator/*` stays unmounted.
+Provision it through Wrangler before adding an `extraPath` or `extraPrefix`
+under `/operator`, or before exposing runtime fetch directly. Do not put the
+value in source, topology, `vars`, generated output, command arguments, or
+logs. `deploy:check` reports that source state and does not verify remote state.
+
 The sample composition proof and generated `deploy:check` share one copied,
 byte-checked offline validation core. The starter imports only its local copy
 and keeps `deployment-topology.json` as its sole deployment data authority;

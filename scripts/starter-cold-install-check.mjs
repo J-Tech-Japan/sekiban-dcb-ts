@@ -7,7 +7,7 @@ import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { validateDeployCheckReceipt } from "./g103-create-starter.mjs";
+import { receiptTopology, validateDeployCheckReceipt } from "./g103-create-starter.mjs";
 import {
   matchedSet,
   starterPackages,
@@ -310,6 +310,20 @@ function finishInstall(work, env, mode, artifact, receipt) {
     const generatedCore = readFileSync(join(project, corePath));
     assert(Buffer.compare(sourceCore, templateCore) === 0, "repository and packed template offline cores drifted");
     assert(Buffer.compare(templateCore, generatedCore) === 0, "packed template and generated offline cores drifted");
+    const topology = packageJson(join(project, "deployment-topology.json"));
+    const repair = topology.secrets.find((entry) => entry.name === "REPAIR_OPERATOR_TOKEN");
+    assert(repair?.verification === "external", "packed topology is missing the conditional repair prerequisite");
+    assert(repair.optional === true && repair.forbiddenIn === "vars", "packed topology repair entry is not optional");
+    assert(
+      JSON.stringify(repair.requiredWhen) === JSON.stringify(["operator-route-mounted", "runtime-fetch-direct"]),
+      "packed topology repair conditions changed",
+    );
+    for (const file of ["DEPLOYMENT.md", "README.md", "AGENTS.md"]) {
+      const text = readFileSync(join(project, file), "utf8");
+      assert(text.includes("REPAIR_OPERATOR_TOKEN"), `packed ${file} omitted the repair prerequisite`);
+      assert(text.includes("extraPath") && text.includes("extraPrefix"), `packed ${file} omitted the source triggers`);
+      assert(text.includes("does not verify remote state"), `packed ${file} omitted the offline-only boundary`);
+    }
   }
   const descriptorPath = join(project, "cosmos.experimental.json");
   if (existsSync(descriptorPath)) {
@@ -333,6 +347,10 @@ function finishInstall(work, env, mode, artifact, receipt) {
   }
   const starterWorker = readFileSync(join(project, "src/worker.ts"), "utf8");
   assert(!starterWorker.includes("@sekiban/dcb-runtime/cosmos"), "generated worker activated Cosmos");
+  if (mode === "pack") {
+    assert(starterWorker.includes('extraPrefixes: ["/maintenance"]'), "packed worker changed the maintenance prefix");
+    assert(!starterWorker.includes("extraPaths"), "packed worker mounted an extra path");
+  }
   const starterWrangler = readFileSync(join(project, "wrangler.jsonc"), "utf8");
   assert(starterWrangler.includes('"d1_databases"') && !starterWrangler.includes("COSMOS_KEY"), "generated Wrangler composition is not active D1-only");
 
@@ -540,7 +558,108 @@ function selfTest() {
   assertTarballFiles(createPackage, ["bin/create-dcb.mjs", "template/package.json", "template/DEPLOYMENT.md", "template/deployment-topology.json", "template/scripts/deploy-check.mjs"]);
   assertGeneratedFileSet(["package.json", "src/index.ts"], ["package.json", "src/index.ts"]);
   expectFailure(() => assertGeneratedFileSet(["package.json", "src/index.ts", "README.md"], ["package.json", "src/index.ts"]), "generated project files differ from the packed template");
-  console.log(JSON.stringify({ result: "starter-cold-install-self-test-passed", checks: 18 }));
+
+  function receiptAuthority(includeRepair) {
+    const secrets = [{
+      name: "INCIDENT_MAINTAINER_TOKEN",
+      optional: true,
+      ownership: "runtime-owned",
+      forbiddenIn: "vars",
+    }];
+    if (includeRepair) {
+      secrets.push({
+        name: "REPAIR_OPERATOR_TOKEN",
+        optional: true,
+        ownership: "runtime-owned",
+        forbiddenIn: "vars",
+        verification: "external",
+        requiredWhen: ["operator-route-mounted", "runtime-fetch-direct"],
+      });
+    }
+    return {
+      d1: [{
+        binding: "D1",
+        databaseName: "pipeline",
+        placeholderPath: "d1_databases[binding=D1].database_id",
+        creationCommand: "npx wrangler d1 create pipeline",
+        replacement: "Replace the id.",
+        migrationsDir: "migrations/d1/g32",
+      }],
+      queues: { producers: [], consumers: [], creation: [] },
+      durableObjects: { bindings: [], migrations: [] },
+      assets: { directory: "public" },
+      triggers: { crons: [] },
+      vars: { SDT_SERVICE_ID: "fixture" },
+      secrets,
+    };
+  }
+  function receiptFor(authority, extras = {}) {
+    return {
+      bundle: { projectLocalWrangler: true, dryRun: true, createRoom: true, reserveRoom: true },
+      placeholders: {
+        status: "fresh-template",
+        locations: authority.d1.map((entry) => ({
+          binding: entry.binding,
+          path: entry.placeholderPath,
+          databaseName: entry.databaseName,
+          creationCommand: entry.creationCommand,
+          replacement: entry.replacement,
+        })),
+      },
+      topology: receiptTopology(authority),
+      migrationFileCounts: [{ binding: "D1", files: 1 }],
+      removedCredentialVariables: [
+        "CLOUDFLARE_ACCOUNT_ID",
+        "CLOUDFLARE_API_TOKEN",
+        "REPAIR_OPERATOR_TOKEN",
+      ],
+      ...extras,
+    };
+  }
+  const modernAuthority = receiptAuthority(true);
+  const modernReceipt = receiptFor(modernAuthority, {
+    runtimeExposure: { operatorRoutes: "unmounted", directRuntimeFetch: false },
+    externalPrerequisites: [{
+      name: "REPAIR_OPERATOR_TOKEN",
+      required: false,
+      verification: "external",
+      remoteStateChecked: false,
+    }],
+  });
+  validateDeployCheckReceipt(modernReceipt, modernAuthority);
+  const missingPrerequisite = structuredClone(modernReceipt);
+  delete missingPrerequisite.externalPrerequisites;
+  nodeAssert.throws(
+    () => validateDeployCheckReceipt(missingPrerequisite, modernAuthority),
+    /external prerequisite/,
+    "modern authority accepted a receipt without the prerequisite",
+  );
+  const changedPrerequisite = structuredClone(modernReceipt);
+  changedPrerequisite.externalPrerequisites[0].required = true;
+  nodeAssert.throws(
+    () => validateDeployCheckReceipt(changedPrerequisite, modernAuthority),
+    /prerequisite/,
+    "modern authority accepted a changed prerequisite",
+  );
+  const extraPrerequisiteField = structuredClone(modernReceipt);
+  extraPrerequisiteField.externalPrerequisites[0].note = "extra";
+  nodeAssert.throws(
+    () => validateDeployCheckReceipt(extraPrerequisiteField, modernAuthority),
+    /prerequisite/,
+    "modern authority accepted an extra prerequisite field",
+  );
+  const publishedAuthority = receiptAuthority(false);
+  const publishedReceipt = receiptFor(publishedAuthority);
+  delete publishedReceipt.removedCredentialVariables;
+  validateDeployCheckReceipt(publishedReceipt, publishedAuthority);
+  const publishedWithExposure = structuredClone(publishedReceipt);
+  publishedWithExposure.runtimeExposure = { operatorRoutes: "unmounted", directRuntimeFetch: false };
+  nodeAssert.throws(
+    () => validateDeployCheckReceipt(publishedWithExposure, publishedAuthority),
+    /published receipt/,
+    "published authority accepted a modern exposure field",
+  );
+  console.log(JSON.stringify({ result: "starter-cold-install-self-test-passed", checks: 23 }));
 }
 
 function main() {

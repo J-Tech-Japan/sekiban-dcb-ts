@@ -9,6 +9,13 @@ Keep `deployment-topology.json`, `DEPLOYMENT.md`,
 when replacing the booking application. The topology JSON remains the sole
 starter data authority; the sibling validation core is offline-only.
 
+`REPAIR_OPERATOR_TOKEN` is optional while `/operator/*` stays unmounted.
+Edits that add an `extraPath` or `extraPrefix` under `/operator`, or that
+expose runtime fetch directly, must update the topology, `DEPLOYMENT.md`, and
+the route tests, and must provision `REPAIR_OPERATOR_TOKEN` through Wrangler
+before any live use. Do not read the secret, log it, or place its name or
+value in `vars`. `deploy:check` classifies source only and does not verify remote state.
+
 The deliberate `cloudflare.config.ts` guard refuses cf commands run from the
 project root when they load this project's config. It does not cover
 subdirectories, so never run cf from a subdirectory, especially `public/`, and

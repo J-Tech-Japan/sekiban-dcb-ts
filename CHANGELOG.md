@@ -2,13 +2,33 @@
 
 ## Unreleased matched set 0.2.2
 
-Package versions in this repository stay at 0.2.1. The matched set moves to
-0.2.2 only in a later release-preparation change that ships both changes
-below together. A later composition and
-starter change will pass the request environment into the authorization
-callback, document conditional `REPAIR_OPERATOR_TOKEN` setup for generated
-projects, and keep the generated starter's current exact `/operator/*` 404
-boundary. This changelog entry does not publish a package.
+Package versions in this repository stay at 0.2.1 and 0.1.3. The
+release-preparation change moves the matched set to 0.2.2, moves the helper's
+exact `@sekiban/dcb-runtime` dependency from 0.2.1 to 0.2.2, and publishes
+`@sekiban/dcb-cloudflare` and `@sekiban/create-dcb` at 0.1.4. This changelog
+entry does not publish a package.
+
+### @sekiban/dcb-cloudflare 0.1.4
+
+- Authorization callbacks receive the exact request, environment, and
+  execution context. Callbacks that accept fewer arguments stay assignable.
+- The helper README example uses `checkConfiguredBearer` from
+  `@sekiban/dcb-runtime/cloudflare` and maps every non-authorized result to an
+  explicit response. That export is available beginning with runtime 0.2.2.
+  This change leaves the helper manifest's exact runtime 0.2.1 dependency
+  unchanged.
+
+### @sekiban/create-dcb 0.1.4
+
+- Generated topology and guidance treat `REPAIR_OPERATOR_TOKEN` as optional
+  until an `extraPath` or `extraPrefix` under `/operator`, or a direct runtime
+  fetch export, is introduced. The unchanged project keeps `/operator/*`
+  unmounted and does not require the secret.
+- `deploy:check` classifies those source shapes offline, records
+  `remoteStateChecked: false`, and removes the repair binding and both
+  Cloudflare credential variables from the dry-run child environment. It does
+  not read the secret value or verify remote state. Mounted route behavior is
+  unchanged.
 
 ### @sekiban/dcb-runtime
 

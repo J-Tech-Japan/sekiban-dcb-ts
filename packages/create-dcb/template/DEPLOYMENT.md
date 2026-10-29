@@ -51,6 +51,14 @@ property is unused and is not a Wrangler binding. The optional incident-
 maintenance secret is runtime-owned and is listed by name
 in the authority; its value is never part of this project configuration.
 
+`REPAIR_OPERATOR_TOKEN` is a conditional external secret. The unchanged
+project does not require it, because `/operator/*` stays unmounted and the
+Worker does not expose runtime fetch directly. It becomes required when source
+adds an `extraPath` or `extraPrefix` under `/operator`, or when the Worker
+exports runtime fetch directly. `deploy:check` classifies that source. It does
+not read a secret value and does not verify remote state. See
+[Conditional repair secret](#conditional-repair-secret).
+
 ## 3. Install and run the offline check
 
 From this project directory:
@@ -161,6 +169,22 @@ npx wrangler secret put INCIDENT_MAINTAINER_TOKEN
 ```
 
 Do not add the secret name or value to `vars`, and do not commit its value.
+
+## Conditional repair secret
+
+The unchanged generated project reports `/operator/*` as unmounted and does
+not require `REPAIR_OPERATOR_TOKEN`. Before introducing either source trigger
+— an `extraPath` or `extraPrefix` under `/operator`, or a direct runtime fetch
+export — provision the secret through Wrangler:
+
+```sh
+npx wrangler secret put REPAIR_OPERATOR_TOKEN
+```
+
+Do not put the value in source, `deployment-topology.json`, `vars`, generated
+output, command arguments, or logs. `deploy:check` does not read the value and
+does not verify remote state. Remote presence remains a deployment
+responsibility. The offline receipt records `remoteStateChecked: false`.
 
 ## 10. Retention and reverse-order teardown
 
