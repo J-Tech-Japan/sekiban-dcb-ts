@@ -37,10 +37,35 @@ const classifications = Object.freeze({
   http_error: { class: "malformed-or-unknown", action: "inspect the typed status/code; never infer definiteness from 5xx" },
   partial_write: { class: "definite-refusal", action: "reconcile the committed/failed facts; never blindly retry" },
   projection_unavailable: { class: "deadline-or-unknown", action: "renew the read budget before retrying projection work" },
+  query_handler_failed: {
+    class: "deadline-or-unknown",
+    action: "fix the deployed query definition; no automatic retry",
+    exactKind: "unavailable",
+  },
+  query_params_invalid: {
+    class: "definite-refusal",
+    action: "fix the query parameters; do not retry the same input",
+    exactKind: "invalid",
+  },
   query_params_unsupported: {
     class: "definite-refusal",
     action: "remove the unsupported query parameters",
     exactKind: "invalid",
+  },
+  query_result_invalid: {
+    class: "deadline-or-unknown",
+    action: "fix the deployed query definition; no automatic retry",
+    exactKind: "unavailable",
+  },
+  query_row_invalid: {
+    class: "deadline-or-unknown",
+    action: "repair or rebuild the projection data; no automatic retry",
+    exactKind: "unavailable",
+  },
+  query_scan_limit_exceeded: {
+    class: "definite-refusal",
+    action: "change the data, query, or deployed scan setting deliberately; do not retry unchanged",
+    exactKind: "rejected",
   },
   read_unavailable: { class: "deadline-or-unknown", action: "retry a read only under a renewed budget" },
   "scope.mismatch": { class: "definite-refusal", action: "fix the executor/transport service scope" },
@@ -143,6 +168,18 @@ if (process.argv.includes("--self-test")) {
     rejects("missing-query-params-kind", () => checkKinds(result.codes, withoutQueryParamsKind)),
     rejects("wrong-exact-query-params-kind", () => checkKinds(result.codes, { ...kinds, query_params_unsupported: "rejected" })),
     rejects("query-params-kind-outside-class", () => checkKinds(result.codes, { ...kinds, query_params_unsupported: "transport" })),
+    ...["query_handler_failed", "query_params_invalid", "query_result_invalid", "query_row_invalid", "query_scan_limit_exceeded"].flatMap((code) => {
+      const withoutRow = { ...classifications };
+      delete withoutRow[code];
+      const withoutKind = { ...kinds };
+      delete withoutKind[code];
+      return [
+        rejects(`missing-${code}-row`, () => check(sourceMap, withoutRow)),
+        rejects(`missing-${code}-kind`, () => checkKinds(result.codes, withoutKind)),
+        rejects(`wrong-exact-${code}-kind`, () => checkKinds(result.codes, { ...kinds, [code]: code === "query_scan_limit_exceeded" ? "invalid" : code === "query_params_invalid" ? "rejected" : "timeout" })),
+        rejects(`${code}-kind-outside-class`, () => checkKinds(result.codes, { ...kinds, [code]: "transport" })),
+      ];
+    }),
   ];
 }
 process.stdout.write(`${JSON.stringify({ status: "g78-error-classification-valid", ...result }, null, 2)}\n`);

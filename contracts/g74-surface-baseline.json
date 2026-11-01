@@ -13631,7 +13631,7 @@
             {
               "file": "dist/bridge.d.ts",
               "kind": "interface",
-              "text": "export interface RuntimeDomainDefinition { readonly events: readonly RuntimeEventDefinition[]; readonly commands: readonly RuntimeCommandDefinition[]; readonly projectors: readonly RuntimeProjectorDefinition[]; readonly views: readonly (DomainViewDefinition & { readonly deliveryClass: ViewDeliveryClass; })[]; readonly queries: readonly []; readonly materializedViews: readonly []; readonly eventByName: ReadonlyMap<string, RuntimeEventDefinition>; readonly eventByType: ReadonlyMap<string, RuntimeEventDefinition>; readonly __sekibanAuthoringBridge: true; }",
+              "text": "export interface RuntimeDomainDefinition { readonly events: readonly RuntimeEventDefinition[]; readonly commands: readonly RuntimeCommandDefinition[]; readonly projectors: readonly RuntimeProjectorDefinition[]; readonly views: readonly (DomainViewDefinition & { readonly deliveryClass: ViewDeliveryClass; })[]; readonly queries: readonly RuntimeQueryRegistration[]; readonly materializedViews: readonly []; readonly eventByName: ReadonlyMap<string, RuntimeEventDefinition>; readonly eventByType: ReadonlyMap<string, RuntimeEventDefinition>; readonly __sekibanAuthoringBridge: true; }",
               "typeParameters": []
             }
           ],
@@ -13669,7 +13669,7 @@
               "name": "queries",
               "optional": false,
               "readonly": true,
-              "type": "readonly []"
+              "type": "readonly RuntimeQueryRegistration[]"
             },
             {
               "name": "materializedViews",
@@ -13838,6 +13838,181 @@
               "optional": false,
               "readonly": true,
               "type": "readonly Tag<string>[]"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "RuntimeListQueryExecution",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/bridge.d.ts",
+              "kind": "interface",
+              "text": "export interface RuntimeListQueryExecution<Row = unknown, Params = unknown, Item = unknown> { readonly kind: \"list\"; readonly rowCodec: RuntimeQueryCodec<Row>; readonly paramsCodec: RuntimeQueryCodec<Params>; readonly itemCodec: RuntimeQueryCodec<Item>; handleFilter(projection: QueryProjection<Row>, params: Params, context: QueryHandlerContext): readonly Item[]; handleSort(items: readonly Item[], params: Params, context: QueryHandlerContext): readonly Item[]; }",
+              "typeParameters": [
+                {
+                  "name": "Row",
+                  "constraint": null,
+                  "default": "unknown",
+                  "const": false
+                },
+                {
+                  "name": "Params",
+                  "constraint": null,
+                  "default": "unknown",
+                  "const": false
+                },
+                {
+                  "name": "Item",
+                  "constraint": null,
+                  "default": "unknown",
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "kind",
+              "optional": false,
+              "readonly": true,
+              "type": "\"list\""
+            },
+            {
+              "name": "rowCodec",
+              "optional": false,
+              "readonly": true,
+              "type": "RuntimeQueryCodec<Row>"
+            },
+            {
+              "name": "paramsCodec",
+              "optional": false,
+              "readonly": true,
+              "type": "RuntimeQueryCodec<Params>"
+            },
+            {
+              "name": "itemCodec",
+              "optional": false,
+              "readonly": true,
+              "type": "RuntimeQueryCodec<Item>"
+            },
+            {
+              "name": "handleFilter",
+              "optional": false,
+              "readonly": false,
+              "type": "(projection: QueryProjection<Row>, params: Params, context: QueryHandlerContext) => readonly Item[]"
+            },
+            {
+              "name": "handleSort",
+              "optional": false,
+              "readonly": false,
+              "type": "(items: readonly Item[], params: Params, context: QueryHandlerContext) => readonly Item[]"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": true,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "RuntimeListQueryRegistration",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/bridge.d.ts",
+              "kind": "interface",
+              "text": "export interface RuntimeListQueryRegistration extends RuntimeQueryRegistrationBase { readonly endpoint: \"list-query\"; readonly execution: RuntimeListQueryExecution; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "endpoint",
+              "optional": false,
+              "readonly": true,
+              "type": "\"list-query\""
+            },
+            {
+              "name": "execution",
+              "optional": false,
+              "readonly": true,
+              "type": "RuntimeListQueryExecution<unknown, unknown, unknown>"
+            },
+            {
+              "name": "queryType",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "tagGroup",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "tagProjector",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "materializedViewId",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "enabled",
+              "optional": false,
+              "readonly": true,
+              "type": "true"
             }
           ],
           "syntax": {
@@ -14174,6 +14349,314 @@
               "optional": false,
               "readonly": true,
               "type": "(serialized: string) => JsonValue"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "RuntimeQueryCodec",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/bridge.d.ts",
+              "kind": "interface",
+              "text": "export interface RuntimeQueryCodec<Value = unknown> { encode(value: Value): unknown; decode(value: unknown): Value; }",
+              "typeParameters": [
+                {
+                  "name": "Value",
+                  "constraint": null,
+                  "default": "unknown",
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "encode",
+              "optional": false,
+              "readonly": false,
+              "type": "(value: Value) => unknown"
+            },
+            {
+              "name": "decode",
+              "optional": false,
+              "readonly": false,
+              "type": "(value: unknown) => Value"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": true,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "RuntimeQueryRegistration",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/bridge.d.ts",
+              "kind": "type",
+              "text": "export type RuntimeQueryRegistration = RuntimeScalarQueryRegistration | RuntimeListQueryRegistration;",
+              "typeParameters": []
+            }
+          ],
+          "type": "RuntimeScalarQueryRegistration | RuntimeListQueryRegistration",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "endpoint",
+              "optional": false,
+              "readonly": true,
+              "type": "\"query\" | \"list-query\""
+            },
+            {
+              "name": "execution",
+              "optional": false,
+              "readonly": true,
+              "type": "RuntimeScalarQueryExecution<unknown, unknown, unknown> | RuntimeListQueryExecution<unknown, unknown, unknown>"
+            },
+            {
+              "name": "queryType",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "tagGroup",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "tagProjector",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "materializedViewId",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "enabled",
+              "optional": false,
+              "readonly": true,
+              "type": "true"
+            }
+          ],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "RuntimeScalarQueryExecution",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/bridge.d.ts",
+              "kind": "interface",
+              "text": "export interface RuntimeScalarQueryExecution<Row = unknown, Params = unknown, Result = unknown> { readonly kind: \"scalar\"; readonly rowCodec: RuntimeQueryCodec<Row>; readonly paramsCodec: RuntimeQueryCodec<Params>; readonly resultCodec: RuntimeQueryCodec<Result>; handleQuery(projection: QueryProjection<Row>, params: Params, context: QueryHandlerContext): Result; }",
+              "typeParameters": [
+                {
+                  "name": "Row",
+                  "constraint": null,
+                  "default": "unknown",
+                  "const": false
+                },
+                {
+                  "name": "Params",
+                  "constraint": null,
+                  "default": "unknown",
+                  "const": false
+                },
+                {
+                  "name": "Result",
+                  "constraint": null,
+                  "default": "unknown",
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "kind",
+              "optional": false,
+              "readonly": true,
+              "type": "\"scalar\""
+            },
+            {
+              "name": "rowCodec",
+              "optional": false,
+              "readonly": true,
+              "type": "RuntimeQueryCodec<Row>"
+            },
+            {
+              "name": "paramsCodec",
+              "optional": false,
+              "readonly": true,
+              "type": "RuntimeQueryCodec<Params>"
+            },
+            {
+              "name": "resultCodec",
+              "optional": false,
+              "readonly": true,
+              "type": "RuntimeQueryCodec<Result>"
+            },
+            {
+              "name": "handleQuery",
+              "optional": false,
+              "readonly": false,
+              "type": "(projection: QueryProjection<Row>, params: Params, context: QueryHandlerContext) => Result"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": true,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "RuntimeScalarQueryRegistration",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/bridge.d.ts",
+              "kind": "interface",
+              "text": "export interface RuntimeScalarQueryRegistration extends RuntimeQueryRegistrationBase { readonly endpoint: \"query\"; readonly execution: RuntimeScalarQueryExecution; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "endpoint",
+              "optional": false,
+              "readonly": true,
+              "type": "\"query\""
+            },
+            {
+              "name": "execution",
+              "optional": false,
+              "readonly": true,
+              "type": "RuntimeScalarQueryExecution<unknown, unknown, unknown>"
+            },
+            {
+              "name": "queryType",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "tagGroup",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "tagProjector",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "materializedViewId",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "enabled",
+              "optional": false,
+              "readonly": true,
+              "type": "true"
             }
           ],
           "syntax": {
@@ -22347,6 +22830,13 @@
     {
       "package": "@sekiban/dcb-domain",
       "file": "dist/bridge.d.ts",
+      "name": "Item",
+      "kind": "TypeParameter",
+      "text": "Item = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/bridge.d.ts",
       "name": "LegacyDomainDefinition",
       "kind": "interface",
       "text": "interface LegacyDomainDefinition { readonly events?: readonly LegacyEventDefinition[]; readonly commands?: readonly RuntimeCommandDefinition[]; readonly projectors?: readonly RuntimeProjectorDefinition[]; readonly views?: readonly DomainViewDefinition[]; }"
@@ -22357,6 +22847,55 @@
       "name": "LegacyEventDefinition",
       "kind": "interface",
       "text": "interface LegacyEventDefinition { readonly name?: string; readonly eventName?: string; readonly eventPayloadName?: string; readonly eventType?: string; readonly parse?: (payload: unknown) => unknown; readonly create?: (payload: unknown) => { readonly payload?: unknown; }; readonly construct?: (payload: unknown) => { readonly payload?: unknown; }; }"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/bridge.d.ts",
+      "name": "Params",
+      "kind": "TypeParameter",
+      "text": "Params = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/bridge.d.ts",
+      "name": "Params",
+      "kind": "TypeParameter",
+      "text": "Params = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/bridge.d.ts",
+      "name": "Result",
+      "kind": "TypeParameter",
+      "text": "Result = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/bridge.d.ts",
+      "name": "Row",
+      "kind": "TypeParameter",
+      "text": "Row = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/bridge.d.ts",
+      "name": "Row",
+      "kind": "TypeParameter",
+      "text": "Row = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/bridge.d.ts",
+      "name": "RuntimeQueryRegistrationBase",
+      "kind": "interface",
+      "text": "interface RuntimeQueryRegistrationBase { readonly queryType: string; readonly tagGroup: string; readonly tagProjector: string; readonly materializedViewId: string; readonly version: number; readonly enabled: true; }"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/bridge.d.ts",
+      "name": "Value",
+      "kind": "TypeParameter",
+      "text": "Value = unknown"
     },
     {
       "package": "@sekiban/dcb-domain",
@@ -23803,5 +24342,5 @@
       "preflightCommit"
     ]
   },
-  "publicSurfaceHash": "8126443944145fe2e9f8165173514024b14e6a1ad6188bbd41a818bf55fa15f1"
+  "publicSurfaceHash": "928bf4eb5a1995846325eb2ddbefa9a58744ecf64cd77deec101fd87df26114f"
 }

@@ -12,7 +12,7 @@ import {
   tagFamily,
   toRuntimeDomain,
 } from "@sekiban/dcb-domain";
-import { composeRuntime, type RuntimeQueryDefinition } from "../packages/dcb-runtime/src/composition";
+import { composeRuntime, type RuntimeQueryDefinition, type RuntimeWorkerConfig } from "../packages/dcb-runtime/src/composition";
 
 const RESERVED_PARAM_NAMES = [
   "PageNumber",
@@ -626,7 +626,7 @@ describe("typed query authoring", () => {
     }
   });
 
-  it("keeps authored queries on the domain and refuses them at the bridge", () => {
+  it("bridges authored queries without calling handlers", () => {
     const input = [countQuery, listQuery];
     const authored = domain({
       events: [placed],
@@ -636,13 +636,81 @@ describe("typed query authoring", () => {
     });
     expect(authored.queries).not.toBe(input);
     expect(Object.isFrozen(authored.queries)).toBe(true);
-    expect(Object.isFrozen(input)).toBe(false);
     expect(authored.queries).toEqual([countQuery, listQuery]);
-    const bridgeError = authoringError(() => toRuntimeDomain(authored));
-    expect(bridgeError.code).toBe("QUERY_EXECUTION_UNAVAILABLE");
-    expect(bridgeError.message).toBe("Typed query execution is not available in this runtime bridge.");
+    const bridged = toRuntimeDomain(authored);
+    expect(Object.isFrozen(bridged.queries)).toBe(true);
+    expect(bridged.queries).toHaveLength(2);
+    const scalar = bridged.queries[0]!;
+    const list = bridged.queries[1]!;
+    expect(Object.isFrozen(scalar)).toBe(true);
+    expect(Object.isFrozen(scalar.execution)).toBe(true);
+    expect(Object.isFrozen(list.execution)).toBe(true);
+    expect(scalar).toMatchObject({
+      queryType: "reservation-count",
+      endpoint: "query",
+      tagGroup: "order",
+      tagProjector: "order-projector",
+      materializedViewId: "orders",
+      version: 1,
+      enabled: true,
+    });
+    expect(list).toMatchObject({
+      queryType: "reservation-list",
+      endpoint: "list-query",
+      tagGroup: "order",
+      tagProjector: "order-projector",
+      materializedViewId: "orders",
+      version: 2,
+      enabled: true,
+    });
+    expect(scalar.execution.kind).toBe("scalar");
+    expect(list.execution.kind).toBe("list");
+    expect(Object.keys(scalar.execution).sort()).toEqual(["handleQuery", "kind", "paramsCodec", "resultCodec", "rowCodec"]);
+    expect(Object.keys(list.execution).sort()).toEqual(["handleFilter", "handleSort", "itemCodec", "kind", "paramsCodec", "rowCodec"]);
+    expect(scalar).not.toHaveProperty("params");
+    expect(scalar).not.toHaveProperty("result");
+    expect(scalar).not.toHaveProperty("contract");
+    expect(scalar).not.toHaveProperty("source");
+    expect(list).not.toHaveProperty("item");
     expect(calls).toEqual({ scalar: 0, filter: 0, sort: 0 });
-    expect(() => toRuntimeDomain(authored)).toThrow(DomainAuthoringError);
+    const queryFree = toRuntimeDomain(domain({ events: [placed], projectors: [orderProjector] }));
+    expect(queryFree.queries).toEqual([]);
+    expect(calls).toEqual({ scalar: 0, filter: 0, sort: 0 });
+
+    const other = tagFamily("other");
+    const otherPlaced = event("OtherPlaced", z.object({ orderId: z.string() }), {
+      tags: (payload) => [other.of(payload.orderId)],
+    });
+    const otherProjector = projector({
+      id: "other-projector",
+      tag: other,
+      events: [otherPlaced],
+      initialState: { kind: "placed" as const },
+      handlers: { OtherPlaced: () => ({ kind: "placed" as const }) },
+    });
+    const selected = toRuntimeDomain(domain({
+      events: [placed, otherPlaced],
+      projectors: [orderProjector, otherProjector],
+      views: [{ id: "orders", source: orderProjector.id, projector: otherProjector.id }],
+      queries: [countQuery],
+    }));
+    expect(selected.queries[0]).toMatchObject({ tagGroup: "other", tagProjector: "other-projector", materializedViewId: "orders" });
+
+    const orphan = {
+      queries: [{ id: "orphan", kind: "query", version: 1, source: { id: "missing" } }],
+    } as unknown as Parameters<typeof toRuntimeDomain>[0];
+    expect(() => toRuntimeDomain(orphan)).toThrow(DomainAuthoringError);
+    try {
+      toRuntimeDomain(orphan);
+    } catch (error) {
+      expect(error).toMatchObject({
+        name: "DomainAuthoringError",
+        code: "QUERY_SOURCE_INVALID",
+        message: "Query source view cannot be mapped to a runtime projector.",
+      });
+      expect((error as Error).message).not.toContain("missing");
+      expect((error as Error).message).not.toContain("orphan");
+    }
 
     const sameIdList = defineListQuery({
       id: countQuery.id,
@@ -669,156 +737,168 @@ describe("typed query authoring", () => {
     }));
     expect(missing).toBeInstanceOf(DomainRegistrationError);
     expect(missing.message).toBe("Query source view orders is not registered");
-    expect((missing as DomainRegistrationError).collisions).toEqual(["orders"]);
-
-    const queryFree = toRuntimeDomain(domain({ events: [placed], projectors: [orderProjector] }));
-    expect(queryFree.queries).toEqual([]);
-    expect(calls).toEqual({ scalar: 0, filter: 0, sort: 0 });
   });
 
-  it("rejects typed definitions at every runtime composition input", () => {
-    const legacy: RuntimeQueryDefinition = {
-      queryType: "legacy-rooms",
+  it("registers executable definitions and rejects malformed or shadowed input before precedence", () => {
+    const bridged = toRuntimeDomain(domain({
+      events: [placed],
+      projectors: [orderProjector],
+      views: [{ id: "orders", source: orderProjector.id }],
+      queries: [countQuery, listQuery],
+    }));
+    const fromDomain = composeRuntime(bridged);
+    expect(fromDomain.queries.resolve("reservation-count")?.endpoint).toBe("query");
+    expect(fromDomain.queries.resolve("reservation-list")?.endpoint).toBe("list-query");
+    expect(fromDomain.maxScanRows).toBe(1_000);
+    expect(calls).toEqual({ scalar: 0, filter: 0, sort: 0 });
+
+    const codec = {
+      encode: (value: unknown) => value,
+      decode: (value: unknown) => value,
+    };
+    let scalarCalls = 0;
+    let listCalls = 0;
+    const scalar = {
+      queryType: "composed-scalar",
+      endpoint: "query" as const,
       tagGroup: "room",
       tagProjector: "room-projector",
-      endpoint: "query",
-    };
-    const scalarCalls = { count: 0 };
-    const listCalls = { count: 0 };
-    const scalar = {
-      ...legacy,
-      ...defineQuery({
-        id: "composed-scalar",
-        version: 1,
-        source: orders,
-        params,
-        result,
+      version: 1,
+      enabled: true,
+      execution: {
+        kind: "scalar" as const,
+        rowCodec: codec,
+        paramsCodec: codec,
+        resultCodec: codec,
         handleQuery: () => {
-          scalarCalls.count += 1;
+          scalarCalls += 1;
           return { count: 1 };
         },
-      }),
+      },
     };
     const list = {
-      ...legacy,
+      queryType: "composed-list",
       endpoint: "list-query" as const,
-      ...defineListQuery({
-        id: "composed-list",
-        version: 1,
-        source: orders,
-        params,
-        item,
+      tagGroup: "room",
+      tagProjector: "room-projector",
+      version: 2,
+      enabled: true,
+      execution: {
+        kind: "list" as const,
+        rowCodec: codec,
+        paramsCodec: codec,
+        itemCodec: codec,
         handleFilter: () => {
-          listCalls.count += 1;
+          listCalls += 1;
           return [{ id: "a" }];
         },
-        handleSort: (items) => {
-          listCalls.count += 1;
+        handleSort: (items: readonly { id: string }[]) => {
+          listCalls += 1;
           return items;
         },
-      }),
+      },
     };
-    const cases = [
-      { input: "domain.queries", kind: "query", value: scalar },
-      { input: "domain.queries", kind: "list-query", value: list },
-      { input: "config.queries", kind: "query", value: scalar },
-      { input: "config.queries", kind: "list-query", value: list },
-      { input: "config.queryDefinitions", kind: "query", value: scalar },
-      { input: "config.queryDefinitions", kind: "list-query", value: list },
-    ] as const;
-    expect(cases).toHaveLength(6);
-    for (const entry of cases) {
-      const typed = entry.value as RuntimeQueryDefinition;
-      const domainQueries = entry.input === "domain.queries" ? [typed] : [legacy];
-      const configQueries = entry.input === "config.queries" ? [typed] : [legacy];
-      const queryDefinitions = entry.input === "config.queryDefinitions" ? [typed] : [legacy];
-      let composed: unknown;
-      let failure: unknown;
-      try {
-        composed = composeRuntime({ queries: domainQueries }, { queries: configQueries, queryDefinitions });
-      } catch (error) {
-        failure = error;
-      }
-      expect(composed).toBeUndefined();
-      expect(failure).toBeInstanceOf(Error);
-      expect(failure).toMatchObject({
-        name: "TypedQueryExecutionUnavailableError",
-        code: "QUERY_EXECUTION_UNAVAILABLE",
-        message: "Typed query execution is not available in runtime composition.",
-      });
-      expect((failure as Error).name).toBe("TypedQueryExecutionUnavailableError");
-    }
-    expect(scalarCalls.count).toBe(0);
-    expect(listCalls.count).toBe(0);
+    const onQueries = composeRuntime(undefined, { queries: [scalar, list] });
+    expect(onQueries.queries.resolve("composed-scalar")?.endpoint).toBe("query");
+    expect(onQueries.queries.resolve("composed-list")?.endpoint).toBe("list-query");
+    const onDefinitions = composeRuntime(undefined, { queryDefinitions: [scalar, list] });
+    expect(onDefinitions.queries.resolve("composed-list")?.tagProjector).toBe("room-projector");
+    const precedence = composeRuntime(undefined, {
+      queries: [scalar],
+      queryDefinitions: [list],
+    });
+    expect(precedence.queries.resolve("composed-list")?.endpoint).toBe("list-query");
+    expect(precedence.queries.resolve("composed-scalar")).toBeUndefined();
+    expect(scalarCalls).toBe(0);
+    expect(listCalls).toBe(0);
 
-    const overwrittenScalar = {
-      ...defineQuery({
-        id: "overwrite-scalar",
-        version: 1,
-        source: orders,
-        params,
-        result,
-        handleQuery: () => ({ count: 1 }),
-      }),
-      id: "legacy-id",
-      version: 2,
-      queryType: "legacy-id",
-      tagGroup: "room",
-      tagProjector: "room-projector",
-      endpoint: "query" as const,
-    };
-    const overwrittenList = {
-      ...defineListQuery({
-        id: "overwrite-list",
-        version: 1,
-        source: orders,
-        params,
-        item,
-        handleFilter: () => [{ id: "a" }],
-        handleSort: (items) => items,
-      }),
-      id: "legacy-list",
-      version: 2,
-      queryType: "legacy-list",
-      tagGroup: "room",
-      tagProjector: "room-projector",
-      endpoint: "list-query" as const,
-    };
-    const overwritten = [
-      { input: "domain.queries", value: overwrittenScalar },
-      { input: "domain.queries", value: overwrittenList },
-      { input: "config.queries", value: overwrittenScalar },
-      { input: "config.queries", value: overwrittenList },
-      { input: "config.queryDefinitions", value: overwrittenScalar },
-      { input: "config.queryDefinitions", value: overwrittenList },
-    ] as const;
-    expect(overwritten).toHaveLength(6);
-    for (const entry of overwritten) {
-      expect(entry.value.id).not.toBe(entry.value.contract.id);
-      const typed = entry.value as RuntimeQueryDefinition;
-      const domainQueries = entry.input === "domain.queries" ? [typed] : [legacy];
-      const configQueries = entry.input === "config.queries" ? [typed] : [legacy];
-      const queryDefinitions = entry.input === "config.queryDefinitions" ? [typed] : [legacy];
+    const broken = { ...scalar, queryType: "shadow-broken", execution: { kind: "scalar" as const } };
+    expect(() => composeRuntime(undefined, {
+      queries: [broken as RuntimeQueryDefinition],
+      queryDefinitions: [list],
+    })).toThrow(Error);
+    try {
+      composeRuntime(undefined, {
+        queries: [broken as RuntimeQueryDefinition],
+        queryDefinitions: [list],
+      });
+    } catch (error) {
+      expect(error).toMatchObject({
+        name: "RuntimeQueryDefinitionError",
+        code: "QUERY_DEFINITION_INVALID",
+        message: "Runtime query definition is invalid.",
+      });
+    }
+    expect(listCalls).toBe(0);
+
+    const malformed = [
+      { ...scalar, execution: undefined },
+      { ...scalar, execution: { kind: "scalar", rowCodec: codec } },
+      { ...scalar, execution: { ...scalar.execution, paramsCodec: { encode: codec.encode } } },
+      { ...scalar, execution: { ...scalar.execution, handleQuery: undefined } },
+      { ...scalar, endpoint: "list-query" as const },
+      { ...list, endpoint: "query" as const },
+      { ...scalar, version: 0 },
+      { ...scalar, version: 1.5 },
+      { ...scalar, queryType: "one", id: "two" },
+      { ...scalar, handleQuery: () => ({ count: 1 }) },
+      { ...list, contract: { kind: "list-query", id: "composed-list", version: 2 } },
+      { ...scalar, execution: { ...scalar.execution, handleFilter: () => [] } },
+    ];
+    expect(malformed.length).toBeGreaterThanOrEqual(12);
+    for (const value of malformed) {
       let failure: unknown;
       try {
-        composeRuntime({ queries: domainQueries }, { queries: configQueries, queryDefinitions });
+        composeRuntime(undefined, { queries: [value as RuntimeQueryDefinition] });
       } catch (error) {
         failure = error;
       }
       expect(failure).toMatchObject({
-        name: "TypedQueryExecutionUnavailableError",
-        code: "QUERY_EXECUTION_UNAVAILABLE",
-        message: "Typed query execution is not available in runtime composition.",
+        name: "RuntimeQueryDefinitionError",
+        code: "QUERY_DEFINITION_INVALID",
+        message: "Runtime query definition is invalid.",
       });
     }
+    expect(() => composeRuntime(undefined, { queries: [scalar, { ...scalar }] })).toThrow(Error);
     const roomQuery = { id: "rooms", version: 1, tagGroup: "room", tagProjector: "room-projector" };
     const metadata = composeRuntime(undefined, { queries: [roomQuery] });
     expect(metadata.queries.resolve("rooms")?.tagGroup).toBe("room");
-    const precedence = composeRuntime(undefined, {
-      queries: [{ queryType: "ignored", tagGroup: "room", tagProjector: "room-projector" }],
-      queryDefinitions: [{ queryType: "chosen", tagGroup: "room", tagProjector: "room-projector" }],
-    });
-    expect(precedence.queries.resolve("chosen")?.tagProjector).toBe("room-projector");
-    expect(precedence.queries.resolve("ignored")).toBeUndefined();
+    expect(metadata.maxScanRows).toBe(1_000);
+  });
+
+  it("normalizes maxScanRows and rejects values outside the deploy ceiling", () => {
+    const roomQuery = { id: "rooms", tagGroup: "room", tagProjector: "room-projector" };
+    expect(composeRuntime(undefined, { queries: [roomQuery] }).maxScanRows).toBe(1_000);
+    expect(composeRuntime(undefined).maxScanRows).toBe(1_000);
+    for (const value of [1, 1_000, 10_000]) {
+      expect(composeRuntime(undefined, { queries: [roomQuery], maxScanRows: value }).maxScanRows).toBe(value);
+    }
+    const invalid = [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1, 10_001];
+    expect(invalid).toHaveLength(8);
+    for (const maxScanRows of invalid) {
+      let failure: unknown;
+      try {
+        composeRuntime(undefined, { maxScanRows });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toMatchObject({
+        name: "RuntimeWorkerConfigurationError",
+        code: "QUERY_MAX_SCAN_ROWS_INVALID",
+        message: "RuntimeWorkerConfig.maxScanRows must be a positive safe integer no greater than 10000.",
+      });
+    }
+    let stringFailure: unknown;
+    try {
+      composeRuntime(undefined, { maxScanRows: "1000" as unknown as number });
+    } catch (error) {
+      stringFailure = error;
+    }
+    expect(stringFailure).toMatchObject({ code: "QUERY_MAX_SCAN_ROWS_INVALID" });
+    const restricted: RuntimeWorkerConfig = {
+      // @ts-expect-error maxScanRows accepts only a number
+      maxScanRows: "1000",
+    };
+    void restricted;
   });
 });

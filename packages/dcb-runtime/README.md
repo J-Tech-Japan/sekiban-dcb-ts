@@ -14,14 +14,33 @@ consumer must import `createCosmosStoreProvider` from `/cosmos` and pass it as
 
 ## Query parameters
 
-A scalar query accepts only a parsed empty object. A list query accepts only
-`PageNumber`, `PageSize`, `NewestFirst`, and `consistency`. Any other parsed
-scalar value, and any unknown list key, is HTTP 400 `query_params_unsupported`
-with the message "The selected query does not support these parameters." The
-check runs after JSON parsing and endpoint matching and before projector
-lookup or a store read, on every backing. The V1 response envelope is
-unchanged. Typed query handlers are planned for `0.3.0`; their API is not
-defined here.
+Metadata-only queries keep the existing parameter guard. A scalar query accepts
+only a parsed empty object. A list query accepts only `PageNumber`, `PageSize`,
+`NewestFirst`, and `consistency`. Any other parsed scalar value, and any
+unknown list key, is HTTP 400 `query_params_unsupported` with the message
+"The selected query does not support these parameters." That check runs after
+JSON parsing and endpoint matching and before projector lookup or a store read.
+
+An executable query compiled by the domain bridge runs on the server through
+the same raw V1 routes. List controls are removed before domain params are
+decoded. `RuntimeWorkerConfig.maxScanRows` bounds the raw scan. Omission uses
+1000. Accepted values are positive safe integers from 1 through 10000. A
+request body cannot raise that bound. Success envelopes stay
+`{ resultJson }` for a scalar query and the existing list page fields for a
+list query.
+
+Public executable failures use fixed messages and do not echo params, rows,
+handler text, or causes:
+
+- 400 `query_params_invalid` — The query parameters are invalid.
+- 422 `query_scan_limit_exceeded` — The query scan limit was exceeded.
+- 500 `query_row_invalid` — The query projection contains an invalid row.
+- 500 `query_result_invalid` — The query handler returned an invalid result.
+- 500 `query_handler_failed` — The query handler failed.
+- 503 `projection_unavailable` — The mapped query projection is unavailable
+
+There is no typed client overload yet. Release hardening and the `0.3.0`
+version bump are later changes.
 
 ## Configured bearer checks
 

@@ -40,6 +40,7 @@ class PipelineMemoryClient implements CosmosDocumentClient {
     partitionKey?: string;
     serviceId?: string;
   }> = [];
+  readonly queries: string[] = [];
 
   async initialize(): Promise<void> {}
 
@@ -87,6 +88,7 @@ class PipelineMemoryClient implements CosmosDocumentClient {
     parameters: readonly { name: string; value: unknown }[],
     partitionKey?: string,
   ): Promise<CosmosDocumentRecord<T>[]> {
+    this.queries.push(query);
     const serviceId = parameters.find((parameter) => parameter.name === "@serviceId")?.value;
     const eventId = parameters.find((parameter) => parameter.name === "@eventId")?.value;
     this.observations.push({
@@ -368,5 +370,132 @@ describe("dormant cosmos checkpoint scan", () => {
       "tag-state:room:n:board",
     ]);
     expect(scanned.every((row) => typeof row.stateJson === "string")).toBe(true);
+  });
+
+  it("runs an executable query through the worker without the legacy read branch", async () => {
+    const client = new PipelineMemoryClient();
+    const store = new CosmosEventStore({ client });
+    await store.initialize();
+    const serviceId = "cosmos-executable";
+    for (const [content, label] of [["n", "north"], ["a", "alpha"], ["é", "latin"]] as const) {
+      expect(await store.advanceProjectionCheckpoint({
+        serviceId,
+        projectionId: `tag-state:room:${content}:board`,
+        expectedLastSuid: null,
+        lastSuid: `suid-${content}`,
+        stateJson: JSON.stringify({ label }),
+        version: 1,
+        updatedAt: 1,
+      })).toBe(true);
+    }
+    const seen: unknown[] = [];
+    const codec = { encode: (value: unknown) => value, decode: (value: unknown) => value };
+    const { QueryRegistry } = await import("../packages/dcb-runtime/src/query/QueryRegistry");
+    const { ProjectorRegistry } = await import("../packages/dcb-runtime/src/projection/ProjectorRegistry");
+    const registry = new QueryRegistry([{
+      queryType: "worker-list",
+      endpoint: "list-query",
+      tagGroup: "room",
+      tagProjector: "board",
+      enabled: true,
+      version: 1,
+      execution: {
+        kind: "list",
+        rowCodec: {
+          decode(value: unknown) {
+            if (typeof value !== "object" || value === null || typeof (value as { label?: unknown }).label !== "string") throw new Error("row-secret");
+            return { label: (value as { label: string }).label };
+          },
+          encode: (value: unknown) => value,
+        },
+        paramsCodec: {
+          decode(value: unknown) {
+            seen.push(value);
+            if (typeof value === "object" && value !== null && Object.prototype.hasOwnProperty.call(value, "PageNumber")) throw new Error("control");
+            if (typeof value !== "object" || value === null || typeof (value as { roomId?: unknown }).roomId !== "string") throw new Error("params-secret");
+            return { roomId: (value as { roomId: string }).roomId };
+          },
+          encode: (value: unknown) => value,
+        },
+        itemCodec: codec,
+        handleFilter: (projection: { rows: { key: string; value: { label: string } }[] }) => projection.rows.map((row) => ({ key: row.key, label: row.value.label })),
+        handleSort: (items: readonly { key: string; label: string }[]) => items,
+      },
+    }]);
+    const projectors = new ProjectorRegistry([{
+      id: "board",
+      tagPayloadName: "Board",
+      projectorVersion: "1",
+      initialState: () => ({}),
+      apply: (state: unknown) => state,
+      serializeState: () => "{}",
+      deserializeState: () => ({}),
+      payload: () => "{}",
+      version: () => 1,
+    }]);
+    client.queries.length = 0;
+    const response = await handleSerializedQuery(new Request("https://cosmos.test/api/sekiban/serialized/list-query", {
+      method: "POST",
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+      body: JSON.stringify({
+        queryType: "worker-list",
+        queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 2, roomId: "room-1" }),
+      }),
+    }), {}, { registry, projectors, store });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      itemsJson: JSON.stringify([{ key: "a", label: "alpha" }, { key: "n", label: "north" }]),
+      totalCount: 3,
+      currentPage: 1,
+      pageSize: 2,
+    });
+    expect(seen).toEqual([{ roomId: "room-1" }]);
+    expect(client.queries.some((query) => query.includes("STARTSWITH(c.projectionId"))).toBe(true);
+    expect(client.queries.some((query) => query.includes("limit: null") || query.includes("LIMIT null"))).toBe(false);
+    const corrupt = new CosmosEventStore({ client: new PipelineMemoryClient() });
+    await corrupt.initialize();
+    expect(await corrupt.advanceProjectionCheckpoint({
+      serviceId,
+      projectionId: "tag-state:room:bad:board",
+      expectedLastSuid: null,
+      lastSuid: "suid-bad",
+      stateJson: "{",
+      version: 1,
+      updatedAt: 2,
+    })).toBe(true);
+    const corruptResponse = await handleSerializedQuery(new Request("https://cosmos.test/api/sekiban/serialized/query", {
+      method: "POST",
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+      body: JSON.stringify({ queryType: "worker-count", queryParamsJson: JSON.stringify({ roomId: "room-1" }) }),
+    }), {}, {
+      registry: new QueryRegistry([{
+        queryType: "worker-count",
+        endpoint: "query",
+        tagGroup: "room",
+        tagProjector: "board",
+        enabled: true,
+        version: 1,
+        execution: {
+          kind: "scalar",
+          rowCodec: {
+            decode(value: unknown) {
+              if (typeof value !== "object" || value === null || typeof (value as { label?: unknown }).label !== "string") throw new Error("row-secret");
+              return value;
+            },
+            encode: (value: unknown) => value,
+          },
+          paramsCodec: { decode: () => ({ roomId: "room-1" }), encode: (value: unknown) => value },
+          resultCodec: codec,
+          handleQuery: () => ({ count: 1 }),
+        },
+      }]),
+      projectors,
+      store: corrupt,
+    });
+    expect(corruptResponse.status).toBe(500);
+    await expect(corruptResponse.json()).resolves.toEqual({
+      error: "The query projection contains an invalid row.",
+      code: "query_row_invalid",
+    });
   });
 });

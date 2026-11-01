@@ -1,3 +1,5 @@
+// eslint-disable-next-line no-restricted-imports -- type-only structural contracts from the matched core package
+import type { QueryHandlerContext, QueryProjection } from "@sekiban/dcb-core";
 import {
   assertJsonValue,
   DomainAuthoringError,
@@ -13,6 +15,7 @@ import type { CommandDefinition } from "./command";
 import type { EventDefinition, RuntimeEventValue } from "./event";
 import { deliveryPolicyFromDomain, type AuthoringDomain, type DomainViewDefinition, type ViewDeliveryClass } from "./domain";
 import type { ProjectorDefinition } from "./state";
+import type { ListQueryDefinition, QueryDefinition as AuthoredQueryDefinition } from "./query";
 
 export interface RuntimeProjectionEvent {
   readonly eventType: string;
@@ -152,13 +155,68 @@ export interface RuntimeCommandRejected {
 
 export type RuntimeCommandOutcome = RuntimeCommandCommitted | RuntimeCommandNoop | RuntimeCommandRejected;
 
+export interface RuntimeQueryCodec<Value = unknown> {
+  encode(value: Value): unknown;
+  decode(value: unknown): Value;
+}
+
+export interface RuntimeScalarQueryExecution<Row = unknown, Params = unknown, Result = unknown> {
+  readonly kind: "scalar";
+  readonly rowCodec: RuntimeQueryCodec<Row>;
+  readonly paramsCodec: RuntimeQueryCodec<Params>;
+  readonly resultCodec: RuntimeQueryCodec<Result>;
+  handleQuery(
+    projection: QueryProjection<Row>,
+    params: Params,
+    context: QueryHandlerContext,
+  ): Result;
+}
+
+export interface RuntimeListQueryExecution<Row = unknown, Params = unknown, Item = unknown> {
+  readonly kind: "list";
+  readonly rowCodec: RuntimeQueryCodec<Row>;
+  readonly paramsCodec: RuntimeQueryCodec<Params>;
+  readonly itemCodec: RuntimeQueryCodec<Item>;
+  handleFilter(
+    projection: QueryProjection<Row>,
+    params: Params,
+    context: QueryHandlerContext,
+  ): readonly Item[];
+  handleSort(
+    items: readonly Item[],
+    params: Params,
+    context: QueryHandlerContext,
+  ): readonly Item[];
+}
+
+interface RuntimeQueryRegistrationBase {
+  readonly queryType: string;
+  readonly tagGroup: string;
+  readonly tagProjector: string;
+  readonly materializedViewId: string;
+  readonly version: number;
+  readonly enabled: true;
+}
+
+export interface RuntimeScalarQueryRegistration extends RuntimeQueryRegistrationBase {
+  readonly endpoint: "query";
+  readonly execution: RuntimeScalarQueryExecution;
+}
+
+export interface RuntimeListQueryRegistration extends RuntimeQueryRegistrationBase {
+  readonly endpoint: "list-query";
+  readonly execution: RuntimeListQueryExecution;
+}
+
+export type RuntimeQueryRegistration = RuntimeScalarQueryRegistration | RuntimeListQueryRegistration;
+
 export interface RuntimeDomainDefinition {
   readonly events: readonly RuntimeEventDefinition[];
   readonly commands: readonly RuntimeCommandDefinition[];
   readonly projectors: readonly RuntimeProjectorDefinition[];
   /** Each view carries its effective deliveryClass: the runtime per-view delivery descriptor. */
   readonly views: readonly (DomainViewDefinition & { readonly deliveryClass: ViewDeliveryClass })[];
-  readonly queries: readonly [];
+  readonly queries: readonly RuntimeQueryRegistration[];
   readonly materializedViews: readonly [];
   readonly eventByName: ReadonlyMap<string, RuntimeEventDefinition>;
   readonly eventByType: ReadonlyMap<string, RuntimeEventDefinition>;
@@ -478,15 +536,86 @@ export function adaptRuntimeCommand(command: CommandDefinition): RuntimeCommandD
   });
 }
 
+function querySourceInvalid(): never {
+  throw new DomainAuthoringError(
+    "QUERY_SOURCE_INVALID",
+    "Query source view cannot be mapped to a runtime projector.",
+  );
+}
+
+function isAuthoredQuery(value: unknown): value is AuthoredQueryDefinition | ListQueryDefinition {
+  if (typeof value !== "object" || value === null) return false;
+  const definition = value as { readonly kind?: unknown; readonly source?: { readonly id?: unknown } };
+  return (definition.kind === "query" || definition.kind === "list-query")
+    && typeof definition.source === "object"
+    && definition.source !== null
+    && typeof definition.source.id === "string";
+}
+
+function runtimeQueryFrom(
+  definition: AuthoredQueryDefinition | ListQueryDefinition,
+  views: readonly DomainViewDefinition[],
+  projectors: readonly unknown[],
+): RuntimeQueryRegistration {
+  const view = views.find((entry) => entry.id === definition.source.id);
+  const projectorId = view === undefined ? undefined : view.projector ?? view.source;
+  const projector = projectors.find((value): value is ProjectorDefinition =>
+    typeof value === "object" && value !== null && "id" in value && "tag" in value && (value as ProjectorDefinition).id === projectorId,
+  );
+  const tagGroup = projector?.tag.family;
+  if (view === undefined || projectorId === undefined || projector === undefined || typeof tagGroup !== "string" || tagGroup.length === 0) {
+    querySourceInvalid();
+  }
+  const registration = {
+    queryType: definition.id,
+    tagGroup,
+    tagProjector: projectorId,
+    materializedViewId: view.id,
+    version: definition.version,
+    enabled: true as const,
+  };
+  if (definition.kind === "query") {
+    return Object.freeze({
+      ...registration,
+      endpoint: "query" as const,
+      execution: Object.freeze({
+        kind: "scalar" as const,
+        rowCodec: definition.source.rowCodec,
+        paramsCodec: definition.contract.params,
+        resultCodec: definition.contract.result,
+        handleQuery: definition.handleQuery,
+      }),
+    });
+  }
+  return Object.freeze({
+    ...registration,
+    endpoint: "list-query" as const,
+    execution: Object.freeze({
+      kind: "list" as const,
+      rowCodec: definition.source.rowCodec,
+      paramsCodec: definition.contract.params,
+      itemCodec: definition.contract.item,
+      handleFilter: definition.handleFilter,
+      handleSort: definition.handleSort,
+    }),
+  });
+}
+
+function runtimeQueriesFrom(
+  domain: { readonly queries?: readonly unknown[]; readonly views?: readonly DomainViewDefinition[]; readonly projectors?: readonly unknown[] },
+): readonly RuntimeQueryRegistration[] {
+  const queries = domain.queries ?? [];
+  if (queries.length === 0) return Object.freeze([]);
+  return Object.freeze(queries.map((value) => {
+    if (!isAuthoredQuery(value)) querySourceInvalid();
+    return runtimeQueryFrom(value, domain.views ?? [], domain.projectors ?? []);
+  }));
+}
+
 export function toRuntimeDomain(
   domain: AuthoringDomain<readonly EventDefinition[], readonly unknown[], readonly unknown[]> | LegacyDomainDefinition,
 ): RuntimeDomainDefinition {
-  if ("queries" in domain && Array.isArray(domain.queries) && domain.queries.length > 0) {
-    throw new DomainAuthoringError(
-      "QUERY_EXECUTION_UNAVAILABLE",
-      "Typed query execution is not available in this runtime bridge.",
-    );
-  }
+  const queries = runtimeQueriesFrom(domain);
   const rawEvents = domain.events ?? [];
   const events = rawEvents.map(runtimeEventFrom);
   const byType = new Map<string, RuntimeEventDefinition>();
@@ -516,7 +645,7 @@ export function toRuntimeDomain(
     commands: Object.freeze(commands),
     projectors: Object.freeze(projectors),
     views: Object.freeze(views),
-    queries: Object.freeze([]) as readonly [],
+    queries,
     materializedViews: Object.freeze([]) as readonly [],
     eventByName: byName,
     eventByType: byType,

@@ -43,6 +43,30 @@ const mutations = Object.freeze([
     oracle: queryParamsOracle,
     reason: "the code must stay invalid and must not collapse to transport",
   },
+  ...[
+    ["query_params_invalid", "invalid", "rejected"],
+    ["query_scan_limit_exceeded", "rejected", "invalid"],
+    ["query_row_invalid", "unavailable", "transport"],
+    ["query_result_invalid", "unavailable", "transport"],
+    ["query_handler_failed", "unavailable", "transport"],
+  ].flatMap(([code, kind, wrong]) => [
+    {
+      id: `${code}-kind-deleted`,
+      sourceFile: "packages/dcb-client/src/classification.ts",
+      from: `  ${code}: "${kind}",\n`,
+      to: "",
+      oracle: "executable query failure codes stay sanitized client errors",
+      reason: `${code} must keep its result kind`,
+    },
+    {
+      id: `${code}-kind-wrong`,
+      sourceFile: "packages/dcb-client/src/classification.ts",
+      from: `  ${code}: "${kind}",`,
+      to: `  ${code}: "${wrong}",`,
+      oracle: "executable query failure codes stay sanitized client errors",
+      reason: `${code} must keep its exact result kind`,
+    },
+  ]),
 ]);
 
 let reports;

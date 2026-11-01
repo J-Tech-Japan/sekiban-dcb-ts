@@ -22,7 +22,7 @@ import type { UnsafeComposedPage } from "../mv/UnsafeWindowMaterializedView";
 /** The query surface can only inspect durable source and projection facts. */
 export type QueryProjectionStore = Pick<
   ProjectionStore,
-  "readAllEvents" | "currentLagBound" | "listProjectionTags" | "readProjectionCheckpoint"
+  "readAllEvents" | "currentLagBound" | "listProjectionTags" | "readProjectionCheckpoint" | "scanProjectionCheckpointCandidates"
 >;
 
 /**

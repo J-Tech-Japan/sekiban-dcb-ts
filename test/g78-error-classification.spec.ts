@@ -391,6 +391,58 @@ describe("SDT-G78 public error classification", () => {
     expect(failureKindForCode("query_params_unsupported")).toBe("invalid");
   });
 
+  it("executable query failure codes stay sanitized client errors", async () => {
+    const families = [
+      ["query_params_invalid", 400, "invalid", "The query parameters are invalid.", "g141-params-secret"],
+      ["query_scan_limit_exceeded", 422, "rejected", "The query scan limit was exceeded.", "g141-scan-secret"],
+      ["query_row_invalid", 500, "unavailable", "The query projection contains an invalid row.", "g141-row-secret"],
+      ["query_result_invalid", 500, "unavailable", "The query handler returned an invalid result.", "g141-result-secret"],
+      ["query_handler_failed", 500, "unavailable", "The query handler failed.", "g141-handler-secret"],
+    ] as const;
+    for (const [code, status, kind, message, secret] of families) {
+      const hostileBody = {
+        code,
+        error: secret,
+        roomId: "leaked-room",
+        detail: secret,
+        cause: { secret },
+        partial: { committed: false, secret },
+        extra: secret,
+      };
+      const headers = { "content-type": "application/json", "x-secret": secret };
+      const assertSanitized = (value: unknown): void => {
+        expect(value).toBeInstanceOf(ClientError);
+        const error = value as ClientError & Record<string, unknown>;
+        expect(error.message).toBe(message);
+        expect(error.code).toBe(code);
+        expect(error.status).toBe(status);
+        expect(error.name).toBe("ClientError");
+        expect(error.cause).toBeUndefined();
+        expect(error.kind).toBeUndefined();
+        expect(Object.prototype.hasOwnProperty.call(error, "kind")).toBe(false);
+        expect(error.partial).toBeUndefined();
+        expect(JSON.stringify(error)).not.toContain(secret);
+        expect(JSON.stringify(error)).not.toContain("leaked-room");
+        expect(failureKindForCode(code)).toBe(kind);
+      };
+      const direct = new SerializedDcbClient("https://g141.test", async () => new Response(JSON.stringify(hostileBody), { status, headers }));
+      const executor = createSekibanExecutor(baseTransport({
+        query: async () => ({ status, headers, body: hostileBody }),
+        listQuery: async () => ({ status, headers, body: hostileBody }),
+      }));
+      const scalarRequest = { queryType: "count", queryParamsJson: JSON.stringify({ roomId: "room-1" }) };
+      const listRequest = { queryType: "list", queryParamsJson: JSON.stringify({ PageNumber: 1, roomId: "room-1" }) };
+      const errors = [
+        await direct.query(scalarRequest).catch((value: unknown) => value),
+        await direct.listQuery(listRequest).catch((value: unknown) => value),
+        await executor.query(scalarRequest).catch((value: unknown) => value),
+        await executor.listQuery(listRequest).catch((value: unknown) => value),
+      ];
+      for (const error of errors) assertSanitized(error);
+      expect(new Set(errors).size).toBe(errors.length);
+    }
+  });
+
   it("AC3/AC4: rejects malformed public responses without turning them into absence or refusal", async () => {
     const malformed = createSekibanExecutor(baseTransport({ query: async () => ({ resultJson: 42 as unknown as string }) }));
     await expect(malformed.query(queryRequest)).rejects.toMatchObject({ code: "invalid_query_response" });

@@ -18,24 +18,28 @@
   synchronous and receive readonly inputs.
 - Depend on the matched `@sekiban/dcb-core` `0.2.2` package. Domain source
   imports it only as types. `zod` stays pinned at `4.4.3`.
-- `toRuntimeDomain()` rejects a domain that contains authored queries with
-  `QUERY_EXECUTION_UNAVAILABLE`. A query-free domain still bridges.
-- Runtime composition rejects a typed query definition on `domain.queries`,
-  `config.queries`, or `config.queryDefinitions` before conversion. Ordinary
-  id/version metadata is unchanged.
+- `toRuntimeDomain()` compiles authored queries into frozen server
+  registrations. A query-free domain still bridges an empty list. A source
+  view that cannot be mapped throws `QUERY_SOURCE_INVALID`.
+- Runtime composition rejects a malformed typed query on `domain.queries`,
+  `config.queries`, or `config.queryDefinitions` before precedence. Ordinary
+  id/version metadata is unchanged. `RuntimeWorkerConfig.maxScanRows` bounds
+  executable scans and defaults to 1000.
 - Refuse a codec output that cannot be copied into a detached value with
   `QUERY_CODEC_OUTPUT_UNCOPYABLE`. `Date`, `Map`, and `Set` outputs are
   admitted. A later internal execution copies them by value; it does not
   freeze them.
-- Add dormant bounded raw-candidate scans for PostgreSQL, D1 pipeline
-  checkpoints, Cosmos checkpoints, the in-memory checkpoint fallback, and D1
-  materialized-view rows. They are unreached from the bridge, composition,
-  registry, and HTTP routes. Both `QUERY_EXECUTION_UNAVAILABLE` refusals
-  remain. There is no server execution, no public scan setting, no public
-  runtime query error, and no typed client. The preview is unreleased and
-  bound for `0.3.0`; it is not part of the published `0.2.x` packages.
-  Handlers receive no database, network, environment, request, clock, paging,
-  direction, consistency, waiting, or cancellation capability.
+- Execute compiled queries on the server through the existing raw V1 routes
+  for the in-memory checkpoint fallback, D1 pipeline checkpoints, D1
+  materialized views, PostgreSQL, and Cosmos. Metadata-only queries keep the
+  previous parameter guard and response envelopes. Public failures are
+  `query_params_invalid`, `query_scan_limit_exceeded`, `query_row_invalid`,
+  `query_result_invalid`, and `query_handler_failed`. There is no typed client
+  overload yet. The preview is unreleased and bound for `0.3.0`; it is not
+  part of the published `0.2.x` packages. Release hardening and the `0.3.0`
+  version bump are later changes. Handlers receive no database, network,
+  environment, request, clock, paging, direction, consistency, waiting, or
+  cancellation capability.
 
 ## @sekiban/dcb-domain 0.2.2 (matched release)
 

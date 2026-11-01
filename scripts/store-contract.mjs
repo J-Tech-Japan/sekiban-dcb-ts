@@ -23,6 +23,49 @@ import {
 
 const POSTGRES_URL = process.env.POSTGRES_URL ?? "postgresql://postgres:postgres@127.0.0.1:54329/serialized_dcb";
 const requireRealCosmos = process.argv.includes("--require-real-cosmos");
+let realCosmosExecutableWitness = false;
+let witnessModules;
+
+async function loadWitnessModules() {
+  if (witnessModules !== undefined) return witnessModules;
+  try {
+    const [worker, queries, projectors] = await Promise.all([
+      import("../packages/dcb-runtime/src/http/SerializedQueryWorker.ts"),
+      import("../packages/dcb-runtime/src/query/QueryRegistry.ts"),
+      import("../packages/dcb-runtime/src/projection/ProjectorRegistry.ts"),
+    ]);
+    witnessModules = {
+      handleSerializedQuery: worker.handleSerializedQuery,
+      QueryRegistry: queries.QueryRegistry,
+      ProjectorRegistry: projectors.ProjectorRegistry,
+    };
+    return witnessModules;
+  } catch (error) {
+    if (error?.code !== "ERR_MODULE_NOT_FOUND") throw error;
+  }
+  const esbuild = await import("esbuild");
+  const witnessBundle = "/tmp/sdt-g141-query-worker-witness.mjs";
+  await esbuild.build({
+    stdin: {
+      contents: `
+        export { handleSerializedQuery } from "./packages/dcb-runtime/src/http/SerializedQueryWorker.ts";
+        export { QueryRegistry } from "./packages/dcb-runtime/src/query/QueryRegistry.ts";
+        export { ProjectorRegistry } from "./packages/dcb-runtime/src/projection/ProjectorRegistry.ts";
+      `,
+      resolveDir: new URL("..", import.meta.url).pathname,
+      sourcefile: "query-worker-witness.ts",
+      loader: "ts",
+    },
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    outfile: witnessBundle,
+    external: ["postgres", "cloudflare:workers"],
+    logLevel: "silent",
+  });
+  witnessModules = await import(pathToFileURL(witnessBundle).href);
+  return witnessModules;
+}
 
 async function configuredCosmosKey() {
   const keyFile = process.env.COSMOS_KEY_FILE;
@@ -513,6 +556,7 @@ async function assertDormantCheckpointQuery(store, label, serviceId) {
     { key: "n", label: "north", sourceSuid: "suid-n" },
   ], `${label}: encoded page must follow canonical order`);
   assert.equal(executed.totalCount, 3, `${label}: filtered count is taken before paging`);
+  await assertExecutableWorkerQuery(store, label, serviceId);
   const corruptService = `${serviceId}-corrupt`;
   const malformedId = `tag-state:${tagGroup}::${tagProjector}`;
   assert.equal(await store.advanceProjectionCheckpoint({
@@ -689,6 +733,85 @@ export async function runFaultSuite() {
   console.log("SDT-G12 fault suite passed: event, lag, pending, finding, and checkpoint failures redeliver without deletion");
 }
 
+async function assertExecutableWorkerQuery(store, label, serviceId) {
+  const { handleSerializedQuery, QueryRegistry, ProjectorRegistry } = await loadWitnessModules();
+  const seen = [];
+  const rowCodec = {
+    decode(value) {
+      if (typeof value !== "object" || value === null || typeof value.label !== "string") throw new Error("row");
+      return { label: value.label };
+    },
+    encode(value) {
+      return value;
+    },
+  };
+  const registry = new QueryRegistry([{
+    queryType: "worker-list",
+    endpoint: "list-query",
+    tagGroup: "room",
+    tagProjector: "board",
+    enabled: true,
+    version: 1,
+    execution: {
+      kind: "list",
+      rowCodec,
+      paramsCodec: {
+        decode(value) {
+          seen.push(value);
+          if (value !== null && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "PageNumber")) {
+            throw new Error("control");
+          }
+          return {};
+        },
+        encode(value) {
+          return value;
+        },
+      },
+      itemCodec: {
+        decode(value) {
+          return value;
+        },
+        encode(value) {
+          return { key: value.key, label: value.label };
+        },
+      },
+      handleFilter: (projection) => projection.rows.map((row) => ({ key: row.key, label: row.value.label })),
+      handleSort: (items) => items,
+    },
+  }]);
+  const projectors = new ProjectorRegistry([{
+    id: "board",
+    tagPayloadName: "Board",
+    projectorVersion: "1",
+    initialState: () => ({}),
+    apply: (state) => state,
+    serializeState: () => "{}",
+    deserializeState: () => ({}),
+    payload: () => "{}",
+    version: () => 1,
+  }]);
+  const response = await handleSerializedQuery(new Request("https://query.test/api/sekiban/serialized/list-query", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-sdt-g9-test-service-id": serviceId,
+    },
+    body: JSON.stringify({
+      queryType: "worker-list",
+      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 2, roomId: "room-1" }),
+    }),
+  }), {}, { registry, projectors, store });
+  const body = await response.json();
+  assert.equal(response.status, 200, `${label}: executable worker query must succeed`);
+  assert.deepEqual(JSON.parse(body.itemsJson), [
+    { key: "a", label: "alpha" },
+    { key: "n", label: "north" },
+  ], `${label}: worker page matches the canonical checkpoint order`);
+  assert.equal(body.totalCount, 3, `${label}: worker count is taken before paging`);
+  assert.equal(seen.some((value) => value !== null && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "PageNumber")), false, `${label}: list controls must not reach the params codec`);
+  if (label === "cosmos-emulator") realCosmosExecutableWitness = true;
+}
+
 function expectCheckpoint(actual, expected) {
   assert.deepEqual(actual, {
     serviceId: expected.serviceId,
@@ -749,6 +872,9 @@ async function main() {
   }
 
   await runFaultSuite();
+  if (requireRealCosmos && !realCosmosExecutableWitness) {
+    throw new Error("real Cosmos executable query witness did not run");
+  }
   console.log(`SDT-G18 shared PipelineStore contract passed${requireRealCosmos ? " (emulator lane)" : " (Postgres + memory Cosmos)"}`);
 }
 

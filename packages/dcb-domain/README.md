@@ -113,17 +113,28 @@ outputs are admitted and, when a query later runs, are copied by value. They
 are not frozen. Handlers receive no database, network, environment, request,
 clock, paging, direction, consistency, waiting, or cancellation capability.
 
-These definitions are not executed. `toRuntimeDomain()` throws
-`DomainAuthoringError` with code `QUERY_EXECUTION_UNAVAILABLE` and message
-`Typed query execution is not available in this runtime bridge.` when the
-domain contains authored queries. A query-free domain still bridges.
-Runtime composition rejects a typed definition found on `domain.queries`,
-`config.queries`, or `config.queryDefinitions` before it converts queries. The
-thrown error has name `TypedQueryExecutionUnavailableError`, code
-`QUERY_EXECUTION_UNAVAILABLE`, and message
-`Typed query execution is not available in runtime composition.` The class is
-not exported. Ordinary query metadata that only has an id and a version is
-unchanged.
+`toRuntimeDomain()` compiles each authored query into a frozen runtime
+registration. The view id is the query source id. The projector id is
+`view.projector` when that field is present, and `view.source` otherwise. The
+registration carries that projector's tag family, the projector id, and the
+view id. A scalar query uses endpoint `query`. A list query uses endpoint
+`list-query`. The nested execution record contains codecs and handlers only.
+The bridge does not call those functions. A query-free domain still bridges an
+empty frozen query list. When the source view cannot be mapped to a runtime
+projector, the bridge throws `DomainAuthoringError` with code
+`QUERY_SOURCE_INVALID` and message
+`Query source view cannot be mapped to a runtime projector.`
+
+Runtime composition checks `domain.queries`, `config.queries`, and
+`config.queryDefinitions` before precedence. A malformed typed value fails even
+when another list would have won. The error name is `RuntimeQueryDefinitionError`,
+the code is `QUERY_DEFINITION_INVALID`, and the message is
+`Runtime query definition is invalid.` Metadata-only query records stay on the
+existing path. `RuntimeWorkerConfig.maxScanRows` sets the deployed raw scan
+bound: omission uses 1000, and a positive safe integer from 1 through 10000 is
+accepted. Executable queries run on the server through the existing raw V1
+routes. There is no typed client overload yet. Release hardening and the
+`0.3.0` version bump are later changes.
 
 A `z.codec` is accepted when both directions are synchronous functions, even if
 encode is not the inverse of decode. Keeping that pair meaningful is the
@@ -137,8 +148,8 @@ fails closed:
 - `QUERY_CODEC_NOT_JSON_SAFE` — `Query codec output must be JSON-safe.`
 - `QUERY_CODEC_OUTPUT_UNCOPYABLE` — `Query codec output must support portable detached copies.`
 
-There is no typed client call, no public scan setting, and no public runtime
-query error for these contracts. The bridge and composition refusals remain.
+Executable queries run on the server through raw V1 calls. There is no typed
+client overload yet.
 
 ## Versioning
 
@@ -157,8 +168,8 @@ helpers for the `0.1.x` line:
 - No deep imports beyond `.` and `./testing` are supported.
 
 The typed query authoring preview above is unreleased and bound for `0.3.0`.
-It is not available in `0.2.x`. Those helpers do not execute a query and do
-not add a typed client call.
+It is not available in `0.2.x`. The helpers compile server registrations.
+There is no typed client overload yet.
 
 The earlier `@sekiban/core` and related packages belong to the older
 sekiban-ts line; they are not dependencies or aliases for this package.
