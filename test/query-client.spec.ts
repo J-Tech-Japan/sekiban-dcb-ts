@@ -310,6 +310,38 @@ describe("typed query client", () => {
     expect(encodes).toBe(0);
   });
 
+  it("rejects a handler-bearing contract before transport", async () => {
+    let calls = 0;
+    const executor = createSekibanExecutor(transport({
+      query: async () => {
+        calls += 1;
+        return { resultJson: "{}" };
+      },
+      listQuery: async () => {
+        calls += 1;
+        return { itemsJson: "[]", totalCount: 0, totalPages: 0, currentPage: 1, pageSize: 20 };
+      },
+    }));
+    const scalar = {
+      ...scalarContract(),
+      handleQuery: () => ({ count: 1 }),
+    };
+    const list = {
+      ...listContract(),
+      handleFilter: () => [],
+      handleSort: (items: readonly ListItem[]) => items,
+    };
+    await expect(executor.query(scalar as unknown as QueryContract<ScalarParams, ScalarResult>, { room: "a" })).rejects.toMatchObject({
+      code: "invalid_query_request",
+      message: "The query request was invalid",
+    });
+    await expect(executor.listQuery(list as unknown as ListQueryContract<{ readonly roomId?: string }, ListItem>, {})).rejects.toMatchObject({
+      code: "invalid_query_request",
+      message: "The query request was invalid",
+    });
+    expect(calls).toBe(0);
+  });
+
   it("rejects a value that is neither a raw request nor a contract without calling transport", async () => {
     let calls = 0;
     const executor = createSekibanExecutor(transport({

@@ -69,6 +69,12 @@ export interface QueryCallOptions {
   readonly signal?: AbortSignal;
 }
 
+type QueryHandlerFree = {
+  readonly handleQuery?: never;
+  readonly handleFilter?: never;
+  readonly handleSort?: never;
+};
+
 export interface WrittenEvent {
   readonly [key: string]: unknown;
 }
@@ -112,9 +118,9 @@ export interface SekibanExecutor {
   ): Promise<ExecuteCommandResult>;
   readState<P extends ProjectorLike>(projector: P, tag: Tag, options?: ReadOptions): Promise<PortableSnapshot>;
   exists(tag: Tag, options?: ReadOptions): Promise<PortableSnapshot<undefined>>;
-  query<P, R>(contract: QueryContract<P, R>, params: P, options?: QueryCallOptions): Promise<R>;
+  query<P, R>(contract: QueryContract<P, R> & QueryHandlerFree, params: P, options?: QueryCallOptions): Promise<R>;
   query(request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>;
-  listQuery<P, I>(contract: ListQueryContract<P, I>, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>;
+  listQuery<P, I>(contract: ListQueryContract<P, I> & QueryHandlerFree, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>;
   listQuery(request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>;
   readonly transport: SerializedDcbTransport;
 }
@@ -648,12 +654,19 @@ function isRawQueryRequest(value: unknown): value is QueryRequest {
   return isRecord(value) && typeof value.queryType === "string" && typeof value.queryParamsJson === "string";
 }
 
+const QUERY_HANDLER_KEYS = ["handleQuery", "handleFilter", "handleSort"] as const;
+
+function hasQueryHandler(value: Record<string, unknown>): boolean {
+  return QUERY_HANDLER_KEYS.some((key) => Object.hasOwn(value, key));
+}
+
 function isScalarContract(value: unknown): value is QueryContract<unknown, unknown> {
   return isRecord(value)
     && value.kind === "query"
     && typeof value.id === "string"
     && isQueryCodec(value.params)
-    && isQueryCodec(value.result);
+    && isQueryCodec(value.result)
+    && !hasQueryHandler(value);
 }
 
 function isListContract(value: unknown): value is ListQueryContract<unknown, unknown> {
@@ -661,7 +674,8 @@ function isListContract(value: unknown): value is ListQueryContract<unknown, unk
     && value.kind === "list-query"
     && typeof value.id === "string"
     && isQueryCodec(value.params)
-    && isQueryCodec(value.item);
+    && isQueryCodec(value.item)
+    && !hasQueryHandler(value);
 }
 
 function queryParamsEncodeFailed(): never {
@@ -896,7 +910,7 @@ export function createSekibanExecutor(
     return existsWith(tag, readOptions.signal, uncontrolled);
   };
 
-  async function query<P, R>(contract: QueryContract<P, R>, params: P, options?: QueryCallOptions): Promise<R>;
+  async function query<P, R>(contract: QueryContract<P, R> & QueryHandlerFree, params: P, options?: QueryCallOptions): Promise<R>;
   async function query(request: QueryRequest, readOptions?: ReadOptions): Promise<QueryResponse>;
   async function query(
     requestOrContract: QueryRequest | QueryContract<unknown, unknown>,
@@ -922,7 +936,7 @@ export function createSekibanExecutor(
     return decodeScalar(requestOrContract, response);
   }
   async function listQuery<P, I>(
-    contract: ListQueryContract<P, I>,
+    contract: ListQueryContract<P, I> & QueryHandlerFree,
     params: P,
     controls?: ListQueryControls,
   ): Promise<QueryPage<I>>;

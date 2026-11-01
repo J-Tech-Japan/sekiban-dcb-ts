@@ -22137,7 +22137,7 @@
             {
               "file": "dist/executor.d.ts",
               "kind": "interface",
-              "text": "export interface SekibanExecutor { execute<C extends CommandDefinition>(command: C, input: CommandInput<C>, options?: ExecuteCommandOptions): Promise<ExecuteCommandResult>; readState<P extends ProjectorLike>(projector: P, tag: Tag, options?: ReadOptions): Promise<PortableSnapshot>; exists(tag: Tag, options?: ReadOptions): Promise<PortableSnapshot<undefined>>; query<P, R>(contract: QueryContract<P, R>, params: P, options?: QueryCallOptions): Promise<R>; query(request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>; listQuery<P, I>(contract: ListQueryContract<P, I>, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>; listQuery(request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>; readonly transport: SerializedDcbTransport; }",
+              "text": "export interface SekibanExecutor { execute<C extends CommandDefinition>(command: C, input: CommandInput<C>, options?: ExecuteCommandOptions): Promise<ExecuteCommandResult>; readState<P extends ProjectorLike>(projector: P, tag: Tag, options?: ReadOptions): Promise<PortableSnapshot>; exists(tag: Tag, options?: ReadOptions): Promise<PortableSnapshot<undefined>>; query<P, R>(contract: QueryContract<P, R> & QueryHandlerFree, params: P, options?: QueryCallOptions): Promise<R>; query(request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>; listQuery<P, I>(contract: ListQueryContract<P, I> & QueryHandlerFree, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>; listQuery(request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>; readonly transport: SerializedDcbTransport; }",
               "typeParameters": []
             }
           ],
@@ -22169,13 +22169,13 @@
               "name": "query",
               "optional": false,
               "readonly": false,
-              "type": "{ <P, R>(contract: QueryContract<P, R>, params: P, options?: QueryCallOptions): Promise<R>; (request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>; }"
+              "type": "{ <P, R>(contract: QueryContract<P, R> & QueryHandlerFree, params: P, options?: QueryCallOptions): Promise<R>; (request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>; }"
             },
             {
               "name": "listQuery",
               "optional": false,
               "readonly": false,
-              "type": "{ <P, I>(contract: ListQueryContract<P, I>, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>; (request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>; }"
+              "type": "{ <P, I>(contract: ListQueryContract<P, I> & QueryHandlerFree, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>; (request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>; }"
             },
             {
               "name": "transport",
@@ -22186,7 +22186,7 @@
           ],
           "syntax": {
             "union": false,
-            "intersection": false,
+            "intersection": true,
             "tuple": false,
             "indexSignature": false,
             "conditional": true,
@@ -82545,6 +82545,13 @@
     {
       "package": "@sekiban/dcb-client",
       "file": "dist/executor.d.ts",
+      "name": "QueryHandlerFree",
+      "kind": "type",
+      "text": "type QueryHandlerFree = { readonly handleQuery?: never; readonly handleFilter?: never; readonly handleSort?: never; };"
+    },
+    {
+      "package": "@sekiban/dcb-client",
+      "file": "dist/executor.d.ts",
       "name": "R",
       "kind": "TypeParameter",
       "text": "R"
@@ -85453,5 +85460,5 @@
       "materializedViewId"
     ]
   },
-  "publicSurfaceHash": "ab4c1d8f9e151bbf3d598a355a79232f5b9984410d1039cd3efefa901c7a085d"
+  "publicSurfaceHash": "590e77382aacaa5482409e7e2d987b57a2548bdb7edbfe289b9515c82dc81db6"
 }

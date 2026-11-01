@@ -99,8 +99,9 @@
   binding is unconfigured, and returns 401 for a missing or wrong credential.
 - Denied bootstrap and repair requests are rejected before service-identity
   resolution and before downstream storage or Durable Object access.
-- Typed query handlers are planned for `0.3.0`. Their API is not defined in
-  this change. The V1 response envelope is unchanged.
+- This `0.2.2` release does not include typed query handlers. The V1 response
+  envelope is unchanged. The typed query API is defined in the repository and
+  remains unreleased for `0.3.0`.
 
 ### @sekiban/dcb-cloudflare 0.1.4
 
