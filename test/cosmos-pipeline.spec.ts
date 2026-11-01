@@ -11,6 +11,7 @@ import {
   CosmosClientError,
   DEFAULT_COSMOS_CONTAINERS,
 } from "../packages/dcb-runtime/src/cosmos";
+import { CosmosEventStore } from "../packages/dcb-runtime/src/store/CosmosEventStore";
 import {
   COSMOS_BINDINGS,
   COSMOS_CONTAINER_LAYOUT,
@@ -97,13 +98,55 @@ class PipelineMemoryClient implements CosmosDocumentClient {
     for (const [key, row] of this.rows) {
       if (!key.startsWith(`${container}\u0000`)) continue;
       if (query.includes("IS_DEFINED(c.sortableUniqueId)") && typeof row.document.sortableUniqueId !== "string") continue;
+      if (!checkpointQueryMatches(query, parameters, row.document)) continue;
       if (partitionKey !== undefined && row.document.serviceId !== partitionKey) continue;
       if (serviceId !== undefined && row.document.serviceId !== serviceId) continue;
       if (eventId !== undefined && row.document.eventId !== eventId) continue;
       rows.push(this.copy<T>(row));
     }
-    return rows;
+    return finishCheckpointQuery(query, parameters, rows);
   }
+}
+
+function parameterValue(parameters: readonly { name: string; value: unknown }[], name: string): unknown {
+  return parameters.find((parameter) => parameter.name === name)?.value;
+}
+
+function checkpointQueryMatches(
+  query: string,
+  parameters: readonly { name: string; value: unknown }[],
+  document: { projectionId?: unknown },
+): boolean {
+  if (!query.includes("STARTSWITH(c.projectionId")) return true;
+  const prefix = parameterValue(parameters, "@prefix");
+  const suffix = parameterValue(parameters, "@suffix");
+  return typeof document.projectionId === "string"
+    && typeof prefix === "string"
+    && typeof suffix === "string"
+    && document.projectionId.startsWith(prefix)
+    && document.projectionId.endsWith(suffix);
+}
+
+function finishCheckpointQuery<T extends { document: { projectionId?: unknown } }>(
+  query: string,
+  parameters: readonly { name: string; value: unknown }[],
+  rows: T[],
+): T[] {
+  if (!query.includes("STARTSWITH(c.projectionId")) return rows;
+  const ordered = query.includes("ORDER BY c.projectionId")
+    ? [...rows].sort((left, right) => {
+      const first = String(left.document.projectionId);
+      const second = String(right.document.projectionId);
+      if (first < second) return -1;
+      if (first > second) return 1;
+      return 0;
+    })
+    : rows;
+  const limit = parameterValue(parameters, "@limit");
+  if (query.includes("SELECT TOP") && typeof limit === "number" && Number.isSafeInteger(limit) && limit >= 0) {
+    return ordered.slice(0, limit);
+  }
+  return ordered;
 }
 
 const SERVICE_ID = "local-test-runtime";
@@ -287,5 +330,43 @@ describe("SDT-G12 Cosmos provider pipeline composition", () => {
       new Set(["g11-test-namespace"]),
     );
     expect(overrideClient.observations.every((observation) => observation.partitionKey === undefined || observation.partitionKey === "g11-test-namespace")).toBe(true);
+  });
+});
+
+describe("dormant cosmos checkpoint scan", () => {
+  it("keeps the document seam partitioned, predicated, ordered, and bounded", async () => {
+    const client = new PipelineMemoryClient();
+    const store = new CosmosEventStore({ client });
+    await store.initialize();
+    const serviceId = "cosmos-seam";
+    const inserted = [
+      ["n", "board", serviceId],
+      ["é", "board", serviceId],
+      ["a", "board", serviceId],
+      ["000", "WRONG", serviceId],
+      ["a", "board", "other-service"],
+    ] as const;
+    for (const [content, projector, owner] of inserted) {
+      expect(await store.advanceProjectionCheckpoint({
+        serviceId: owner,
+        projectionId: `tag-state:room:${content}:${projector}`,
+        expectedLastSuid: null,
+        lastSuid: `suid-${content}`,
+        stateJson: JSON.stringify({ label: content }),
+        version: 1,
+        updatedAt: 1,
+      })).toBe(true);
+    }
+    const scanned = await store.scanProjectionCheckpointCandidates({
+      serviceId,
+      projectionIdPrefix: "tag-state:room:",
+      projectionIdSuffix: ":board",
+      limit: 2,
+    });
+    expect(scanned.map((row) => row.projectionId)).toEqual([
+      "tag-state:room:a:board",
+      "tag-state:room:n:board",
+    ]);
+    expect(scanned.every((row) => typeof row.stateJson === "string")).toBe(true);
   });
 });

@@ -81,6 +81,23 @@ export interface MaterializedViewInstance {
   readonly rebuildSourceHistoryDigest: string | null;
 }
 
+export interface RawMaterializedViewCandidate {
+  readonly rowKey: unknown;
+  readonly valueJson: unknown;
+  readonly sourceSuid: unknown;
+}
+
+export interface MaterializedViewRawScanOptions {
+  readonly generation?: number;
+  readonly consistency: "safe" | "unsafe";
+  readonly limit: number;
+}
+
+export interface MaterializedViewRawScan {
+  readonly rows: readonly RawMaterializedViewCandidate[];
+  readonly readHead: string;
+}
+
 export interface MaterializedViewRow {
   readonly serviceId: string;
   readonly viewId: string;
@@ -224,6 +241,15 @@ function compareSuid(left: string, right: string): number {
     if (difference !== 0) return difference;
   }
   return leftBytes.length - rightBytes.length;
+}
+
+function greatestRawSuid(rows: readonly RawMaterializedViewCandidate[]): string {
+  let maximum = "";
+  for (const row of rows) {
+    if (typeof row.sourceSuid !== "string") continue;
+    if (maximum === "" || compareSuid(row.sourceSuid, maximum) > 0) maximum = row.sourceSuid;
+  }
+  return maximum;
 }
 
 function maxReflectedSuid(rows: readonly MaterializedViewRow[]): string {
@@ -576,6 +602,66 @@ export class D1MaterializedViewStore {
       // Safe reads report the active checkpoint even for an empty page. Unsafe
       // reads instead report only what this page actually reflected.
       readHead: options.consistency === "unsafe" ? maxReflectedSuid(rows) : selectedInstance.lastSuid,
+    };
+  }
+
+  async scanRows(serviceId: string, viewId: string, options: MaterializedViewRawScanOptions): Promise<MaterializedViewRawScan> {
+    this.ready("initialize");
+    if (!Number.isSafeInteger(options.limit) || options.limit < 1) {
+      throw new MaterializedViewStoreError("initialize", "MV_VALUE_INVALID", "MV raw scan limit must be a positive integer");
+    }
+    const active = await this.readActive(serviceId, viewId);
+    if (active === undefined && options.generation === undefined) return { rows: [], readHead: "" };
+    const selected = options.generation ?? active?.generation;
+    if (selected === undefined) return { rows: [], readHead: "" };
+    const selectedInstance = selected === active?.generation
+      ? active
+      : await this.readInstance(serviceId, viewId, selected);
+    if (selectedInstance === undefined) {
+      throw new MaterializedViewStoreError("initialize", "MV_INSTANCE_MISSING", "Requested materialized-view generation is unavailable");
+    }
+    const result = options.consistency === "unsafe"
+      ? await this.database.prepare(
+        `WITH candidates AS (
+           SELECT row_key, value_json, source_suid, 0 AS tombstone, 0 AS unsafe_layer FROM mv_rows
+            WHERE service_id = ? AND view_id = ? AND generation = ?
+           UNION ALL
+           SELECT row_key, value_json, source_suid, tombstone, 1 AS unsafe_layer FROM mv_unsafe_rows
+            WHERE service_id = ? AND view_id = ? AND generation = ?
+              AND source_suid COLLATE BINARY > ? COLLATE BINARY
+         ), ranked AS (
+           SELECT *, ROW_NUMBER() OVER (PARTITION BY row_key ORDER BY source_suid COLLATE BINARY DESC, unsafe_layer ASC) AS winner_rank FROM candidates
+         ), live AS (
+           SELECT row_key, value_json, source_suid FROM ranked WHERE winner_rank = 1 AND tombstone = 0
+         )
+         SELECT row_key, value_json, source_suid FROM live
+         ORDER BY row_key COLLATE BINARY ASC
+         LIMIT ?`,
+      ).bind(
+        serviceId,
+        viewId,
+        selected,
+        serviceId,
+        viewId,
+        selected,
+        selectedInstance.lastSuid,
+        options.limit,
+      ).all<D1Row>()
+      : await this.database.prepare(
+        `SELECT row_key, value_json, source_suid
+           FROM mv_rows
+          WHERE service_id = ? AND view_id = ? AND generation = ?
+          ORDER BY row_key COLLATE BINARY ASC
+          LIMIT ?`,
+      ).bind(serviceId, viewId, selected, options.limit).all<D1Row>();
+    const rows = result.results.map((row) => ({
+      rowKey: row.row_key,
+      valueJson: row.value_json,
+      sourceSuid: row.source_suid,
+    }));
+    return {
+      rows,
+      readHead: options.consistency === "unsafe" ? greatestRawSuid(rows) : selectedInstance.lastSuid,
     };
   }
 
@@ -1309,6 +1395,7 @@ export type MaterializedViewStore = Pick<
   | "queryRows"
   | "queryRowsWithTotal"
   | "readListPage"
+  | "scanRows"
   | "hasTargetReceipt"
   | "readOrderingQuarantine"
   | "recordOrderingQuarantine"

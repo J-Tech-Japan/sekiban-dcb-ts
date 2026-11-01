@@ -314,17 +314,19 @@ describe("typed query authoring", () => {
     expect(expectAuthoring(() => conditionalView.rowCodec.decode("p"), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage).cause).toBeInstanceOf(z.core.$ZodAsyncError);
     expect(expectAuthoring(() => conditionalView.rowCodec.encode("p"), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage).cause).toBeInstanceOf(z.core.$ZodAsyncError);
 
-    const promised = defineListQuery({
-      id: "promised",
-      version: 1,
-      source: orders,
-      params,
-      item: z.promise(z.string()),
-      handleFilter: () => [],
-      handleSort: (items) => items,
-    });
-    expect(expectAuthoring(() => promised.contract.item.decode("a"), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage).cause).toBeInstanceOf(z.core.$ZodAsyncError);
-    expect(expectAuthoring(() => promised.contract.item.encode(Promise.resolve("a")), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage).cause).toBeInstanceOf(z.core.$ZodAsyncError);
+    expectAuthoring(
+      () => defineListQuery({
+        id: "promised",
+        version: 1,
+        source: orders,
+        params,
+        item: z.promise(z.string()),
+        handleFilter: () => [],
+        handleSort: (items) => items,
+      }),
+      "QUERY_CODEC_OUTPUT_UNCOPYABLE",
+      "Query codec output must support portable detached copies.",
+    );
 
     const refined = defineQueryView({
       id: "refined",
@@ -350,9 +352,18 @@ describe("typed query authoring", () => {
     expect(catchError.cause).toBeInstanceOf(Promise);
     expect(caught.rowCodec.encode("kept")).toBe("kept");
     const thenable = { then(resolve: (value: string) => void) { resolve("later"); } };
-    const open = defineQueryView({ id: "thenable", version: 1, row: z.any() });
-    expect(expectAuthoring(() => open.rowCodec.decode(thenable), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage).cause).toBe(thenable);
-    expect(expectAuthoring(() => open.rowCodec.encode(thenable), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage).cause).toBe(thenable);
+    const open = defineQueryView({
+      id: "thenable",
+      version: 1,
+      row: z.string().default(() => thenable as unknown as string),
+    });
+    expect(expectAuthoring(() => open.rowCodec.decode(undefined), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage).cause).toBe(thenable);
+    const encodedThenable = z.codec(z.unknown(), z.string(), {
+      decode: (value) => value as string,
+      encode: () => thenable as unknown as string,
+    });
+    const encodedView = defineQueryView({ id: "thenable-encode", version: 1, row: encodedThenable });
+    expect(expectAuthoring(() => encodedView.rowCodec.encode("later"), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage).cause).toBe(thenable);
 
     expect(() => countQuery.contract.params.decode({ roomId: 1 })).toThrow(z.ZodError);
     try {
@@ -387,23 +398,6 @@ describe("typed query authoring", () => {
         handleQuery: () => ({ count: 1 }),
       }).contract.params.encode({ n: 1n })],
       ["row", () => defineQueryView({ id: "date-row", version: 1, row: z.date() }).rowCodec.encode(new Date(0))],
-      ["result", () => defineQuery({
-        id: "nan-result",
-        version: 1,
-        source: orders,
-        params,
-        result: z.nan(),
-        handleQuery: () => Number.NaN,
-      }).contract.result.encode(Number.NaN)],
-      ["item", () => defineListQuery({
-        id: "symbol-item",
-        version: 1,
-        source: orders,
-        params,
-        item: z.symbol(),
-        handleFilter: () => [],
-        handleSort: (items) => items,
-      }).contract.item.encode(Symbol.for("a"))],
     ];
     for (const [position, run] of cases) {
       const error = expectAuthoring(run, "QUERY_CODEC_NOT_JSON_SAFE", message);
@@ -411,16 +405,16 @@ describe("typed query authoring", () => {
       expect(error.message).not.toContain(position);
       expect(error.cause).toBeUndefined();
     }
-    const cyclic = z.codec(z.unknown(), z.unknown(), {
-      decode: (value) => value,
+    const cyclic = z.codec(z.unknown(), z.string(), {
+      decode: (value) => value as string,
       encode: () => {
         const record: Record<string, unknown> = {};
         record.self = record;
-        return record;
+        return record as unknown as string;
       },
     });
     expectAuthoring(
-      () => defineQueryView({ id: "cycle", version: 1, row: cyclic }).rowCodec.encode({}),
+      () => defineQueryView({ id: "cycle", version: 1, row: cyclic }).rowCodec.encode("ok"),
       "QUERY_CODEC_NOT_JSON_SAFE",
       message,
     );
@@ -437,9 +431,9 @@ describe("typed query authoring", () => {
       writable: true,
     });
     proto.name = "room";
-    const returning = (value: unknown) => z.codec(z.unknown(), z.unknown(), {
-      decode: (input) => input,
-      encode: () => value,
+    const returning = (value: unknown) => z.codec(z.unknown(), z.string(), {
+      decode: (input) => input as string,
+      encode: () => value as string,
     });
     const nested = (value: unknown) => ({ profile: value });
     const positions: Array<readonly [string, () => unknown]> = [
@@ -450,20 +444,20 @@ describe("typed query authoring", () => {
         params: z.strictObject({ profile: returning(nested(sparse)) }),
         result,
         handleQuery: () => ({ count: 1 }),
-      }).contract.params.encode({ profile: {} })],
+      }).contract.params.encode({ profile: "ok" })],
       ["row-extra", () => defineQueryView({
         id: "row-extra",
         version: 1,
         row: z.strictObject({ profile: returning(nested(extra)) }),
-      }).rowCodec.encode({ profile: {} })],
+      }).rowCodec.encode({ profile: "ok" })],
       ["result-sparse", () => defineQuery({
         id: "result-sparse",
         version: 1,
         source: orders,
         params,
         result: z.strictObject({ profile: returning(nested(sparse)) }),
-        handleQuery: () => ({ profile: {} }),
-      }).contract.result.encode({ profile: {} })],
+        handleQuery: () => ({ profile: "ok" }),
+      }).contract.result.encode({ profile: "ok" })],
       ["item-extra", () => defineListQuery({
         id: "item-extra",
         version: 1,
@@ -472,7 +466,7 @@ describe("typed query authoring", () => {
         item: z.strictObject({ profile: returning(nested(extra)) }),
         handleFilter: () => [],
         handleSort: (items) => items,
-      }).contract.item.encode({ profile: {} })],
+      }).contract.item.encode({ profile: "ok" })],
     ];
     for (const [position, run] of positions) {
       const error = expectAuthoring(run, "QUERY_CODEC_NOT_JSON_SAFE", message);
@@ -487,7 +481,7 @@ describe("typed query authoring", () => {
       id: "proto-row",
       version: 1,
       row: z.strictObject({ profile: returning(nested(proto)) }),
-    }).rowCodec.encode({ profile: {} }));
+    }).rowCodec.encode({ profile: "ok" }));
     expect(Object.prototype).not.toHaveProperty("admin");
     ownProto(defineQuery({
       id: "proto-params",
@@ -496,15 +490,15 @@ describe("typed query authoring", () => {
       params: z.strictObject({ profile: returning(nested(proto)) }),
       result,
       handleQuery: () => ({ count: 1 }),
-    }).contract.params.encode({ profile: {} }));
+    }).contract.params.encode({ profile: "ok" }));
     ownProto(defineQuery({
       id: "proto-result",
       version: 1,
       source: orders,
       params,
       result: z.strictObject({ profile: returning(nested(proto)) }),
-      handleQuery: () => ({ profile: {} }),
-    }).contract.result.encode({ profile: {} }));
+      handleQuery: () => ({ profile: "ok" }),
+    }).contract.result.encode({ profile: "ok" }));
     ownProto(defineListQuery({
       id: "proto-item",
       version: 1,
@@ -513,7 +507,7 @@ describe("typed query authoring", () => {
       item: z.strictObject({ profile: returning(nested(proto)) }),
       handleFilter: () => [],
       handleSort: (items) => items,
-    }).contract.item.encode({ profile: {} }));
+    }).contract.item.encode({ profile: "ok" }));
   });
 
   it("requires a non-empty id, a positive safe-integer version, and strict object params", () => {
@@ -565,6 +559,51 @@ describe("typed query authoring", () => {
       params: z.object({ roomId: z.string() }).strict(),
       result,
       handleQuery: () => ({ count: 1 }),
+    });
+  });
+
+  it("admits copyable outputs and refuses values that cannot be detached", () => {
+    const message = "Query codec output must support portable detached copies.";
+    const dateCodec = z.codec(z.string(), z.date(), {
+      decode: (value) => new Date(value),
+      encode: (value) => value.toISOString(),
+    });
+    const dated = defineQueryView({ id: "dated", version: 1, row: dateCodec });
+    expect(dated.rowCodec.decode("2020-01-01T00:00:00.000Z").toISOString()).toBe("2020-01-01T00:00:00.000Z");
+    expect(dated.rowCodec.encode(new Date("2020-01-01T00:00:00.000Z"))).toBe("2020-01-01T00:00:00.000Z");
+    defineQueryView({
+      id: "nested-copyable",
+      version: 1,
+      row: z.strictObject({
+        tags: z.map(z.string(), z.set(z.date())),
+        when: z.lazy(() => z.date()),
+      }),
+    });
+    const refused = [
+      z.any(),
+      z.unknown(),
+      z.nan(),
+      z.symbol(),
+      z.custom<unknown>(),
+      z.function(),
+      z.promise(z.string()),
+      z.codec(z.string(), z.custom<unknown>(), { decode: (value) => value, encode: () => "x" }),
+    ];
+    for (const row of refused) {
+      expectAuthoring(
+        () => defineQueryView({ id: "uncopyable", version: 1, row }),
+        "QUERY_CODEC_OUTPUT_UNCOPYABLE",
+        message,
+      );
+    }
+    defineQuery({
+      id: "async-handler",
+      version: 1,
+      source: orders,
+      params,
+      result,
+      // @ts-expect-error query handlers are synchronous
+      handleQuery: async () => ({ count: 1 }),
     });
   });
 

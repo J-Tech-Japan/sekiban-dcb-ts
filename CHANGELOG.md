@@ -23,12 +23,19 @@
 - Runtime composition rejects a typed query definition on `domain.queries`,
   `config.queries`, or `config.queryDefinitions` before conversion. Ordinary
   id/version metadata is unchanged.
-- Server execution, provider adapters, scan limits, and typed client calls are
-  not part of this change. The preview is unreleased and bound for `0.3.0`;
-  it is not part of the published `0.2.x` packages. Future execution will
-  freeze every handler input. Handlers receive no database, network,
-  environment, request, clock, paging, direction, consistency, waiting, or
-  cancellation capability.
+- Refuse a codec output that cannot be copied into a detached value with
+  `QUERY_CODEC_OUTPUT_UNCOPYABLE`. `Date`, `Map`, and `Set` outputs are
+  admitted. A later internal execution copies them by value; it does not
+  freeze them.
+- Add dormant bounded raw-candidate scans for PostgreSQL, D1 pipeline
+  checkpoints, Cosmos checkpoints, the in-memory checkpoint fallback, and D1
+  materialized-view rows. They are unreached from the bridge, composition,
+  registry, and HTTP routes. Both `QUERY_EXECUTION_UNAVAILABLE` refusals
+  remain. There is no server execution, no public scan setting, no public
+  runtime query error, and no typed client. The preview is unreleased and
+  bound for `0.3.0`; it is not part of the published `0.2.x` packages.
+  Handlers receive no database, network, environment, request, clock, paging,
+  direction, consistency, waiting, or cancellation capability.
 
 ## @sekiban/dcb-domain 0.2.2 (matched release)
 

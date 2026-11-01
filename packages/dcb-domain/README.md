@@ -107,10 +107,11 @@ rejected. After a successful encode, the value must be JSON-safe: array holes
 and extra array properties are rejected, and every JSON key, including
 `"__proto__"`, is kept as an own property. Handlers are synchronous. Their
 inputs are readonly, and a list handler returns `readonly Readonly<Item>[]`.
-When execution is added, it will
-freeze every handler input. Handlers receive no database, network, environment,
-request, clock, paging, direction, consistency, waiting, or cancellation
-capability.
+A definition is also refused when its codec output cannot be copied into a
+detached value (`QUERY_CODEC_OUTPUT_UNCOPYABLE`). `Date`, `Map`, and `Set`
+outputs are admitted and, when a query later runs, are copied by value. They
+are not frozen. Handlers receive no database, network, environment, request,
+clock, paging, direction, consistency, waiting, or cancellation capability.
 
 These definitions are not executed. `toRuntimeDomain()` throws
 `DomainAuthoringError` with code `QUERY_EXECUTION_UNAVAILABLE` and message
@@ -134,8 +135,10 @@ fails closed:
 - `QUERY_CODEC_SCHEMA_UNSUPPORTED` — `Query codecs do not support this Zod schema node.`
 - `QUERY_CODEC_ASYNC_UNSUPPORTED` — `Query codecs must encode and decode synchronously.`
 - `QUERY_CODEC_NOT_JSON_SAFE` — `Query codec output must be JSON-safe.`
+- `QUERY_CODEC_OUTPUT_UNCOPYABLE` — `Query codec output must support portable detached copies.`
 
-There is no typed client call for these contracts in this release.
+There is no typed client call, no public scan setting, and no public runtime
+query error for these contracts. The bridge and composition refusals remain.
 
 ## Versioning
 

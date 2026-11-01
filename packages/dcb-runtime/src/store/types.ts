@@ -129,6 +129,19 @@ export interface ProjectionCheckpointAdvance {
   updatedAt: number;
 }
 
+export interface ProjectionCheckpointCandidateScan {
+  readonly serviceId: string;
+  readonly projectionIdPrefix: string;
+  readonly projectionIdSuffix: string;
+  readonly limit: number;
+}
+
+export interface RawProjectionCheckpointCandidate {
+  readonly projectionId: unknown;
+  readonly lastSuid: unknown;
+  readonly stateJson: unknown;
+}
+
 export interface ProjectionLag {
   serviceId: string;
   projectionId: string;
@@ -231,6 +244,9 @@ export interface ProjectionStore {
   currentLagBound(serviceId: string, nowMs?: number): Promise<number>;
   listProjectionTags(serviceId: string): Promise<string[]>;
   readProjectionCheckpoint(serviceId: string, projectionId: string): Promise<ProjectionCheckpoint | undefined>;
+  scanProjectionCheckpointCandidates?(
+    input: ProjectionCheckpointCandidateScan,
+  ): Promise<readonly RawProjectionCheckpointCandidate[]>;
   advanceProjectionCheckpoint(input: ProjectionCheckpointAdvance): Promise<boolean>;
   projectionLag(serviceId: string, projectionId: string, tag: string): Promise<ProjectionLag>;
   /** Catch-up must persist an ORDER_VIOLATION before failing closed. */

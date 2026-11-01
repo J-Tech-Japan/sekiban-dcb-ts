@@ -20,7 +20,9 @@ import {
   type PendingArrivalRecord,
   type ProjectionCheckpoint,
   type ProjectionCheckpointAdvance,
+  type ProjectionCheckpointCandidateScan,
   type ProjectionLag,
+  type RawProjectionCheckpointCandidate,
   type ProjectionStore,
   type StoredEvent,
 } from "./types";
@@ -715,6 +717,25 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
     );
     const row = rows[0];
     return row === undefined ? undefined : projectionCheckpointFrom(row);
+  }
+
+  async scanProjectionCheckpointCandidates(input: ProjectionCheckpointCandidateScan): Promise<RawProjectionCheckpointCandidate[]> {
+    const rows = await this.query(
+      `SELECT projection_id, last_suid, state_json
+         FROM serialized_dcb_projection_checkpoints
+        WHERE service_id = $1
+          AND starts_with(projection_id, $2)
+          AND char_length(projection_id) >= char_length($3)
+          AND right(projection_id, char_length($3)) = $3
+        ORDER BY convert_to(projection_id, 'UTF8')
+        LIMIT $4`,
+      [input.serviceId, input.projectionIdPrefix, input.projectionIdSuffix, input.limit],
+    );
+    return rows.map((row) => ({
+      projectionId: row.projection_id,
+      lastSuid: row.last_suid,
+      stateJson: row.state_json,
+    }));
   }
 
   async advanceProjectionCheckpoint(input: ProjectionCheckpointAdvance): Promise<boolean> {
