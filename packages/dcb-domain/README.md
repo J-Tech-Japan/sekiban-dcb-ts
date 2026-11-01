@@ -1,17 +1,19 @@
 # @sekiban/dcb-domain
 
 `@sekiban/dcb-domain` is the runtime-free, schema-first authoring layer for
-Sekiban DCB domains. It depends on `zod` only and does not import the runtime,
-storage, transport, or host APIs.
+Sekiban DCB domains. It depends on `zod` and the matched `@sekiban/dcb-core`
+package. Domain source imports core only as types. It does not import the
+runtime, storage, transport, or host APIs.
 
 ## Install
 
 ```sh
-npm install @sekiban/dcb-domain zod
+npm install @sekiban/dcb-domain
 ```
 
-The package is ESM-only and supports Node.js 20 or newer. The `zod` runtime
-dependency is pinned to `4.4.3` for the 0.1.x line.
+The package is ESM-only and supports Node.js 20 or newer. The 0.2.2 package
+pins `zod` to `4.4.3` and `@sekiban/dcb-core` to `0.2.2`. The `zod` pin for the
+0.1.x line is also `4.4.3`.
 
 ```ts
 import { z } from "zod";
@@ -60,7 +62,7 @@ const authoringDomain = domain({
   commands: [place],
 });
 
-// The bridge is the only adapter needed by the existing runtime.
+// The bridge accepts this query-free domain.
 const runtimeDomain = toRuntimeDomain(authoringDomain);
 ```
 
@@ -83,7 +85,57 @@ available from `@sekiban/dcb-domain/testing`.
 
 The package boundary is enforced in CI by the dedicated compile-fail project,
 source import/global checks, negative fixtures, and an `npm pack --dry-run`
-inspection. Its only runtime dependency is the pinned `zod` package.
+inspection. Its runtime dependency is the pinned `zod` package. The matched
+`@sekiban/dcb-core` dependency supplies structural query contracts; those
+imports stay type-only.
+
+## Typed query authoring preview
+
+This preview is unreleased. It is bound for the matched `0.3.0` release and is
+not part of the published `0.2.x` packages.
+
+`defineQueryView`, `defineQuery`, and `defineListQuery` build frozen
+definitions and frozen contracts. Params must be a strict Zod object
+(`z.strictObject` or `.strict()`) and must not use a reserved control name:
+`PageNumber`, `PageSize`, `NewestFirst`, `consistency`, `pageNumber`,
+`pageSize`, `newestFirst`, `descending`, `waitForSortableUniqueId`, or
+`signal`. Each codec exposes `encode` and `decode`. One-way Zod transforms,
+including `.transform()` and `z.preprocess()`, are rejected when the definition
+is created. Codecs run synchronously. A Promise or other thenable returned by
+encode or decode, including a `z.default()` or `z.catch()` callback, is
+rejected. After a successful encode, the value must be JSON-safe: array holes
+and extra array properties are rejected, and every JSON key, including
+`"__proto__"`, is kept as an own property. Handlers are synchronous. Their
+inputs are readonly, and a list handler returns `readonly Readonly<Item>[]`.
+When execution is added, it will
+freeze every handler input. Handlers receive no database, network, environment,
+request, clock, paging, direction, consistency, waiting, or cancellation
+capability.
+
+These definitions are not executed. `toRuntimeDomain()` throws
+`DomainAuthoringError` with code `QUERY_EXECUTION_UNAVAILABLE` and message
+`Typed query execution is not available in this runtime bridge.` when the
+domain contains authored queries. A query-free domain still bridges.
+Runtime composition rejects a typed definition found on `domain.queries`,
+`config.queries`, or `config.queryDefinitions` before it converts queries. The
+thrown error has name `TypedQueryExecutionUnavailableError`, code
+`QUERY_EXECUTION_UNAVAILABLE`, and message
+`Typed query execution is not available in runtime composition.` The class is
+not exported. Ordinary query metadata that only has an id and a version is
+unchanged.
+
+A `z.codec` is accepted when both directions are synchronous functions, even if
+encode is not the inverse of decode. Keeping that pair meaningful is the
+author's responsibility. So is a callback that sometimes returns a Promise, and
+any schema whose internals are changed after construction. Invocation still
+fails closed:
+
+- `QUERY_CODEC_UNIDIRECTIONAL` — `Query codecs do not support one-way Zod transforms.`
+- `QUERY_CODEC_SCHEMA_UNSUPPORTED` — `Query codecs do not support this Zod schema node.`
+- `QUERY_CODEC_ASYNC_UNSUPPORTED` — `Query codecs must encode and decode synchronously.`
+- `QUERY_CODEC_NOT_JSON_SAFE` — `Query codec output must be JSON-safe.`
+
+There is no typed client call for these contracts in this release.
 
 ## Versioning
 
@@ -100,6 +152,10 @@ helpers for the `0.1.x` line:
 - Testing entrypoint: `given`, `evolveTable`, and `evolve` from
   `@sekiban/dcb-domain/testing`.
 - No deep imports beyond `.` and `./testing` are supported.
+
+The typed query authoring preview above is unreleased and bound for `0.3.0`.
+It is not available in `0.2.x`. Those helpers do not execute a query and do
+not add a typed client call.
 
 The earlier `@sekiban/core` and related packages belong to the older
 sekiban-ts line; they are not dependencies or aliases for this package.

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-import { readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rename, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -34,8 +36,14 @@ if (JSON.stringify(packageJson.files) !== JSON.stringify(["dist", "README.md", "
 if (packageJson.publishConfig?.access !== "public" || packageJson.publishConfig?.provenance !== true) {
   throw new Error("SDT-G71 pack guard: public provenance publishConfig is missing");
 }
-if (JSON.stringify(Object.keys(packageJson.dependencies ?? {}).sort()) !== JSON.stringify(["zod"])) {
-  throw new Error("SDT-G59 pack guard: runtime dependency allowlist must be exactly zod");
+if (JSON.stringify(Object.keys(packageJson.dependencies ?? {}).sort()) !== JSON.stringify(["@sekiban/dcb-core", "zod"])) {
+  throw new Error("SDT-G59 pack guard: runtime dependency allowlist must be exactly @sekiban/dcb-core and zod");
+}
+if (packageJson.dependencies["@sekiban/dcb-core"] !== "0.2.2") {
+  throw new Error("SDT-G59 pack guard: @sekiban/dcb-core must be pinned at 0.2.2");
+}
+if (packageJson.dependencies.zod !== "4.4.3") {
+  throw new Error("SDT-G59 pack guard: zod must remain pinned at 4.4.3");
 }
 
 const packed = spawnSync("npm", ["pack", "--dry-run", "--json"], { cwd: packageRoot, encoding: "utf8" });
@@ -51,12 +59,43 @@ for (const required of ["package.json", "README.md", "LICENSE", "dist/index.js",
 if (names.some((name) => name.startsWith("dist/") && name.endsWith(".map"))) {
   throw new Error("SDT-G59 pack guard: source maps are not allowed in the release tarball");
 }
-// The current neutral esbuild bundle includes the package's pinned zod runtime.
-// Keep a documented, deterministic upper bound while retaining the existing
-// build output and its public dependency contract.
+// Zod stays an external dependency so codec failures use the consumer's
+// pinned constructors. Keep a documented upper bound on the neutral bundle.
 const maxUnpackedBytes = 1_000_000;
 if (report.unpackedSize > maxUnpackedBytes) {
   throw new Error(`SDT-G59 pack guard: unpacked tarball is ${report.unpackedSize} bytes, limit is ${maxUnpackedBytes}`);
+}
+const directBuild = packageJson.scripts?.build ?? "";
+if (!directBuild.startsWith("npm run build --workspace @sekiban/dcb-core && ")) {
+  throw new Error("SDT-G59 pack guard: domain workspace build must build @sekiban/dcb-core before emitting declarations");
+}
+const coreDist = resolve(root, "packages/dcb-core/dist");
+const stashParent = await mkdtemp(join(tmpdir(), "sdt-g139-core-dist-"));
+const stash = join(stashParent, "dist");
+const hadCoreDist = existsSync(coreDist);
+if (hadCoreDist) await rename(coreDist, stash);
+let directBuildPassed = false;
+try {
+  const built = spawnSync("npm", ["run", "build", "--workspace", "@sekiban/dcb-domain"], {
+    cwd: root,
+    encoding: "utf8",
+    env: process.env,
+  });
+  if (built.status !== 0) {
+    throw new Error(`SDT-G59 pack guard: direct domain workspace build failed without a prebuilt core dist\n${built.stdout}\n${built.stderr}`);
+  }
+  if (!existsSync(resolve(coreDist, "index.d.ts"))) {
+    throw new Error("SDT-G59 pack guard: direct domain workspace build did not produce @sekiban/dcb-core declarations");
+  }
+  directBuildPassed = true;
+} finally {
+  if (hadCoreDist) {
+    await rm(coreDist, { recursive: true, force: true });
+    await rename(stash, coreDist);
+  } else if (!directBuildPassed) {
+    await rm(coreDist, { recursive: true, force: true });
+  }
+  await rm(stashParent, { recursive: true, force: true });
 }
 console.log(JSON.stringify({
   status: "PASS",
@@ -66,4 +105,5 @@ console.log(JSON.stringify({
   fileCount: names.length,
   unpackedSize: report.unpackedSize,
   maxUnpackedBytes,
+  directDomainWorkspaceBuild: "PASS",
 }));

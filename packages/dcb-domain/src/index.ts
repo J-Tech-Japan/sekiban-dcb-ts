@@ -6,3 +6,4 @@ export * from "./domain";
 export * from "./session";
 export * from "./parse";
 export * from "./bridge";
+export * from "./query";

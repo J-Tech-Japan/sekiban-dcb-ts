@@ -481,6 +481,12 @@ export function adaptRuntimeCommand(command: CommandDefinition): RuntimeCommandD
 export function toRuntimeDomain(
   domain: AuthoringDomain<readonly EventDefinition[], readonly unknown[], readonly unknown[]> | LegacyDomainDefinition,
 ): RuntimeDomainDefinition {
+  if ("queries" in domain && Array.isArray(domain.queries) && domain.queries.length > 0) {
+    throw new DomainAuthoringError(
+      "QUERY_EXECUTION_UNAVAILABLE",
+      "Typed query execution is not available in this runtime bridge.",
+    );
+  }
   const rawEvents = domain.events ?? [];
   const events = rawEvents.map(runtimeEventFrom);
   const byType = new Map<string, RuntimeEventDefinition>();

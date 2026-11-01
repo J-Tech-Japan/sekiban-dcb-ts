@@ -39,6 +39,31 @@ function dynamicImportsOf(source) {
   return [...source.matchAll(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g)].map((match) => match[1]);
 }
 
+function sideEffectImportsOf(source) {
+  return [...source.matchAll(/\bimport\s*["']([^"']+)["']/g)].map((match) => match[1]);
+}
+
+function fromClauses(source) {
+  return [...source.matchAll(/(?:import|export)\s+([\s\S]*?)\sfrom\s+["']([^"']+)["']/g)].map((match) => ({
+    body: match[1],
+    specifier: match[2],
+  }));
+}
+
+function isTypeOnlyBody(body) {
+  const trimmed = body.trim();
+  if (/^type(?:\s|\{)/.test(trimmed)) return true;
+  const brace = trimmed.match(/^\{\s*([\s\S]*?)\s*\}$/);
+  if (!brace) return false;
+  const parts = brace[1].split(",").map((part) => part.trim()).filter((part) => part.length > 0);
+  return parts.length > 0 && parts.every((part) => part.startsWith("type "));
+}
+
+function isPermittedDomainSpecifier(specifier, body) {
+  if (specifier === "zod" || specifier.startsWith(".")) return true;
+  return specifier === "@sekiban/dcb-core" && body !== undefined && isTypeOnlyBody(body);
+}
+
 function forbiddenGlobal(source) {
   const patterns = [
     /\bDate\.now\s*\(/,
@@ -59,9 +84,11 @@ async function checkSourceBoundary() {
   for (const file of files) {
     const source = await readFile(file, "utf8");
     const path = relative(root, file);
-    const imports = importsOf(source);
-    for (const specifier of [...imports, ...dynamicImportsOf(source)]) {
-      if (specifier !== "zod" && !specifier.startsWith(".")) fail(`${path} imports forbidden module ${specifier}`);
+    for (const clause of fromClauses(source)) {
+      if (!isPermittedDomainSpecifier(clause.specifier, clause.body)) fail(`${path} imports forbidden module ${clause.specifier}`);
+    }
+    for (const specifier of [...sideEffectImportsOf(source), ...dynamicImportsOf(source)]) {
+      if (!isPermittedDomainSpecifier(specifier)) fail(`${path} imports forbidden module ${specifier}`);
     }
     const globalIndex = forbiddenGlobal(source);
     if (globalIndex >= 0) fail(`${path} uses forbidden global #${globalIndex}`);
@@ -104,8 +131,10 @@ async function checkNegativeFixtures() {
 async function checkPackageManifestAndPack() {
   const manifest = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"));
   const dependencies = Object.keys(manifest.dependencies ?? {}).sort();
-  if (JSON.stringify(dependencies) !== JSON.stringify(["zod"])) fail(`dependency allowlist is ${dependencies.join(",")}`);
-  if (Object.keys(manifest.devDependencies ?? {}).length > 0 || Object.keys(manifest.peerDependencies ?? {}).length > 0) fail("package has a non-zod dependency section");
+  if (JSON.stringify(dependencies) !== JSON.stringify(["@sekiban/dcb-core", "zod"])) fail(`dependency allowlist is ${dependencies.join(",")}`);
+  if (manifest.dependencies["@sekiban/dcb-core"] !== "0.2.2") fail("core dependency must be the exact matched 0.2.2 pin");
+  if (manifest.dependencies.zod !== "4.4.3") fail("zod dependency must remain pinned at 4.4.3");
+  if (Object.keys(manifest.devDependencies ?? {}).length > 0 || Object.keys(manifest.peerDependencies ?? {}).length > 0) fail("package has an unexpected dependency section");
   const packed = spawnSync("npm", ["pack", "--dry-run", "--json", "--workspace", "@sekiban/dcb-domain"], {
     cwd: root,
     encoding: "utf8",
