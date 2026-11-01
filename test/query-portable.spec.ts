@@ -593,6 +593,121 @@ describe("dormant portable query executor", () => {
     expect(materialized).toMatchObject({ ok: false, kind: "row-invalid" });
   });
 
+  it("rejects subclasses, accessors, and symbol keys before cloning", async () => {
+    defineQueryView({ id: "admit-date", version: 1, row: z.date() });
+    defineQueryView({ id: "admit-map", version: 1, row: z.map(z.string(), z.string()) });
+    defineQueryView({ id: "admit-set", version: 1, row: z.set(z.string()) });
+    defineQueryView({ id: "admit-array", version: 1, row: z.array(z.string()) });
+    defineQueryView({ id: "admit-object", version: 1, row: z.strictObject({ name: z.string() }) });
+    class MarkedDate extends Date {}
+    class MarkedMap extends Map<string, string> {}
+    class MarkedSet extends Set<string> {}
+    class MarkedArray extends Array<string> {}
+    const accessorDate = new Date(0);
+    Object.defineProperty(accessorDate, "secret", { get: () => 1 });
+    const symbolDate = new Date(0);
+    Object.defineProperty(symbolDate, Symbol.for("mark"), { value: 1 });
+    const extraDate = new Date(0);
+    Object.defineProperty(extraDate, "extra", { value: 1 });
+    const accessorArray = ["a"];
+    Object.defineProperty(accessorArray, 0, { get: () => "a" });
+    const symbolArray = ["a"];
+    Object.defineProperty(symbolArray, Symbol.for("mark"), { value: 1 });
+    const accessorObject = {};
+    Object.defineProperty(accessorObject, "name", { get: () => "a" });
+    const symbolObject = { name: "a" };
+    Object.defineProperty(symbolObject, Symbol.for("mark"), { value: 1 });
+    const rowCases = [
+      ["date subclass", () => new MarkedDate(0)],
+      ["date accessor", () => accessorDate],
+      ["date symbol", () => symbolDate],
+      ["date own property", () => extraDate],
+      ["map subclass", () => new MarkedMap([["a", "b"]])],
+      ["set subclass", () => new MarkedSet(["a"])],
+      ["array subclass", () => new MarkedArray("a")],
+      ["array accessor", () => accessorArray],
+      ["array symbol", () => symbolArray],
+      ["object accessor", () => accessorObject],
+      ["object symbol", () => symbolObject],
+    ] as const;
+    for (const [name, produce] of rowCases) {
+      let calls = 0;
+      const decode = () => produce();
+      const result = await executePortableQuery({
+        definition: {
+          kind: "scalar",
+          rowCodec: { decode, encode: () => ({ count: 0 }) },
+          paramsCodec: { decode: () => ({}), encode: (value: Record<string, never>) => value },
+          resultCodec: {
+            decode: (value: unknown): { count: number } => value as { count: number },
+            encode: (value: { count: number }) => value,
+          },
+          handleQuery: () => {
+            calls += 1;
+            return { count: 1 };
+          },
+        },
+        params: {},
+        maximum: 10,
+        scan: async () => ({ candidates: [candidate("a", "null")] }),
+        canonicalize: (value) => canonicalizeCheckpointCandidate(value, decode, {
+          tagGroup: TAG_GROUP,
+          tagProjector: TAG_PROJECTOR,
+        }),
+      });
+      expect(result, name).toEqual({ ok: false, kind: "row-invalid", message: "Query row is invalid." });
+      expect(calls, name).toBe(0);
+      const returned = await executePortableQuery({
+        definition: {
+          kind: "scalar",
+          rowCodec: rowCodec(),
+          paramsCodec: { decode: () => ({}), encode: (value: Record<string, never>) => value },
+          resultCodec: {
+            decode: (value: unknown): unknown => value,
+            encode: (value: unknown): { count: number } => ({ count: value === null ? 0 : 0 }),
+          },
+          handleQuery: () => produce(),
+        },
+        params: {},
+        maximum: 10,
+        scan: async () => ({ candidates: [candidate("a", JSON.stringify({ label: "a" }))] }),
+        canonicalize: (value) => canonicalizeCheckpointCandidate(value, rowCodec().decode, {
+          tagGroup: TAG_GROUP,
+          tagProjector: TAG_PROJECTOR,
+        }),
+      });
+      expect(returned, name).toEqual({ ok: false, kind: "result-invalid", message: "Query result is invalid." });
+    }
+    const dated = defineQueryView({
+      id: "exotic-date-codec",
+      version: 1,
+      row: z.codec(z.unknown(), z.date(), {
+        decode: () => new MarkedDate(0),
+        encode: (value) => value.toISOString(),
+      }),
+    });
+    const throughCodec = await executePortableQuery({
+      definition: {
+        kind: "scalar",
+        rowCodec: dated.rowCodec,
+        paramsCodec: { decode: () => ({}), encode: (value: Record<string, never>) => value },
+        resultCodec: {
+          decode: (value: unknown): { count: number } => value as { count: number },
+          encode: (value: { count: number }) => value,
+        },
+        handleQuery: () => ({ count: 1 }),
+      },
+      params: {},
+      maximum: 10,
+      scan: async () => ({ candidates: [candidate("a", "null")] }),
+      canonicalize: (value) => canonicalizeCheckpointCandidate(value, dated.rowCodec.decode, {
+        tagGroup: TAG_GROUP,
+        tagProjector: TAG_PROJECTOR,
+      }),
+    });
+    expect(throughCodec).toEqual({ ok: false, kind: "row-invalid", message: "Query row is invalid." });
+  });
+
   it("copies Date, Map, and Set inputs per phase and keeps the encoded snapshot", async () => {
     const row = z.strictObject({
       at: z.codec(z.string(), z.date(), {
@@ -633,28 +748,44 @@ describe("dormant portable query executor", () => {
       params: paramsSchema,
       item,
       handleFilter: (projection, params) => {
-        const value = projection.rows[0]?.value;
-        if (value === undefined) return [];
-        seen.push(value.at.toISOString());
-        seen.push(String(value.tags.size));
-        seen.push(String(value.ids.size));
+        const first = projection.rows[0];
+        const second = projection.rows[1];
+        if (first === undefined || second === undefined) return [];
+        expect(second.value.at).not.toBe(first.value.at);
+        const untouched = second.value.at.toISOString();
+        seen.push(first.value.at.toISOString());
+        seen.push(String(first.value.tags.size));
+        seen.push(String(first.value.ids.size));
+        seen.push(second.value.at.toISOString());
         seen.push(params.at.toISOString());
-        retainedAt = value.at;
-        retainedTags = value.tags;
-        retainedIds = value.ids;
-        value.at.setTime(value.at.getTime() + 60_000);
-        value.tags.set("added", "x");
-        value.ids.add("added");
+        retainedAt = first.value.at;
+        retainedTags = first.value.tags;
+        retainedIds = first.value.ids;
+        first.value.at.setTime(first.value.at.getTime() + 60_000);
+        first.value.tags.set("added", "x");
+        first.value.ids.add("added");
         params.at.setTime(params.at.getTime() + 60_000);
-        return [{ key: projection.rows[0]!.key, at: value.at, tags: value.tags, ids: value.ids }];
+        expect(second.value.at.toISOString()).toBe(untouched);
+        expect(second.value.tags.size).toBe(1);
+        expect(second.value.ids.size).toBe(1);
+        return projection.rows.map((row) => ({
+          key: row.key,
+          at: row.value.at,
+          tags: row.value.tags,
+          ids: row.value.ids,
+        }));
       },
       handleSort: (items, params) => {
         const first = items[0];
-        if (first === undefined) return items;
+        const second = items[1];
+        if (first === undefined || second === undefined) return items;
         seen.push(first.at.toISOString());
         seen.push(String(first.tags.size));
+        seen.push(second.at.toISOString());
         seen.push(params.at.toISOString());
         expect(first.at).not.toBe(retainedAt);
+        expect(second.at).not.toBe(first.at);
+        expect(second.at.toISOString()).toBe("2020-06-01T00:00:00.000Z");
         sortAt = first.at;
         first.at.setTime(first.at.getTime() + 60_000);
         return [...items];
@@ -665,7 +796,35 @@ describe("dormant portable query executor", () => {
       tags: [["k", "v"]],
       ids: ["a"],
     });
-    const run = () => executePortableQuery({
+    const later = JSON.stringify({
+      at: "2020-06-01T00:00:00.000Z",
+      tags: [["m", "n"]],
+      ids: ["b"],
+    });
+    const expectedItems = [
+      {
+        key: "a",
+        at: "2020-01-01T00:02:00.000Z",
+        tags: [["k", "v"], ["added", "x"]],
+        ids: ["a", "added"],
+      },
+      {
+        key: "n",
+        at: "2020-06-01T00:00:00.000Z",
+        tags: [["m", "n"]],
+        ids: ["b"],
+      },
+    ];
+    const run = (
+      scan: (limit: number) => Promise<PortableScanBatch> = async () => ({
+        candidates: [candidate("a", stored), candidate("n", later)],
+      }),
+      canonicalize: (value: unknown) => { key: string; value: unknown; sourceSuid: string } = (value) =>
+        canonicalizeCheckpointCandidate(value, view.rowCodec.decode, {
+          tagGroup: TAG_GROUP,
+          tagProjector: TAG_PROJECTOR,
+        }),
+    ) => executePortableQuery({
       definition: {
         kind: "list",
         rowCodec: view.rowCodec,
@@ -676,32 +835,23 @@ describe("dormant portable query executor", () => {
       },
       params: { at: "2020-01-02T00:00:00.000Z" },
       maximum: 10,
-      page: { pageNumber: 1, pageSize: 1, descending: false },
-      scan: async () => ({ candidates: [candidate("a", stored)] }),
-      canonicalize: (value) => canonicalizeCheckpointCandidate(value, view.rowCodec.decode, {
-        tagGroup: TAG_GROUP,
-        tagProjector: TAG_PROJECTOR,
-      }),
+      page: { pageNumber: 1, pageSize: 2, descending: false },
+      scan,
+      canonicalize,
     });
     const first = await run();
     expect(seen).toEqual([
       "2020-01-01T00:00:00.000Z",
       "1",
       "1",
+      "2020-06-01T00:00:00.000Z",
       "2020-01-02T00:00:00.000Z",
       "2020-01-01T00:01:00.000Z",
       "2",
+      "2020-06-01T00:00:00.000Z",
       "2020-01-02T00:00:00.000Z",
     ]);
-    expect(first).toMatchObject({
-      ok: true,
-      items: [{
-        key: "a",
-        at: "2020-01-01T00:02:00.000Z",
-        tags: [["k", "v"], ["added", "x"]],
-        ids: ["a", "added"],
-      }],
-    });
+    expect(first).toMatchObject({ ok: true, items: expectedItems });
     const encoded = JSON.stringify(first);
     retainedAt?.setTime(0);
     retainedTags?.set("later", "y");
@@ -735,14 +885,156 @@ interface CheckpointStore {
   }): Promise<readonly { projectionId: unknown; lastSuid: unknown; stateJson: unknown }[]>;
 }
 
-async function seedCheckpoints(store: CheckpointStore, serviceId: string, contents: readonly string[]): Promise<void> {
-  for (const [index, content] of contents.entries()) {
+const PARITY_ROWS = [
+  { key: "a", label: "alpha", sourceSuid: "suid-a" },
+  { key: "n", label: "north", sourceSuid: "suid-n" },
+  { key: "é", label: "latin", sourceSuid: "suid-e" },
+] as const;
+
+const PARITY_DIGEST = PARITY_ROWS.map((row) => `${row.key}=${row.label}@${row.sourceSuid}`).join("|");
+
+function parityByKey(key: string): (typeof PARITY_ROWS)[number] {
+  const row = PARITY_ROWS.find((candidate) => candidate.key === key);
+  if (row === undefined) throw new Error(`missing parity row ${key}`);
+  return row;
+}
+
+function parityRowCodec() {
+  return {
+    decode: (value: unknown) => {
+      if (typeof value !== "object" || value === null || typeof (value as { label?: unknown }).label !== "string") {
+        throw new Error("row");
+      }
+      return { label: (value as { label: string }).label };
+    },
+    encode: (value: { label: string }) => value,
+  };
+}
+
+function parityListDefinition() {
+  return {
+    kind: "list" as const,
+    rowCodec: parityRowCodec(),
+    paramsCodec: { decode: () => ({ tie: "same" }), encode: (value: { tie: string }) => value },
+    itemCodec: {
+      decode: (value: unknown): { key: string; label: string; sourceSuid: string } =>
+        value as { key: string; label: string; sourceSuid: string },
+      encode: (value: { key: string; label: string; sourceSuid: string }) => ({
+        key: value.key,
+        label: value.label,
+        sourceSuid: value.sourceSuid,
+      }),
+    },
+    handleFilter: (projection: { rows: readonly { key: string; value: { label: string }; sourceSuid: string }[] }) =>
+      projection.rows.map((row) => ({
+        key: row.key,
+        label: row.value.label,
+        sourceSuid: row.sourceSuid,
+        tie: "same",
+      })),
+    handleSort: (items: readonly { key: string; label: string; sourceSuid: string }[]) => [...items],
+  };
+}
+
+function parityScalarDefinition() {
+  return {
+    kind: "scalar" as const,
+    rowCodec: parityRowCodec(),
+    paramsCodec: { decode: () => ({}), encode: (value: Record<string, never>) => value },
+    resultCodec: {
+      decode: (value: unknown): { count: number; digest: string } => value as { count: number; digest: string },
+      encode: (value: { count: number; digest: string }) => value,
+    },
+    handleQuery: (projection: { rows: readonly { key: string; value: { label: string }; sourceSuid: string }[] }) => ({
+      count: projection.rows.length,
+      digest: projection.rows.map((row) => `${row.key}=${row.value.label}@${row.sourceSuid}`).join("|"),
+    }),
+  };
+}
+
+async function executeParity(
+  scan: (limit: number) => Promise<PortableScanBatch>,
+  page: { pageNumber: number; pageSize: number; descending: boolean },
+  canonicalize: (candidate: unknown) => { key: string; value: unknown; sourceSuid: string },
+) {
+  return executePortableQuery({
+    definition: parityListDefinition(),
+    params: {},
+    maximum: 3,
+    page,
+    scan,
+    canonicalize,
+  });
+}
+
+async function assertBackingParity(
+  scan: (limit: number) => Promise<PortableScanBatch>,
+  canonicalize: (candidate: unknown) => { key: string; value: unknown; sourceSuid: string },
+  readHead?: string,
+): Promise<void> {
+  const ascending = await executeParity(scan, { pageNumber: 1, pageSize: 2, descending: false }, canonicalize);
+  const ascendingTail = await executeParity(scan, { pageNumber: 2, pageSize: 2, descending: false }, canonicalize);
+  const descending = await executeParity(scan, { pageNumber: 1, pageSize: 2, descending: true }, canonicalize);
+  const descendingTail = await executeParity(scan, { pageNumber: 2, pageSize: 2, descending: true }, canonicalize);
+  const head = readHead === undefined ? {} : { readHead };
+  expect(ascending).toMatchObject({
+    ok: true,
+    items: [
+      { key: "a", label: "alpha", sourceSuid: "suid-a" },
+      { key: "n", label: "north", sourceSuid: "suid-n" },
+    ],
+    totalCount: 3,
+    totalPages: 2,
+    currentPage: 1,
+    pageSize: 2,
+    ...head,
+  });
+  expect(ascendingTail).toMatchObject({
+    ok: true,
+    items: [{ key: "é", label: "latin", sourceSuid: "suid-e" }],
+    totalCount: 3,
+    currentPage: 2,
+    ...head,
+  });
+  expect(descending).toMatchObject({
+    ok: true,
+    items: [
+      { key: "é", label: "latin", sourceSuid: "suid-e" },
+      { key: "n", label: "north", sourceSuid: "suid-n" },
+    ],
+    totalCount: 3,
+    currentPage: 1,
+    ...head,
+  });
+  expect(descendingTail).toMatchObject({
+    ok: true,
+    items: [{ key: "a", label: "alpha", sourceSuid: "suid-a" }],
+    totalCount: 3,
+    currentPage: 2,
+    ...head,
+  });
+  if (readHead === undefined) {
+    expect(ascending).not.toHaveProperty("readHead");
+  }
+  const scalar = await executePortableQuery({
+    definition: parityScalarDefinition(),
+    params: {},
+    maximum: 3,
+    scan,
+    canonicalize,
+  });
+  expect(scalar).toMatchObject({ ok: true, kind: "scalar", result: { count: 3, digest: PARITY_DIGEST }, ...head });
+}
+
+async function seedCheckpoints(store: CheckpointStore, serviceId: string, order: readonly string[]): Promise<void> {
+  for (const [index, key] of order.entries()) {
+    const row = parityByKey(key);
     expect(await store.advanceProjectionCheckpoint({
       serviceId,
-      projectionId: checkpointId(content),
+      projectionId: checkpointId(row.key),
       expectedLastSuid: null,
-      lastSuid: `suid-${content}`,
-      stateJson: JSON.stringify({ label: content }),
+      lastSuid: row.sourceSuid,
+      stateJson: JSON.stringify({ label: row.label }),
       version: 1,
       updatedAt: 50_000 + index,
     })).toBe(true);
@@ -767,6 +1059,24 @@ async function seedCheckpoints(store: CheckpointStore, serviceId: string, conten
   })).toBe(true);
 }
 
+function checkpointCanonicalize(value: unknown) {
+  return canonicalizeCheckpointCandidate(value, parityRowCodec().decode, {
+    tagGroup: TAG_GROUP,
+    tagProjector: TAG_PROJECTOR,
+  });
+}
+
+function checkpointScan(store: CheckpointStore, serviceId: string): (limit: number) => Promise<PortableScanBatch> {
+  return async (limit) => ({
+    candidates: await store.scanProjectionCheckpointCandidates({
+      serviceId,
+      projectionIdPrefix: PREFIX,
+      projectionIdSuffix: SUFFIX,
+      limit,
+    }),
+  });
+}
+
 async function assertCheckpointParity(store: CheckpointStore, serviceId: string): Promise<void> {
   const bounded = await store.scanProjectionCheckpointCandidates({
     serviceId,
@@ -774,62 +1084,62 @@ async function assertCheckpointParity(store: CheckpointStore, serviceId: string)
     projectionIdSuffix: SUFFIX,
     limit: 3,
   });
-  expect(bounded.map((row) => row.projectionId).sort()).toEqual([
+  expect(bounded.map((row) => row.projectionId)).toEqual([
     checkpointId("a"),
     checkpointId("n"),
     checkpointId("é"),
   ]);
-  expect(bounded.every((row) => typeof row.stateJson === "string" && !String(row.stateJson).includes("decoy"))).toBe(true);
-  const page = await executeList(
-    async (limit) => {
-      expect(limit).toBe(4);
-      return {
-        candidates: await store.scanProjectionCheckpointCandidates({
-          serviceId,
-          projectionIdPrefix: PREFIX,
-          projectionIdSuffix: SUFFIX,
-          limit,
-        }),
-      };
-    },
-    { pageNumber: 1, pageSize: 2, descending: false },
-    3,
-  );
-  expect(page).toMatchObject({
-    ok: true,
-    items: [{ key: "a" }, { key: "n" }],
-    totalCount: 3,
-    totalPages: 2,
-    currentPage: 1,
-    pageSize: 2,
+  expect(bounded.map((row) => [row.lastSuid, row.stateJson])).toEqual(PARITY_ROWS.map((row) => [
+    row.sourceSuid,
+    JSON.stringify({ label: row.label }),
+  ]));
+  let scannedLimit = 0;
+  await assertBackingParity(async (limit) => {
+    scannedLimit = limit;
+    return checkpointScan(store, serviceId)(limit);
+  }, checkpointCanonicalize);
+  expect(scannedLimit).toBe(4);
+}
+
+async function persistCorruptCheckpoints(store: CheckpointStore, serviceId: string): Promise<void> {
+  const malformedId = `tag-state:${TAG_GROUP}::${TAG_PROJECTOR}`;
+  expect(await store.advanceProjectionCheckpoint({
+    serviceId,
+    projectionId: checkpointId("bad"),
+    expectedLastSuid: null,
+    lastSuid: "suid-bad",
+    stateJson: "{",
+    version: 1,
+    updatedAt: 60_000,
+  })).toBe(true);
+  expect(await store.advanceProjectionCheckpoint({
+    serviceId,
+    projectionId: malformedId,
+    expectedLastSuid: null,
+    lastSuid: "suid-malformed",
+    stateJson: JSON.stringify({ label: "empty" }),
+    version: 1,
+    updatedAt: 60_001,
+  })).toBe(true);
+  const raw = await store.scanProjectionCheckpointCandidates({
+    serviceId,
+    projectionIdPrefix: PREFIX,
+    projectionIdSuffix: SUFFIX,
+    limit: 10,
   });
-  const descending = await executeList(
-    (limit) => store.scanProjectionCheckpointCandidates({
-      serviceId,
-      projectionIdPrefix: PREFIX,
-      projectionIdSuffix: SUFFIX,
-      limit,
-    }).then((candidates) => ({ candidates })),
-    { pageNumber: 1, pageSize: 2, descending: true },
-    3,
-  );
-  expect(descending).toMatchObject({ ok: true, items: [{ key: "é" }, { key: "n" }] });
-  const scalar = await executePortableQuery({
+  expect(raw.some((row) => row.stateJson === "{")).toBe(true);
+  expect(raw.some((row) => row.projectionId === malformedId)).toBe(true);
+  const result = await executePortableQuery({
     definition: scalarDefinition(),
     params: {},
-    maximum: 3,
-    scan: (limit) => store.scanProjectionCheckpointCandidates({
-      serviceId,
-      projectionIdPrefix: PREFIX,
-      projectionIdSuffix: SUFFIX,
-      limit,
-    }).then((candidates) => ({ candidates })),
+    maximum: 10,
+    scan: checkpointScan(store, serviceId),
     canonicalize: (value) => canonicalizeCheckpointCandidate(value, rowCodec().decode, {
       tagGroup: TAG_GROUP,
       tagProjector: TAG_PROJECTOR,
     }),
   });
-  expect(scalar).toEqual({ ok: true, kind: "scalar", result: { count: 3 } });
+  expect(result).toEqual({ ok: false, kind: "row-invalid", message: "Query row is invalid." });
 }
 
 type JsonObject = Record<string, unknown>;
@@ -878,6 +1188,82 @@ class CheckpointMemoryClient implements CosmosDocumentClient {
   }
 }
 
+async function copiedItems(
+  scan: (limit: number) => Promise<PortableScanBatch>,
+  kind: "checkpoint" | "materialized",
+): Promise<string> {
+  const row = z.strictObject({
+    at: z.codec(z.string(), z.date(), {
+      decode: (value) => new Date(value),
+      encode: (value) => value.toISOString(),
+    }),
+    tags: z.codec(z.array(z.tuple([z.string(), z.string()])), z.map(z.string(), z.string()), {
+      decode: (pairs) => new Map(pairs),
+      encode: (value) => [...value.entries()],
+    }),
+    ids: z.codec(z.array(z.string()), z.set(z.string()), {
+      decode: (values) => new Set(values),
+      encode: (value) => [...value],
+    }),
+  });
+  const view = defineQueryView({ id: "copied-provider-row", version: 1, row });
+  const query = defineListQuery({
+    id: "copied-provider-list",
+    version: 1,
+    source: view,
+    params: z.strictObject({
+      at: z.codec(z.string(), z.date(), {
+        decode: (value) => new Date(value),
+        encode: (value) => value.toISOString(),
+      }),
+    }),
+    item: z.strictObject({
+      key: z.string(),
+      at: row.shape.at,
+      tags: row.shape.tags,
+      ids: row.shape.ids,
+    }),
+    handleFilter: (projection) => {
+      const [first, second] = projection.rows;
+      if (first === undefined || second === undefined) return [];
+      const untouched = second.value.at.toISOString();
+      first.value.at.setTime(first.value.at.getTime() + 60_000);
+      first.value.tags.set("added", "x");
+      expect(second.value.at.toISOString()).toBe(untouched);
+      expect(second.value).not.toBe(first.value);
+      return projection.rows.map((entry) => ({
+        key: entry.key,
+        at: entry.value.at,
+        tags: entry.value.tags,
+        ids: entry.value.ids,
+      }));
+    },
+    handleSort: (items) => items,
+  });
+  const result = await executePortableQuery({
+    definition: {
+      kind: "list",
+      rowCodec: view.rowCodec,
+      paramsCodec: query.contract.params,
+      itemCodec: query.contract.item,
+      handleFilter: query.handleFilter,
+      handleSort: query.handleSort,
+    },
+    params: { at: "2020-01-02T00:00:00.000Z" },
+    maximum: 10,
+    page: { pageNumber: 1, pageSize: 2, descending: false },
+    scan,
+    canonicalize: (value) => kind === "checkpoint"
+      ? canonicalizeCheckpointCandidate(value, view.rowCodec.decode, {
+        tagGroup: TAG_GROUP,
+        tagProjector: TAG_PROJECTOR,
+      })
+      : canonicalizeMaterializedCandidate(value, view.rowCodec.decode),
+  });
+  expect(result).toMatchObject({ ok: true });
+  return JSON.stringify(result);
+}
+
 describe("dormant scans on every backing", () => {
   it("encodes the same page from postgres, d1, cosmos, and bounded memory", async () => {
     const postgres = new PostgresEventStore(postgresUrl());
@@ -885,6 +1271,7 @@ describe("dormant scans on every backing", () => {
     const serviceId = `portable-pg-${crypto.randomUUID()}`;
     await seedCheckpoints(postgres, serviceId, ["é", "n", "a"]);
     await assertCheckpointParity(postgres, serviceId);
+    await persistCorruptCheckpoints(postgres, `${serviceId}-corrupt`);
     const raw = await postgres.scanProjectionCheckpointCandidates({
       serviceId,
       projectionIdPrefix: PREFIX,
@@ -919,6 +1306,7 @@ describe("dormant scans on every backing", () => {
     const d1Service = `portable-d1-${crypto.randomUUID()}`;
     await seedCheckpoints(d1, d1Service, ["n", "é", "a"]);
     await assertCheckpointParity(d1, d1Service);
+    await persistCorruptCheckpoints(d1, `${d1Service}-corrupt`);
     const idleD1 = new D1EventStore(d1Database());
     const d1Failure = await executePortableQuery({
       definition: scalarDefinition(),
@@ -942,15 +1330,35 @@ describe("dormant scans on every backing", () => {
     const cosmosService = `portable-cosmos-${crypto.randomUUID()}`;
     await seedCheckpoints(cosmos, cosmosService, ["a", "é", "n"]);
     await assertCheckpointParity(cosmos, cosmosService);
+    await persistCorruptCheckpoints(cosmos, `${cosmosService}-corrupt`);
+    const idleCosmos = new CosmosEventStore({ client: new CheckpointMemoryClient() });
+    const cosmosFailure = await executePortableQuery({
+      definition: scalarDefinition(),
+      params: {},
+      maximum: 10,
+      scan: async () => ({
+        candidates: await idleCosmos.scanProjectionCheckpointCandidates({
+          serviceId: cosmosService,
+          projectionIdPrefix: PREFIX,
+          projectionIdSuffix: SUFFIX,
+          limit: 1,
+        }),
+      }),
+      canonicalize: checkpointCanonicalize,
+    });
+    expect(cosmosFailure).toEqual({
+      ok: false,
+      kind: "projection-unavailable",
+      message: "Query projection is unavailable.",
+    });
 
     const checkpoints = new Map<string, { projectionId: string; lastSuid: string; stateJson: string }>();
-    const memoryOrder = ["é", "a", "n"];
-    for (const content of memoryOrder) {
-      const projectionId = checkpointId(content);
+    for (const row of PARITY_ROWS) {
+      const projectionId = checkpointId(row.key);
       checkpoints.set(projectionId, {
         projectionId,
-        lastSuid: `suid-${content}`,
-        stateJson: JSON.stringify({ label: content }),
+        lastSuid: row.sourceSuid,
+        stateJson: JSON.stringify({ label: row.label }),
       });
     }
     checkpoints.set(checkpointId("000", "WRONG"), {
@@ -958,9 +1366,22 @@ describe("dormant scans on every backing", () => {
       lastSuid: "suid-decoy",
       stateJson: JSON.stringify({ label: "decoy" }),
     });
+    const malformedId = `tag-state:${TAG_GROUP}::${TAG_PROJECTOR}`;
+    checkpoints.set(checkpointId("bad"), {
+      projectionId: checkpointId("bad"),
+      lastSuid: "suid-bad",
+      stateJson: "{",
+    });
+    checkpoints.set(checkpointId("odd"), {
+      projectionId: malformedId,
+      lastSuid: "suid-malformed",
+      stateJson: JSON.stringify({ label: "empty" }),
+    });
     let reads = 0;
+    let failTags = false;
     const memory = {
       async listProjectionTags() {
+        if (failTags) throw new Error("memory tag index unavailable");
         return ["room:é", "room:n", "room:a", "room:a:extra", "other:a"];
       },
       async readProjectionCheckpoint(_serviceId: string, projectionId: string) {
@@ -971,15 +1392,105 @@ describe("dormant scans on every backing", () => {
     };
     const boundedMemory = await readRawCheckpointCandidates(memory, "memory", TAG_GROUP, TAG_PROJECTOR, 2);
     expect(boundedMemory.map((row) => row.projectionId)).toEqual([checkpointId("a"), checkpointId("n")]);
+    expect(boundedMemory.map((row) => [row.lastSuid, row.stateJson])).toEqual([
+      ["suid-a", JSON.stringify({ label: "alpha" })],
+      ["suid-n", JSON.stringify({ label: "north" })],
+    ]);
     expect(reads).toBe(2);
     reads = 0;
-    const memoryPage = await executeList(
-      async (limit) => ({ candidates: await readRawCheckpointCandidates(memory, "memory", TAG_GROUP, TAG_PROJECTOR, limit) }),
-      { pageNumber: 1, pageSize: 2, descending: false },
-      3,
+    await assertBackingParity(
+      async (limit) => ({
+        candidates: await readRawCheckpointCandidates(memory, "memory", TAG_GROUP, TAG_PROJECTOR, limit),
+      }),
+      checkpointCanonicalize,
     );
-    expect(memoryPage).toMatchObject({ ok: true, items: [{ key: "a" }, { key: "n" }], totalCount: 3 });
-    expect(reads).toBe(3);
+    expect(reads).toBeGreaterThan(0);
+    const corruptMemory = {
+      async listProjectionTags() {
+        return ["room:bad", "room:odd"];
+      },
+      async readProjectionCheckpoint(_serviceId: string, projectionId: string) {
+        const found = checkpoints.get(projectionId);
+        return found === undefined ? undefined : { ...found, serviceId: "memory-corrupt", version: 1, updatedAt: 1 };
+      },
+    };
+    const rawCorrupt = await readRawCheckpointCandidates(corruptMemory, "memory-corrupt", TAG_GROUP, TAG_PROJECTOR, 10);
+    expect(rawCorrupt.some((row) => row.stateJson === "{")).toBe(true);
+    expect(rawCorrupt.some((row) => row.projectionId === malformedId)).toBe(true);
+    const corrupt = await executePortableQuery({
+      definition: scalarDefinition(),
+      params: {},
+      maximum: 10,
+      scan: async (limit) => ({
+        candidates: await readRawCheckpointCandidates(corruptMemory, "memory-corrupt", TAG_GROUP, TAG_PROJECTOR, limit),
+      }),
+      canonicalize: checkpointCanonicalize,
+    });
+    expect(corrupt).toEqual({ ok: false, kind: "row-invalid", message: "Query row is invalid." });
+    failTags = true;
+    const memoryFailure = await executePortableQuery({
+      definition: scalarDefinition(),
+      params: {},
+      maximum: 10,
+      scan: async () => ({
+        candidates: await readRawCheckpointCandidates(memory, "memory", TAG_GROUP, TAG_PROJECTOR, 1),
+      }),
+      canonicalize: checkpointCanonicalize,
+    });
+    expect(memoryFailure).toEqual({
+      ok: false,
+      kind: "projection-unavailable",
+      message: "Query projection is unavailable.",
+    });
+
+    const copyRows = {
+      a: JSON.stringify({ at: "2020-01-01T00:00:00.000Z", tags: [["k", "v"]], ids: ["a"] }),
+      n: JSON.stringify({ at: "2020-06-01T00:00:00.000Z", tags: [["m", "n"]], ids: ["b"] }),
+    };
+    const seedCopy = async (store: CheckpointStore, copyService: string) => {
+      for (const [index, key] of (["n", "a"] as const).entries()) {
+        expect(await store.advanceProjectionCheckpoint({
+          serviceId: copyService,
+          projectionId: checkpointId(key),
+          expectedLastSuid: null,
+          lastSuid: `copy-${key}`,
+          stateJson: copyRows[key],
+          version: 1,
+          updatedAt: 70_000 + index,
+        })).toBe(true);
+      }
+    };
+    const repeated = await copiedItems(async () => ({
+      candidates: [candidate("a", copyRows.a), candidate("n", copyRows.n)],
+    }), "checkpoint");
+    expect(await copiedItems(async () => ({
+      candidates: [candidate("a", copyRows.a), candidate("n", copyRows.n)],
+    }), "checkpoint")).toBe(repeated);
+    await seedCopy(postgres, `${serviceId}-copy`);
+    await seedCopy(d1, `${d1Service}-copy`);
+    await seedCopy(cosmos, `${cosmosService}-copy`);
+    const copyMemory = {
+      async listProjectionTags() {
+        return ["room:n", "room:a"];
+      },
+      async readProjectionCheckpoint(_serviceId: string, projectionId: string) {
+        const key = projectionId === checkpointId("a") ? "a" : "n";
+        return {
+          serviceId: "copy-memory",
+          projectionId,
+          lastSuid: `copy-${key}`,
+          stateJson: copyRows[key],
+          version: 1,
+          updatedAt: 1,
+        };
+      },
+    };
+    expect(await copiedItems(checkpointScan(postgres, `${serviceId}-copy`), "checkpoint")).toBe(repeated);
+    expect(await copiedItems(checkpointScan(d1, `${d1Service}-copy`), "checkpoint")).toBe(repeated);
+    expect(await copiedItems(checkpointScan(cosmos, `${cosmosService}-copy`), "checkpoint")).toBe(repeated);
+    expect(await copiedItems(async (limit) => ({
+      candidates: await readRawCheckpointCandidates(copyMemory, "copy-memory", TAG_GROUP, TAG_PROJECTOR, limit),
+    }), "checkpoint")).toBe(repeated);
   });
 
   it("reads bounded raw materialized rows and preserves the safe checkpoint head", async () => {
@@ -988,9 +1499,12 @@ describe("dormant scans on every backing", () => {
     await store.initialize();
     const serviceId = `portable-mv-${crypto.randomUUID()}`;
     const viewId = "portable-view";
-    const head = g32Suid("mv-head");
-    const newer = g32Suid("mv-newer");
-    const [checkpoint, unsafeSuid] = head < newer ? [head, newer] : [newer, head];
+    const [checkpoint, lowSuid, midSuid, highSuid] = [
+      g32Suid("mv-head"),
+      g32Suid("mv-newer"),
+      g32Suid("mv-low"),
+      g32Suid("mv-mid"),
+    ].sort() as [string, string, string, string];
     const created = await store.createActive({
       serviceId,
       viewId,
@@ -1000,10 +1514,11 @@ describe("dormant scans on every backing", () => {
     });
     const inserted = ["n", "a", "é"];
     for (const key of inserted) {
+      const row = parityByKey(key);
       await database.prepare(
         `INSERT INTO mv_rows (service_id, view_id, generation, row_key, value_json, row_version, source_suid)
          VALUES (?, ?, ?, ?, ?, 1, ?)`,
-      ).bind(serviceId, viewId, created.generation, key, JSON.stringify({ label: key }), checkpoint).run();
+      ).bind(serviceId, viewId, created.generation, row.key, JSON.stringify({ label: row.label }), row.sourceSuid).run();
     }
     const corruptView = `portable-corrupt-${crypto.randomUUID()}`;
     const corruptInstance = await store.createActive({
@@ -1056,13 +1571,81 @@ describe("dormant scans on every backing", () => {
       canonicalize: (value) => canonicalizeMaterializedCandidate(value, rowCodec().decode),
     });
     expect(corrupt).toMatchObject({ ok: false, kind: "row-invalid" });
+    const unsafeView = `portable-unsafe-${crypto.randomUUID()}`;
+    const unsafeInstance = await store.createActive({
+      serviceId,
+      viewId: unsafeView,
+      definitionVersion: 1,
+      updatedAt: 1_000,
+      lastSuid: checkpoint,
+    });
+    const safeRows = [
+      ["a", JSON.stringify({ label: "safe" }), lowSuid],
+      ["b", JSON.stringify({ label: "bound" }), lowSuid],
+      ["n", JSON.stringify({ label: "kept" }), lowSuid],
+    ] as const;
+    for (const [key, valueJson, sourceSuid] of safeRows) {
+      await database.prepare(
+        `INSERT INTO mv_rows (service_id, view_id, generation, row_key, value_json, row_version, source_suid)
+         VALUES (?, ?, ?, ?, ?, 1, ?)`,
+      ).bind(serviceId, unsafeView, unsafeInstance.generation, key, valueJson, sourceSuid).run();
+    }
     await database.prepare(
       `INSERT INTO mv_unsafe_rows (service_id, view_id, generation, row_key, value_json, row_version, source_suid, tombstone)
        VALUES (?, ?, ?, ?, ?, 1, ?, 0)`,
-    ).bind(serviceId, viewId, created.generation, "z", JSON.stringify({ label: "z" }), unsafeSuid).run();
-    const unsafe = await store.scanRows(serviceId, viewId, { consistency: "unsafe", limit: 10 });
-    expect(unsafe.rows.some((row) => row.rowKey === "z" && row.sourceSuid === unsafeSuid)).toBe(true);
-    expect(unsafe.readHead).toBe(unsafeSuid);
+    ).bind(serviceId, unsafeView, unsafeInstance.generation, "a", JSON.stringify({ label: "override" }), highSuid).run();
+    await database.prepare(
+      `INSERT INTO mv_unsafe_rows (service_id, view_id, generation, row_key, value_json, row_version, source_suid, tombstone)
+       VALUES (?, ?, ?, ?, ?, 1, ?, 1)`,
+    ).bind(serviceId, unsafeView, unsafeInstance.generation, "n", JSON.stringify({ label: "gone" }), midSuid).run();
+    const unsafe = await store.scanRows(serviceId, unsafeView, { consistency: "unsafe", limit: 10 });
+    expect(unsafe.rows.map((row) => [row.rowKey, row.valueJson, row.sourceSuid])).toEqual([
+      ["a", JSON.stringify({ label: "override" }), highSuid],
+      ["b", JSON.stringify({ label: "bound" }), lowSuid],
+    ]);
+    expect(unsafe.readHead).toBe(highSuid);
+    const boundedUnsafe = await store.scanRows(serviceId, unsafeView, { consistency: "unsafe", limit: 1 });
+    expect(boundedUnsafe.rows.map((row) => row.rowKey)).toEqual(["a"]);
+    const unsafePage = await executePortableQuery({
+      definition: parityListDefinition(),
+      params: {},
+      maximum: 10,
+      page: { pageNumber: 1, pageSize: 10, descending: false },
+      scan: async (limit) => {
+        const batch = await store.scanRows(serviceId, unsafeView, { consistency: "unsafe", limit });
+        return { candidates: batch.rows, readHead: batch.readHead };
+      },
+      canonicalize: (value) => canonicalizeMaterializedCandidate(value, parityRowCodec().decode),
+    });
+    expect(unsafePage).toMatchObject({
+      ok: true,
+      items: [
+        { key: "a", label: "override", sourceSuid: highSuid },
+        { key: "b", label: "bound", sourceSuid: lowSuid },
+      ],
+      totalCount: 2,
+      readHead: highSuid,
+    });
+    const idleView = new D1MaterializedViewStore(database);
+    const viewFailure = await executePortableQuery({
+      definition: scalarDefinition(),
+      params: {},
+      maximum: 10,
+      scan: async () => {
+        await idleView.scanRows(serviceId, viewId, { consistency: "safe", limit: 1 });
+        return { candidates: [] };
+      },
+      canonicalize: (value) => canonicalizeMaterializedCandidate(value, rowCodec().decode),
+    });
+    expect(viewFailure).toMatchObject({ ok: false, kind: "projection-unavailable" });
+    await assertBackingParity(
+      async (limit) => {
+        const batch = await store.scanRows(serviceId, viewId, { consistency: "safe", limit });
+        return { candidates: batch.rows, readHead: batch.readHead };
+      },
+      (value) => canonicalizeMaterializedCandidate(value, parityRowCodec().decode),
+      checkpoint,
+    );
     const page = await executePortableQuery({
       definition: listDefinition(),
       params: {},
@@ -1080,5 +1663,32 @@ describe("dormant scans on every backing", () => {
       totalCount: 3,
       readHead: checkpoint,
     });
+    const copyView = `portable-copy-${crypto.randomUUID()}`;
+    const copyInstance = await store.createActive({
+      serviceId,
+      viewId: copyView,
+      definitionVersion: 1,
+      updatedAt: 1_000,
+      lastSuid: checkpoint,
+    });
+    const copyRows = {
+      a: JSON.stringify({ at: "2020-01-01T00:00:00.000Z", tags: [["k", "v"]], ids: ["a"] }),
+      n: JSON.stringify({ at: "2020-06-01T00:00:00.000Z", tags: [["m", "n"]], ids: ["b"] }),
+    };
+    for (const key of ["n", "a"] as const) {
+      await database.prepare(
+        `INSERT INTO mv_rows (service_id, view_id, generation, row_key, value_json, row_version, source_suid)
+         VALUES (?, ?, ?, ?, ?, 1, ?)`,
+      ).bind(serviceId, copyView, copyInstance.generation, key, copyRows[key], `copy-${key}`).run();
+    }
+    const checkpointCopy = await copiedItems(async () => ({
+      candidates: [candidate("a", copyRows.a), candidate("n", copyRows.n)],
+    }), "checkpoint");
+    const viewCopy = await copiedItems(async (limit) => {
+      const batch = await store.scanRows(serviceId, copyView, { consistency: "safe", limit });
+      return { candidates: batch.rows, readHead: batch.readHead };
+    }, "materialized");
+    expect(JSON.parse(viewCopy).items).toEqual(JSON.parse(checkpointCopy).items);
+    expect(JSON.parse(viewCopy).readHead).toBe(checkpoint);
   });
 });

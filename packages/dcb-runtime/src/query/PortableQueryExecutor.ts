@@ -149,15 +149,23 @@ export function compareUtf8(left: string, right: string): number {
   return leftBytes.length - rightBytes.length;
 }
 
-function denseArray(value: readonly unknown[]): boolean {
-  if (Object.getOwnPropertySymbols(value).length > 0) return false;
+function dataPropertyNames(value: object): string[] | undefined {
+  if (Object.getOwnPropertySymbols(value).length > 0) return undefined;
   const names = Object.getOwnPropertyNames(value);
-  if (!names.includes("length") || names.length !== value.length + 1) return false;
-  for (let index = 0; index < value.length; index += 1) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, index);
+  for (const name of names) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, name);
     if (descriptor === undefined || descriptor.get !== undefined || descriptor.set !== undefined || !("value" in descriptor)) {
-      return false;
+      return undefined;
     }
+  }
+  return names;
+}
+
+function denseArray(value: readonly unknown[]): boolean {
+  const names = dataPropertyNames(value);
+  if (names === undefined || !names.includes("length") || names.length !== value.length + 1) return false;
+  for (let index = 0; index < value.length; index += 1) {
+    if (!names.includes(String(index))) return false;
   }
   return true;
 }
@@ -168,12 +176,18 @@ export function detachedCopy(value: unknown, seen: WeakMap<object, unknown> = ne
   if (type === "boolean" || type === "number" || type === "string" || type === "bigint") return value;
   if (type !== "object") throw new DetachedCopyError();
   if (seen.has(value)) return seen.get(value);
-  if (value instanceof Date) {
+  if (isThenable(value)) throw new DetachedCopyError();
+  const prototype = Object.getPrototypeOf(value);
+  const names = dataPropertyNames(value);
+  if (names === undefined) throw new DetachedCopyError();
+  if (prototype === Date.prototype) {
+    if (names.length !== 0 || !(value instanceof Date)) throw new DetachedCopyError();
     const copy = new Date(value.getTime());
     seen.set(value, copy);
     return copy;
   }
-  if (value instanceof Map) {
+  if (prototype === Map.prototype) {
+    if (names.length !== 0 || !(value instanceof Map)) throw new DetachedCopyError();
     const copy = new Map<unknown, unknown>();
     seen.set(value, copy);
     for (const [key, entry] of value) {
@@ -181,33 +195,26 @@ export function detachedCopy(value: unknown, seen: WeakMap<object, unknown> = ne
     }
     return copy;
   }
-  if (value instanceof Set) {
+  if (prototype === Set.prototype) {
+    if (names.length !== 0 || !(value instanceof Set)) throw new DetachedCopyError();
     const copy = new Set<unknown>();
     seen.set(value, copy);
     for (const entry of value) copy.add(detachedCopy(entry, seen));
     return copy;
   }
-  if (isThenable(value)) throw new DetachedCopyError();
-  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer || value instanceof WeakMap || value instanceof WeakSet) {
-    throw new DetachedCopyError();
-  }
-  if (Array.isArray(value)) {
-    if (!denseArray(value)) throw new DetachedCopyError();
+  if (prototype === Array.prototype) {
+    if (!Array.isArray(value) || !denseArray(value)) throw new DetachedCopyError();
     const copy: unknown[] = [];
     seen.set(value, copy);
     for (let index = 0; index < value.length; index += 1) copy.push(detachedCopy(value[index], seen));
     return copy;
   }
-  const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) throw new DetachedCopyError();
-  if (Object.getOwnPropertySymbols(value).length > 0) throw new DetachedCopyError();
   const copy: Record<string, unknown> = prototype === null ? Object.create(null) : {};
   seen.set(value, copy);
-  for (const key of Object.getOwnPropertyNames(value)) {
+  for (const key of names) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (descriptor === undefined || descriptor.get !== undefined || descriptor.set !== undefined || !("value" in descriptor)) {
-      throw new DetachedCopyError();
-    }
+    if (descriptor === undefined || !("value" in descriptor)) throw new DetachedCopyError();
     Object.defineProperty(copy, key, {
       value: detachedCopy(descriptor.value, seen),
       enumerable: descriptor.enumerable === true,

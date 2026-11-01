@@ -414,22 +414,28 @@ export async function runPipelineContract(label, makeStore) {
 async function assertDormantCheckpointQuery(store, label, serviceId) {
   const tagGroup = "room";
   const tagProjector = "board";
+  const parity = [
+    { key: "a", label: "alpha", sourceSuid: "suid-a" },
+    { key: "n", label: "north", sourceSuid: "suid-n" },
+    { key: "é", label: "latin", sourceSuid: "suid-e" },
+  ];
   const inserted = {
     postgres: ["é", "n", "a"],
     "cosmos-memory": ["n", "é", "a"],
     "cosmos-emulator": ["a", "é", "n"],
     d1: ["é", "a", "n"],
   }[label] ?? ["n", "a", "é"];
-  for (const [index, content] of inserted.entries()) {
+  for (const [index, key] of inserted.entries()) {
+    const row = parity.find((candidate) => candidate.key === key);
     assert.equal(await store.advanceProjectionCheckpoint({
       serviceId,
-      projectionId: `tag-state:${tagGroup}:${content}:${tagProjector}`,
+      projectionId: `tag-state:${tagGroup}:${row.key}:${tagProjector}`,
       expectedLastSuid: null,
-      lastSuid: `suid-${content}`,
-      stateJson: JSON.stringify({ label: content }),
+      lastSuid: row.sourceSuid,
+      stateJson: JSON.stringify({ label: row.label }),
       version: 1,
       updatedAt: 40_000 + index,
-    }), true, `${label}: checkpoint ${content} must persist`);
+    }), true, `${label}: checkpoint ${row.key} must persist`);
   }
   assert.equal(await store.advanceProjectionCheckpoint({
     serviceId,
@@ -454,11 +460,11 @@ async function assertDormantCheckpointQuery(store, label, serviceId) {
     projectionIdSuffix: `:${tagProjector}`,
     limit: 4,
   });
-  assert.deepEqual(scanned.map((row) => row.projectionId), [
-    `tag-state:${tagGroup}:a:${tagProjector}`,
-    `tag-state:${tagGroup}:n:${tagProjector}`,
-    `tag-state:${tagGroup}:é:${tagProjector}`,
-  ], `${label}: provider identity order is not the encoded page order`);
+  assert.deepEqual(scanned.map((row) => [row.projectionId, row.lastSuid, row.stateJson]), parity.map((row) => [
+    `tag-state:${tagGroup}:${row.key}:${tagProjector}`,
+    row.sourceSuid,
+    JSON.stringify({ label: row.label }),
+  ]), `${label}: stored keys, values, and source ids match the shared fixture`);
   const rowCodec = {
     decode: (value) => {
       if (typeof value !== "object" || value === null || typeof value.label !== "string") throw new Error("row");
@@ -468,7 +474,7 @@ async function assertDormantCheckpointQuery(store, label, serviceId) {
   };
   const itemCodec = {
     decode: (value) => value,
-    encode: (value) => ({ key: value.key }),
+    encode: (value) => ({ key: value.key, label: value.label, sourceSuid: value.sourceSuid }),
   };
   const paramsCodec = {
     decode: () => ({ tie: "same" }),
@@ -480,7 +486,12 @@ async function assertDormantCheckpointQuery(store, label, serviceId) {
       rowCodec,
       paramsCodec,
       itemCodec,
-      handleFilter: (projection) => projection.rows.map((row) => ({ key: row.key, tie: "same" })),
+      handleFilter: (projection) => projection.rows.map((row) => ({
+        key: row.key,
+        label: row.value.label,
+        sourceSuid: row.sourceSuid,
+        tie: "same",
+      })),
       handleSort: (items) => [...items].sort((left, right) => left.tie < right.tie ? -1 : left.tie > right.tie ? 1 : 0),
     },
     params: {},
@@ -497,8 +508,40 @@ async function assertDormantCheckpointQuery(store, label, serviceId) {
     canonicalize: (candidate) => canonicalizeCheckpointCandidate(candidate, rowCodec.decode, { tagGroup, tagProjector }),
   });
   assert.equal(executed.ok, true, `${label}: dormant executor must encode the shared page`);
-  assert.deepEqual(executed.items, [{ key: "a" }, { key: "n" }], `${label}: encoded page must follow canonical order`);
+  assert.deepEqual(executed.items, [
+    { key: "a", label: "alpha", sourceSuid: "suid-a" },
+    { key: "n", label: "north", sourceSuid: "suid-n" },
+  ], `${label}: encoded page must follow canonical order`);
   assert.equal(executed.totalCount, 3, `${label}: filtered count is taken before paging`);
+  const corruptService = `${serviceId}-corrupt`;
+  const malformedId = `tag-state:${tagGroup}::${tagProjector}`;
+  assert.equal(await store.advanceProjectionCheckpoint({
+    serviceId: corruptService,
+    projectionId: `tag-state:${tagGroup}:bad:${tagProjector}`,
+    expectedLastSuid: null,
+    lastSuid: "suid-bad",
+    stateJson: "{",
+    version: 1,
+    updatedAt: 41_000,
+  }), true, `${label}: corrupt checkpoint JSON must persist`);
+  assert.equal(await store.advanceProjectionCheckpoint({
+    serviceId: corruptService,
+    projectionId: malformedId,
+    expectedLastSuid: null,
+    lastSuid: "suid-malformed",
+    stateJson: JSON.stringify({ label: "empty" }),
+    version: 1,
+    updatedAt: 41_001,
+  }), true, `${label}: malformed matching identity must persist`);
+  const corruptScan = {
+    serviceId: corruptService,
+    projectionIdPrefix: `tag-state:${tagGroup}:`,
+    projectionIdSuffix: `:${tagProjector}`,
+    limit: 10,
+  };
+  const rawCorrupt = await store.scanProjectionCheckpointCandidates(corruptScan);
+  assert.equal(rawCorrupt.some((row) => row.stateJson === "{"), true, `${label}: adapter must return corrupt JSON text`);
+  assert.equal(rawCorrupt.some((row) => row.projectionId === malformedId), true, `${label}: adapter must return the malformed identity`);
   const corrupt = await executePortableQuery({
     definition: {
       kind: "scalar",
@@ -509,12 +552,47 @@ async function assertDormantCheckpointQuery(store, label, serviceId) {
     },
     params: {},
     maximum: 10,
-    scan: async () => ({
-      candidates: [{ projectionId: `tag-state:${tagGroup}:a:${tagProjector}`, lastSuid: "suid-a", stateJson: "{" }],
+    scan: async (limit) => ({
+      candidates: await store.scanProjectionCheckpointCandidates({ ...corruptScan, limit }),
     }),
     canonicalize: (candidate) => canonicalizeCheckpointCandidate(candidate, rowCodec.decode, { tagGroup, tagProjector }),
   });
-  assert.deepEqual(corrupt, { ok: false, kind: "row-invalid", message: "Query row is invalid." }, `${label}: corrupt checkpoint JSON stays row-invalid`);
+  assert.deepEqual(corrupt, { ok: false, kind: "row-invalid", message: "Query row is invalid." }, `${label}: persisted corrupt checkpoint JSON stays row-invalid`);
+  if (label === "d1") {
+    const database = store.database;
+    assert.equal(typeof database?.prepare, "function", "d1: the pipeline store must expose its database to a second uninitialized adapter");
+    const { D1EventStore } = await import("@sekiban/dcb-runtime/d1");
+    const unavailable = await executePortableQuery({
+      definition: {
+        kind: "scalar",
+        rowCodec,
+        paramsCodec,
+        resultCodec: { decode: (value) => value, encode: (value) => value },
+        handleQuery: () => ({ count: 1 }),
+      },
+      params: {},
+      maximum: 10,
+      scan: async () => ({
+        candidates: await new D1EventStore(database).scanProjectionCheckpointCandidates(corruptScan),
+      }),
+      canonicalize: (candidate) => canonicalizeCheckpointCandidate(candidate, rowCodec.decode, { tagGroup, tagProjector }),
+    });
+    assert.deepEqual(unavailable, {
+      ok: false,
+      kind: "projection-unavailable",
+      message: "Query projection is unavailable.",
+    }, "d1: an uninitialized adapter stays projection-unavailable");
+    return;
+  }
+  const idle = label === "postgres"
+    ? POSTGRES_STORE_PROVIDER.create({ POSTGRES_URL })
+    : label === "cosmos-emulator"
+      ? new CosmosEventStore({
+        endpoint: process.env.COSMOS_ENDPOINT,
+        key: await configuredCosmosKey(),
+        database: process.env.COSMOS_DATABASE,
+      })
+      : new CosmosEventStore({ client: new MemoryCosmosClient() });
   const unavailable = await executePortableQuery({
     definition: {
       kind: "scalar",
@@ -525,16 +603,16 @@ async function assertDormantCheckpointQuery(store, label, serviceId) {
     },
     params: {},
     maximum: 10,
-    scan: async () => {
-      throw new Error("connection reset while reading checkpoints");
-    },
+    scan: async () => ({
+      candidates: await idle.scanProjectionCheckpointCandidates(corruptScan),
+    }),
     canonicalize: (candidate) => canonicalizeCheckpointCandidate(candidate, rowCodec.decode, { tagGroup, tagProjector }),
   });
   assert.deepEqual(unavailable, {
     ok: false,
     kind: "projection-unavailable",
     message: "Query projection is unavailable.",
-  }, `${label}: provider rejection stays projection-unavailable`);
+  }, `${label}: an uninitialized adapter stays projection-unavailable`);
   assert.equal(JSON.stringify(unavailable).includes("connection"), false);
 }
 
