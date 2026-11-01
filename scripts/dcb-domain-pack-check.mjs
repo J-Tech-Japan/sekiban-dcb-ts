@@ -66,7 +66,7 @@ if (report.unpackedSize > maxUnpackedBytes) {
   throw new Error(`SDT-G59 pack guard: unpacked tarball is ${report.unpackedSize} bytes, limit is ${maxUnpackedBytes}`);
 }
 const directBuild = packageJson.scripts?.build ?? "";
-if (!directBuild.startsWith("npm --prefix ../.. run build --workspace @sekiban/dcb-core && ")) {
+if (!directBuild.startsWith("npm run build --workspace @sekiban/dcb-core && ")) {
   throw new Error("SDT-G59 pack guard: domain workspace build must build @sekiban/dcb-core before emitting declarations");
 }
 const coreDist = resolve(root, "packages/dcb-core/dist");
