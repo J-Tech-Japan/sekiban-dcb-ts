@@ -736,6 +736,8 @@ export async function runFaultSuite() {
 async function assertExecutableWorkerQuery(store, label, serviceId) {
   const { handleSerializedQuery, QueryRegistry, ProjectorRegistry } = await loadWitnessModules();
   const seen = [];
+  let scalarCalls = 0;
+  let listCalls = 0;
   const rowCodec = {
     decode(value) {
       if (typeof value !== "object" || value === null || typeof value.label !== "string") throw new Error("row");
@@ -745,40 +747,71 @@ async function assertExecutableWorkerQuery(store, label, serviceId) {
       return value;
     },
   };
-  const registry = new QueryRegistry([{
-    queryType: "worker-list",
-    endpoint: "list-query",
-    tagGroup: "room",
-    tagProjector: "board",
-    enabled: true,
-    version: 1,
-    execution: {
-      kind: "list",
-      rowCodec,
-      paramsCodec: {
-        decode(value) {
-          seen.push(value);
-          if (value !== null && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "PageNumber")) {
-            throw new Error("control");
-          }
-          return {};
-        },
-        encode(value) {
-          return value;
-        },
-      },
-      itemCodec: {
-        decode(value) {
-          return value;
-        },
-        encode(value) {
-          return { key: value.key, label: value.label };
-        },
-      },
-      handleFilter: (projection) => projection.rows.map((row) => ({ key: row.key, label: row.value.label })),
-      handleSort: (items) => items,
+  const passthrough = {
+    decode(value) {
+      return value;
     },
-  }]);
+    encode(value) {
+      return value;
+    },
+  };
+  const registry = new QueryRegistry([
+    {
+      queryType: "worker-count",
+      endpoint: "query",
+      tagGroup: "room",
+      tagProjector: "board",
+      enabled: true,
+      version: 1,
+      execution: {
+        kind: "scalar",
+        rowCodec,
+        paramsCodec: passthrough,
+        resultCodec: passthrough,
+        handleQuery(projection) {
+          scalarCalls += 1;
+          return { count: projection.rows.length };
+        },
+      },
+    },
+    {
+      queryType: "worker-list",
+      endpoint: "list-query",
+      tagGroup: "room",
+      tagProjector: "board",
+      enabled: true,
+      version: 1,
+      execution: {
+        kind: "list",
+        rowCodec,
+        paramsCodec: {
+          decode(value) {
+            seen.push(value);
+            if (value !== null && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "PageNumber")) {
+              throw new Error("control");
+            }
+            return {};
+          },
+          encode(value) {
+            return value;
+          },
+        },
+        itemCodec: {
+          decode(value) {
+            return value;
+          },
+          encode(value) {
+            return { key: value.key, label: value.label };
+          },
+        },
+        handleFilter(projection) {
+          listCalls += 1;
+          return projection.rows.map((row) => ({ key: row.key, label: row.value.label }));
+        },
+        handleSort: (items) => items,
+      },
+    },
+  ]);
   const projectors = new ProjectorRegistry([{
     id: "board",
     tagPayloadName: "Board",
@@ -790,25 +823,116 @@ async function assertExecutableWorkerQuery(store, label, serviceId) {
     payload: () => "{}",
     version: () => 1,
   }]);
-  const response = await handleSerializedQuery(new Request("https://query.test/api/sekiban/serialized/list-query", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-sdt-g9-test-service-id": serviceId,
-    },
-    body: JSON.stringify({
-      queryType: "worker-list",
-      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 2, roomId: "room-1" }),
-    }),
-  }), {}, { registry, projectors, store });
-  const body = await response.json();
-  assert.equal(response.status, 200, `${label}: executable worker query must succeed`);
-  assert.deepEqual(JSON.parse(body.itemsJson), [
+  // Memory Cosmos and the emulator share this function. The flag below is set
+  // only after the full HTTP matrix, and only when this process is the emulator.
+  async function post(path, queryType, params, options = {}) {
+    const response = await handleSerializedQuery(new Request(`https://query.test/api/sekiban/serialized/${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-sdt-g9-test-service-id": options.serviceId ?? serviceId,
+      },
+      body: JSON.stringify({ queryType, queryParamsJson: JSON.stringify(params) }),
+    }), {}, {
+      registry,
+      projectors,
+      store: options.store ?? store,
+      ...(options.maxScanRows === undefined ? {} : { maxScanRows: options.maxScanRows }),
+    });
+    return { status: response.status, body: await response.json() };
+  }
+
+  const scalar = await post("query", "worker-count", { roomId: "room-1" });
+  assert.equal(scalar.status, 200, `${label}: scalar worker query must succeed`);
+  assert.deepEqual(Object.keys(scalar.body).sort(), ["resultJson"], `${label}: scalar envelope is resultJson only`);
+  assert.deepEqual(JSON.parse(scalar.body.resultJson), { count: 3 }, `${label}: scalar result counts the checkpoint rows`);
+  assert.equal(scalarCalls, 1, `${label}: scalar handler runs for a successful query`);
+
+  const page = (pageNumber, newestFirst) => post("list-query", "worker-list", {
+    PageNumber: pageNumber,
+    PageSize: 2,
+    roomId: "room-1",
+    ...(newestFirst ? { NewestFirst: true } : {}),
+  });
+  const ascending = await page(1, false);
+  assert.equal(ascending.status, 200, `${label}: executable worker query must succeed`);
+  assert.deepEqual(JSON.parse(ascending.body.itemsJson), [
     { key: "a", label: "alpha" },
     { key: "n", label: "north" },
   ], `${label}: worker page matches the canonical checkpoint order`);
-  assert.equal(body.totalCount, 3, `${label}: worker count is taken before paging`);
+  assert.equal(ascending.body.totalCount, 3, `${label}: worker count is taken before paging`);
+  assert.equal(ascending.body.totalPages, 2, `${label}: worker page count follows the page size`);
+  assert.equal(ascending.body.currentPage, 1, `${label}: first page number is preserved`);
+  assert.equal(ascending.body.pageSize, 2, `${label}: page size is preserved`);
+  assert.equal(ascending.body.readHead, "suid-n", `${label}: list read head is the greatest scanned source id`);
   assert.equal(seen.some((value) => value !== null && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "PageNumber")), false, `${label}: list controls must not reach the params codec`);
+  const ascendingBoundary = await page(2, false);
+  assert.equal(ascendingBoundary.status, 200, `${label}: second ascending page must succeed`);
+  assert.deepEqual(JSON.parse(ascendingBoundary.body.itemsJson), [
+    { key: "é", label: "latin" },
+  ], `${label}: second ascending page is the remaining row`);
+  assert.equal(ascendingBoundary.body.currentPage, 2, `${label}: second page number is preserved`);
+  assert.equal(ascendingBoundary.body.totalCount, 3, `${label}: second page keeps the full count`);
+  const descending = await page(1, true);
+  assert.equal(descending.status, 200, `${label}: descending worker page must succeed`);
+  assert.deepEqual(JSON.parse(descending.body.itemsJson), [
+    { key: "é", label: "latin" },
+    { key: "n", label: "north" },
+  ], `${label}: descending page reverses the canonical order`);
+  const descendingBoundary = await page(2, true);
+  assert.equal(descendingBoundary.status, 200, `${label}: second descending page must succeed`);
+  assert.deepEqual(JSON.parse(descendingBoundary.body.itemsJson), [
+    { key: "a", label: "alpha" },
+  ], `${label}: second descending page is the remaining row`);
+  assert.equal(listCalls, 4, `${label}: each list page runs the list handler`);
+
+  const callsBeforeLimit = scalarCalls;
+  const limited = await post("query", "worker-count", { roomId: "room-1" }, { maxScanRows: 2 });
+  assert.equal(limited.status, 422, `${label}: maxScanRows + 1 must be refused over HTTP`);
+  assert.deepEqual(limited.body, {
+    error: "The query scan limit was exceeded.",
+    code: "query_scan_limit_exceeded",
+  }, `${label}: scan-limit refusal uses the public query error`);
+  assert.equal(scalarCalls, callsBeforeLimit, `${label}: scan-limit refusal happens before the handler`);
+
+  const corruptService = `${serviceId}-worker-corrupt`;
+  assert.equal(await store.advanceProjectionCheckpoint({
+    serviceId: corruptService,
+    projectionId: "tag-state:room:bad:board",
+    expectedLastSuid: null,
+    lastSuid: "suid-bad",
+    stateJson: "{",
+    version: 1,
+    updatedAt: 42_000,
+  }), true, `${label}: corrupt worker checkpoint must persist`);
+  const corrupt = await post("query", "worker-count", { roomId: "room-1" }, { serviceId: corruptService });
+  assert.equal(corrupt.status, 500, `${label}: corrupt checkpoint must fail through the worker`);
+  assert.deepEqual(corrupt.body, {
+    error: "The query projection contains an invalid row.",
+    code: "query_row_invalid",
+  }, `${label}: corrupt checkpoint maps to the public row error`);
+
+  const failing = new Proxy(store, {
+    get(target, prop, receiver) {
+      if (prop === "scanProjectionCheckpointCandidates") {
+        return () => {
+          throw new Error("provider-secret-token");
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const rejected = await post("query", "worker-count", { roomId: "room-1" }, {
+    store: failing,
+    serviceId: `${serviceId}-worker-unavailable`,
+  });
+  assert.equal(rejected.status, 503, `${label}: provider rejection must fail through the worker`);
+  assert.deepEqual(rejected.body, {
+    error: "The mapped query projection is unavailable",
+    code: "projection_unavailable",
+  }, `${label}: provider rejection maps to the public unavailable error`);
+  assert.equal(JSON.stringify(rejected.body).includes("provider-secret-token"), false, `${label}: provider rejection must not echo the provider error`);
   if (label === "cosmos-emulator") realCosmosExecutableWitness = true;
 }
 

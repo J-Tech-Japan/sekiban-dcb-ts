@@ -978,6 +978,20 @@ describe("executable query activation", () => {
     expect(state.scalar).toBe(0);
   });
 
+  function expectDefinitionError(run: () => void, label: string): void {
+    let thrown: unknown;
+    try {
+      run();
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown, label).toBeInstanceOf(RuntimeQueryDefinitionError);
+    const error = thrown as RuntimeQueryDefinitionError;
+    expect(error.name, label).toBe("RuntimeQueryDefinitionError");
+    expect(error.code, label).toBe("QUERY_DEFINITION_INVALID");
+    expect(error.message, label).toBe("Runtime query definition is invalid.");
+  }
+
   it("rejects malformed runtime query definitions directly", () => {
     const codec = { encode: (value: unknown) => value, decode: (value: unknown) => value };
     const scalarExecution = { kind: "scalar", rowCodec: codec, paramsCodec: codec, resultCodec: codec, handleQuery: () => ({ count: 0 }) };
@@ -1007,16 +1021,58 @@ describe("executable query activation", () => {
       { ...valid, kind: "scalar" },
       { ...valid, contract: {} },
       { ...valid, handleQuery: () => ({}) },
+      { ...valid, handleFilter: () => [] },
+      { ...valid, handleSort: (items: unknown) => items },
     ];
     for (const definition of rejects) {
-      expect(() => new QueryRegistry([definition as QueryDefinition]), JSON.stringify(Object.keys(definition))).toThrow(RuntimeQueryDefinitionError);
+      expectDefinitionError(() => new QueryRegistry([definition as QueryDefinition]), JSON.stringify(Object.keys(definition)));
     }
-    expect(() => new QueryRegistry([
+    expectDefinitionError(() => new QueryRegistry([
       { queryType: "same", endpoint: "query", tagGroup: TAG_GROUP, tagProjector: TAG_PROJECTOR, enabled: true },
       { queryType: "same", endpoint: "query", tagGroup: TAG_GROUP, tagProjector: TAG_PROJECTOR, enabled: true },
-    ])).toThrow(RuntimeQueryDefinitionError);
+    ]), "duplicate queryType");
     const legacy = new QueryRegistry([{ queryType: "legacy", endpoint: "query", tagGroup: TAG_GROUP, tagProjector: TAG_PROJECTOR, enabled: true }]);
     expect(Object.prototype.hasOwnProperty.call(legacy.resolve("legacy") ?? {}, "execution")).toBe(false);
+  });
+
+  it("rejects conflicting executable identity aliases directly", () => {
+    const codec = { encode: (value: unknown) => value, decode: (value: unknown) => value };
+    const execution = { kind: "scalar" as const, rowCodec: codec, paramsCodec: codec, resultCodec: codec, handleQuery: () => ({ count: 0 }) };
+    const base = {
+      queryType: "count",
+      endpoint: "query" as const,
+      tagGroup: TAG_GROUP,
+      tagProjector: TAG_PROJECTOR,
+      enabled: true,
+      version: 1,
+      execution,
+    };
+    const conflicts = [
+      { ...base, id: "different" },
+      { ...base, name: "also-different" },
+      { ...base, id: "different", name: "also-different" },
+      { ...base, id: "" },
+      { ...base, name: "" },
+      { ...base, id: 1 },
+      { ...base, name: 1 },
+    ] as const;
+    for (const definition of conflicts) {
+      const extra = definition as { readonly id?: unknown; readonly name?: unknown };
+      expectDefinitionError(() => new QueryRegistry([definition as QueryDefinition]), JSON.stringify(extra.id ?? extra.name));
+    }
+    const agreed = new QueryRegistry([{ ...base, id: "count", name: "count" } as QueryDefinition]);
+    expect(agreed.resolve("count")?.queryType).toBe("count");
+    const legacy = new QueryRegistry([{
+      queryType: "legacy",
+      id: "other",
+      name: "metadata",
+      endpoint: "query",
+      tagGroup: TAG_GROUP,
+      tagProjector: TAG_PROJECTOR,
+      enabled: true,
+    } as QueryDefinition]);
+    expect(legacy.resolve("legacy")?.queryType).toBe("legacy");
+    expect(legacy.resolve("other")).toBeUndefined();
   });
 
   it("keeps metadata-only definitions on the legacy parameter guard", async () => {

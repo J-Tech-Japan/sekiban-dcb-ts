@@ -3,8 +3,10 @@
  * SDT-G74 release-shaped public surface extractor.
  *
  * The model is deliberately produced from npm-pack output, then resolved
- * through each package's exports map with TypeScript's Node16 resolver.  It
- * is not a source grep or an assignability-only approximation.
+ * through each package's exports map with TypeScript's Node16 resolver. The
+ * declaration program uses Bundler resolution so extensionless runtime
+ * declarations resolve. It is not a source grep or an assignability-only
+ * approximation.
  */
 import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { readFileSync, readdirSync, realpathSync } from "node:fs";
@@ -16,7 +18,32 @@ import ts from "typescript";
 import { publicSurfaceHash } from "./g74-surface-hash.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const packageNames = ["dcb-core", "dcb-domain", "dcb-client"];
+const packageNames = ["dcb-core", "dcb-domain", "dcb-client", "dcb-runtime"];
+const HOST_AMBIENT_TYPES = `
+interface DurableObjectId {}
+interface DurableObjectStub {}
+interface DurableObjectNamespace<T = unknown> {}
+interface DurableObjectState {}
+interface DurableObjectStorage {
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  put<T>(key: string, value: T): Promise<void>;
+  list<T = unknown>(options?: unknown): Promise<Map<string, T>>;
+  getAlarm(): Promise<number | null>;
+  setAlarm(scheduledTime: number): Promise<void>;
+  deleteAlarm(): Promise<void>;
+}
+interface DurableObjectTransaction {}
+interface DurableObject {}
+interface SqlStorage {}
+interface D1PreparedStatement {}
+interface D1Database {}
+interface Fetcher {}
+interface Hyperdrive {}
+interface Queue<Body = unknown> {}
+interface MessageBatch<Body = unknown> {}
+interface ExecutionContext { readonly tracing?: unknown; }
+interface ExportedHandler<Env = unknown, CfHostMetadata = unknown, Cf = unknown, Module = unknown> {}
+`;
 const compilerVersion = ts.version;
 
 function fail(message) {
@@ -499,16 +526,18 @@ async function extractModel() {
         entries.push({ shortName, packageInfo, entry, resolved });
       }
     }
+    const hostTypes = join(resolutionRoot, "surface-host-types.d.ts");
+    await writeFile(hostTypes, HOST_AMBIENT_TYPES);
     const compilerOptions = {
       target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.Node16,
-      moduleResolution: ts.ModuleResolutionKind.Node16,
+      module: ts.ModuleKind.ES2022,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
       strict: true,
       skipLibCheck: false,
       noEmit: true,
       types: [],
     };
-    const program = ts.createProgram(entries.map((entry) => entry.resolved.fileName), compilerOptions);
+    const program = ts.createProgram([hostTypes, ...entries.map((entry) => entry.resolved.fileName)], compilerOptions);
     const checker = program.getTypeChecker();
     const declarationDiagnostics = ts.getPreEmitDiagnostics(program).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
     if (declarationDiagnostics.length > 0) {
@@ -566,12 +595,29 @@ async function extractModel() {
     });
     const model = {
       schema: "sdt-g74-surface/v3",
-      generatedBy: { typescript: compilerVersion, module: "Node16", moduleResolution: "Node16", target: "ES2022", source: "npm pack + prepack + exports-map-resolved declarations" },
+      generatedBy: { typescript: compilerVersion, module: "ES2022", moduleResolution: "Bundler", target: "ES2022", source: "npm pack + prepack + Node16 exports-map resolution + Bundler declaration program" },
       packages: manifestFacts,
       entryPoints: modelEntries,
       reachableDeclarations: reachableDeclarationFacts(checker, allExportedSymbols, join(resolutionRoot, "node_modules", "@sekiban")),
       declarationFiles: declarationFileFacts(program, join(resolutionRoot, "node_modules", "@sekiban")),
     };
+    const postgresStub = join(temp, "postgres-stub.mjs");
+    const workersStub = join(temp, "cloudflare-workers-stub.mjs");
+    const hostLoader = join(temp, "host-stub-loader.mjs");
+    await writeFile(postgresStub, "export default function postgres() { return {}; }\n");
+    await writeFile(workersStub, "export const tracing = {};\n");
+    await writeFile(hostLoader, `const stubs = new Map([
+  ["postgres", ${JSON.stringify(pathToFileURL(postgresStub).href)}],
+  ["cloudflare:workers", ${JSON.stringify(pathToFileURL(workersStub).href)}],
+]);
+export async function resolve(specifier, context, nextResolve) {
+  const stub = stubs.get(specifier);
+  if (stub !== undefined) return { url: stub, shortCircuit: true };
+  return nextResolve(specifier, context);
+}
+`);
+    const { register } = await import("node:module");
+    await register(pathToFileURL(hostLoader).href, import.meta.url);
     const runtimeNamespaces = {};
     for (const entry of entries) {
       const target = join(resolutionRoot, "node_modules", "@sekiban", entry.shortName, entry.entry.import);

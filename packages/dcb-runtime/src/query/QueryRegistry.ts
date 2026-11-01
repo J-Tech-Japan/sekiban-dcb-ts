@@ -99,6 +99,14 @@ function rejectTypedMarkers(value: object): void {
   }
 }
 
+/** Executable identity is queryType. A present id or name must be that same string. */
+function rejectConflictingIdentity(value: Record<string, unknown>): void {
+  for (const alias of ["queryType", "id", "name"] as const) {
+    if (!hasOwn(value, alias)) continue;
+    if (value[alias] !== value.queryType) invalid();
+  }
+}
+
 function scalarExecution(value: Record<string, unknown>): RuntimeScalarQueryExecution {
   if (value.kind !== "scalar") invalid();
   if (!isCodec(value.rowCodec) || !isCodec(value.paramsCodec) || !isCodec(value.resultCodec)) invalid();
@@ -124,6 +132,7 @@ function validateDefinition(definition: QueryDefinition): QueryDefinition {
   if (definition.materializedViewId !== undefined && !nonEmpty(definition.materializedViewId)) invalid();
   const executable = hasOwn(definition, "execution");
   if (!executable) return definition;
+  rejectConflictingIdentity(definition);
   if (!isRecord(definition.execution)) invalid();
   if (!positiveVersion(definition.version)) invalid();
   if (definition.endpoint === "query") {
