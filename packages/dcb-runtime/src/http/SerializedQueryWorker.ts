@@ -5,6 +5,7 @@ import {
 import { safeWindowCeilingExceeded, safeWindowMs } from "../projection/ProjectionRuntime";
 import {
   projectionHasObserved,
+  readRawCheckpointCandidates,
   readRowsPageFromBacking,
   selectQueryBacking,
   compareSuid,
@@ -16,9 +17,19 @@ import {
   type WaitForTargetLookup,
   type WaitForTargetSourcePort,
 } from "../query/ProjectionQueryStore";
+import {
+  executePortableQuery,
+  canonicalizeCheckpointCandidate,
+  canonicalizeMaterializedCandidate,
+  type PortableQueryDefinition,
+  type PortableQueryFailure,
+  type PortableQuerySuccess,
+} from "../query/PortableQueryExecutor";
 import { D1MaterializedViewStore } from "../mv/MaterializedViewStore";
 import {
   DEPLOYED_QUERY_REGISTRY,
+  isExecutableQueryDefinition,
+  type ExecutableQueryDefinition,
   type QueryDefinition,
   type QueryEndpoint,
   type QueryRegistry,
@@ -67,6 +78,8 @@ export interface QueryExecutionOptions {
   }) => void;
   /** Host/deployment identity seam; defaults to envServiceIdentity. */
   serviceIdentityProvider?: ServiceIdentityProvider;
+  /** Normalized deploy-time scan bound. Direct callers default to 1,000. */
+  maxScanRows?: number;
 }
 
 interface QueryRequest {
@@ -441,6 +454,350 @@ function pageReadHead(
   return visible.reduce((head, entry) => compareSuid(entry.suid, head) > 0 ? entry.suid : head, "");
 }
 
+class QueryAdmissionResponse extends Error {
+  readonly response: Response;
+
+  constructor(response: Response) {
+    super("Query admission response");
+    this.name = "QueryAdmissionResponse";
+    this.response = response;
+  }
+}
+
+function orderingQuarantineResponse(): Response {
+  return error(
+    503,
+    "projection_ordering_quarantined",
+    "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
+  );
+}
+
+function executableFailureResponse(failure: PortableQueryFailure): Response {
+  switch (failure.kind) {
+    case "params-invalid":
+      return error(400, "query_params_invalid", "The query parameters are invalid.");
+    case "scan-limit-exceeded":
+      return error(422, "query_scan_limit_exceeded", "The query scan limit was exceeded.");
+    case "row-invalid":
+      return error(500, "query_row_invalid", "The query projection contains an invalid row.");
+    case "result-invalid":
+      return error(500, "query_result_invalid", "The query handler returned an invalid result.");
+    case "handler-failed":
+      return error(500, "query_handler_failed", "The query handler failed.");
+    case "projection-unavailable":
+      return error(503, "projection_unavailable", "The mapped query projection is unavailable");
+    default: {
+      const unexpected: never = failure.kind;
+      return unexpected;
+    }
+  }
+}
+
+function executableSuccessResponse(success: PortableQuerySuccess): Response {
+  if (success.kind === "scalar") {
+    return json({ resultJson: JSON.stringify(success.result) });
+  }
+  return json({
+    itemsJson: JSON.stringify(success.items),
+    totalCount: success.totalCount,
+    totalPages: success.totalPages,
+    currentPage: success.currentPage,
+    pageSize: success.pageSize,
+    ...(success.readHead === undefined ? {} : { readHead: success.readHead }),
+  });
+}
+
+function executableProjectorUnavailable(definition: QueryDefinition, options: QueryExecutionOptions): boolean {
+  return !definition.enabled || (options.projectors ?? DEPLOYED_PROJECTOR_REGISTRY).resolve(definition.tagProjector) === undefined;
+}
+
+function executableDomainParams(value: Record<string, unknown>): Record<string, unknown> {
+  const executableListControls = new Set(["PageNumber", "PageSize", "NewestFirst", "consistency"]);
+  const params: Record<string, unknown> = {};
+  for (const key of Object.getOwnPropertyNames(value)) {
+    if (executableListControls.has(key)) continue;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !("value" in descriptor)) continue;
+    Object.defineProperty(params, key, {
+      value: descriptor.value,
+      enumerable: descriptor.enumerable === true,
+      configurable: true,
+      writable: true,
+    });
+  }
+  return params;
+}
+
+function checkpointReadHead(candidates: readonly unknown[]): string {
+  let head = "";
+  for (const candidate of candidates) {
+    if (typeof candidate !== "object" || candidate === null) continue;
+    const lastSuid = (candidate as { readonly lastSuid?: unknown }).lastSuid;
+    if (typeof lastSuid !== "string") continue;
+    if (compareSuid(lastSuid, head) > 0) head = lastSuid;
+  }
+  return head;
+}
+
+function observedExecutableEntries(candidates: readonly unknown[]): ProjectedQueryEntry[] {
+  const entries: ProjectedQueryEntry[] = [];
+  for (const candidate of candidates) {
+    if (!isObject(candidate)) continue;
+    if (typeof candidate.rowKey === "string" && typeof candidate.valueJson === "string" && typeof candidate.sourceSuid === "string") {
+      let eventId = candidate.rowKey;
+      try {
+        const parsed: unknown = JSON.parse(candidate.valueJson);
+        if (isObject(parsed) && typeof parsed.eventId === "string" && parsed.eventId.length > 0) eventId = parsed.eventId;
+      } catch {
+        eventId = candidate.rowKey;
+      }
+      entries.push({ eventId, suid: candidate.sourceSuid, payload: candidate.valueJson });
+      continue;
+    }
+    if (typeof candidate.projectionId === "string" && typeof candidate.lastSuid === "string" && typeof candidate.stateJson === "string") {
+      entries.push({ eventId: candidate.projectionId, suid: candidate.lastSuid, payload: candidate.stateJson });
+    }
+  }
+  return entries;
+}
+
+interface ExecutableAdmissionState {
+  selection?: QueryBackingSelection;
+  materialized?: MaterializedViewQueryPort;
+  safeRead: boolean;
+  generation?: number;
+  consistency: "safe" | "unsafe";
+  candidates: readonly unknown[];
+}
+
+async function recheckExecutableBoundary(
+  state: ExecutableAdmissionState,
+  serviceId: string,
+  viewId: string,
+  reason: "prepared" | "wait" | "page",
+): Promise<void> {
+  if (!state.safeRead || state.materialized === undefined) return;
+  const quarantine = await state.materialized.readOrderingQuarantine?.(serviceId, viewId);
+  if (quarantine !== undefined) throw new QueryAdmissionResponse(orderingQuarantineResponse());
+  const generation = await state.materialized.readActiveGeneration?.(serviceId, viewId);
+  if (generation !== undefined && state.generation !== undefined && generation !== state.generation) {
+    const message = reason === "wait"
+      ? "The mapped query projection changed generation while the safe wait was running; retry the read"
+      : reason === "page"
+        ? "The mapped query projection changed generation while the safe page was being read; retry the read"
+        : "The mapped query projection changed generation while the safe read was being prepared; retry the read";
+    throw new QueryAdmissionResponse(error(503, "projection_unavailable", message));
+  }
+  state.generation = generation ?? state.generation;
+}
+
+async function admitExecutableQuery(
+  state: ExecutableAdmissionState,
+  parsed: QueryRequest,
+  definition: ExecutableQueryDefinition,
+  env: QueryWorkerEnv,
+  options: QueryExecutionOptions,
+  serviceId: string,
+  requestStartedAt: number,
+  viewId: string,
+): Promise<void> {
+  const backing = options.queryBacking ?? "memory";
+  let requestStoreValue: PipelineStore | undefined;
+  let waitStore: QueryProjectionStore | undefined = options.store;
+  if (backing === "d1-mv") {
+    const materializedView = options.materializedViewQueryPort ??
+      (env.D1_MV === undefined ? undefined : new D1MaterializedViewStore(env.D1_MV));
+    if (materializedView === undefined) {
+      throw new QueryAdmissionResponse(error(503, "projection_unavailable", "The D1 materialized-view query projection is unavailable"));
+    }
+    state.materialized = materializedView;
+    await materializedView.initialize?.();
+    const selection = selectQueryBacking({ backing, materializedView });
+    if (selection.backing !== "d1-mv" || selection.store.scanRows === undefined) {
+      throw new QueryAdmissionResponse(error(503, "projection_unavailable", "The mapped query projection is unavailable"));
+    }
+    state.selection = selection;
+    const orderingQuarantine = await materializedView.readOrderingQuarantine?.(serviceId, viewId);
+    if (state.safeRead && orderingQuarantine !== undefined) throw new QueryAdmissionResponse(orderingQuarantineResponse());
+    if (state.safeRead) state.generation = await materializedView.readActiveGeneration?.(serviceId, viewId);
+    if (await materializedView.hasCheckpointAheadFinding?.(serviceId, viewId)) {
+      throw new QueryAdmissionResponse(error(503, "projection_unavailable", "The D1 materialized-view query projection is unavailable"));
+    }
+    if (parsed.waitForSortableUniqueId !== undefined && waitStore === undefined) {
+      if (options.storeProvider === undefined) {
+        throw new QueryAdmissionResponse(error(503, "projection_unavailable", "A query projection store is not configured"));
+      }
+      requestStoreValue = requestStore(env, options.storeProvider);
+      await requestStoreValue.initialize();
+      waitStore = requestStoreValue;
+    }
+  } else {
+    if (options.store === undefined && options.storeProvider === undefined) {
+      throw new QueryAdmissionResponse(error(503, "projection_unavailable", "A query projection store is not configured"));
+    }
+    requestStoreValue = options.store === undefined ? requestStore(env, options.storeProvider!) : undefined;
+    waitStore = options.store ?? requestStoreValue!;
+    if (requestStoreValue !== undefined) await requestStoreValue.initialize();
+    state.selection = selectQueryBacking({ backing, memory: waitStore });
+  }
+  if (parsed.waitForSortableUniqueId !== undefined) {
+    let waitResult: D1WaitResult | undefined;
+    if (state.selection?.backing === "d1-mv") {
+      if (waitStore === undefined || state.materialized === undefined || !isWaitForTargetSourcePort(waitStore)) {
+        throw new QueryAdmissionResponse(error(503, "projection_unavailable", "The D1 materialized-view waitFor source is unavailable"));
+      }
+      waitResult = await waitForD1Projection(
+        waitStore,
+        state.materialized,
+        serviceId,
+        viewId,
+        parsed.waitForSortableUniqueId,
+        requestStartedAt,
+        options,
+      );
+    } else if (waitStore === undefined || !await waitForProjection(waitStore, serviceId, definition, parsed.waitForSortableUniqueId, options)) {
+      waitResult = "timeout";
+    } else {
+      waitResult = "visible";
+    }
+    if (waitResult === "unavailable") {
+      const waitQuarantine = state.safeRead && state.materialized !== undefined
+        ? await state.materialized.readOrderingQuarantine?.(serviceId, viewId)
+        : undefined;
+      if (waitQuarantine !== undefined) throw new QueryAdmissionResponse(orderingQuarantineResponse());
+      throw new QueryAdmissionResponse(error(503, "projection_unavailable", "The mapped query projection is unavailable"));
+    }
+    if (waitResult !== "visible") {
+      const timeoutQuarantine = state.safeRead && state.materialized !== undefined
+        ? await state.materialized.readOrderingQuarantine?.(serviceId, viewId)
+        : undefined;
+      if (timeoutQuarantine !== undefined) throw new QueryAdmissionResponse(orderingQuarantineResponse());
+      throw new QueryAdmissionResponse(error(
+        504,
+        "timeout",
+        "Projection did not reach the requested sortableUniqueId within the published SafeWindow; refresh this read to inspect current state",
+      ));
+    }
+    await recheckExecutableBoundary(state, serviceId, viewId, "wait");
+  }
+  if (state.safeRead && parsed.waitForSortableUniqueId === undefined) {
+    await recheckExecutableBoundary(state, serviceId, viewId, "prepared");
+  }
+}
+
+async function probeExecutableQuarantine(
+  state: ExecutableAdmissionState,
+  serviceId: string,
+  viewId: string,
+): Promise<Response | undefined> {
+  if (!state.safeRead || state.materialized === undefined) return undefined;
+  try {
+    const caughtQuarantine = await state.materialized.readOrderingQuarantine?.(serviceId, viewId);
+    if (caughtQuarantine !== undefined) return orderingQuarantineResponse();
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+async function executeTypedSerializedQuery(
+  parsed: QueryRequest,
+  definition: ExecutableQueryDefinition,
+  endpoint: QueryEndpoint,
+  env: QueryWorkerEnv,
+  options: QueryExecutionOptions,
+  serviceId: string,
+  requestStartedAt: number,
+): Promise<Response> {
+  if (executableProjectorUnavailable(definition, options)) {
+    return error(503, "projection_unavailable", "The mapped query projection is unavailable");
+  }
+  const executablePagination = endpoint === "list-query" ? paginationFrom(parsed.queryParams) : { value: undefined };
+  if (executablePagination.value === undefined && executablePagination.error !== undefined) {
+    return error(400, "validation_error", executablePagination.error);
+  }
+  const domainParams = endpoint === "list-query" && isObject(parsed.queryParams)
+    ? executableDomainParams(parsed.queryParams)
+    : parsed.queryParams;
+  const executableScanMaximum = options.maxScanRows ?? 1_000;
+  const viewId = definition.materializedViewId ?? definition.tagProjector;
+  const state: ExecutableAdmissionState = {
+    safeRead: (options.queryBacking ?? "memory") === "d1-mv" && executablePagination.value?.consistency !== "unsafe",
+    consistency: executablePagination.value?.consistency ?? "safe",
+    candidates: [],
+  };
+  try {
+    const outcome = await executePortableQuery({
+      definition: definition.execution as unknown as PortableQueryDefinition<unknown, unknown, unknown, unknown>,
+      params: domainParams,
+      maximum: executableScanMaximum,
+      ...(executablePagination.value === undefined ? {} : {
+        page: {
+          pageNumber: executablePagination.value.currentPage,
+          pageSize: executablePagination.value.pageSize,
+          descending: executablePagination.value.newestFirst,
+        },
+      }),
+      admit: () => admitExecutableQuery(state, parsed, definition, env, options, serviceId, requestStartedAt, viewId),
+      scan: async (limit) => {
+        const selection = state.selection;
+        if (selection === undefined) {
+          throw new QueryAdmissionResponse(error(503, "projection_unavailable", "The mapped query projection is unavailable"));
+        }
+        if (selection.backing === "d1-mv") {
+          if (selection.store.scanRows === undefined) {
+            throw new QueryAdmissionResponse(error(503, "projection_unavailable", "The mapped query projection is unavailable"));
+          }
+          const batch = await selection.store.scanRows(serviceId, viewId, {
+            consistency: state.consistency,
+            limit,
+            ...(state.generation === undefined ? {} : { generation: state.generation }),
+          });
+          state.candidates = batch.rows;
+          return { candidates: batch.rows, readHead: batch.readHead };
+        }
+        const rows = await readRawCheckpointCandidates(
+          selection.store,
+          serviceId,
+          definition.tagGroup,
+          definition.tagProjector,
+          limit,
+        );
+        state.candidates = rows;
+        return { candidates: rows, readHead: checkpointReadHead(rows) };
+      },
+      canonicalize: (candidate) => (options.queryBacking ?? "memory") === "d1-mv"
+        ? canonicalizeMaterializedCandidate(candidate, definition.execution.rowCodec.decode)
+        : canonicalizeCheckpointCandidate(candidate, definition.execution.rowCodec.decode, {
+          tagGroup: definition.tagGroup,
+          tagProjector: definition.tagProjector,
+        }),
+      afterScanAdmission: () => recheckExecutableBoundary(state, serviceId, viewId, "page"),
+    });
+    if (!outcome.ok) {
+      if (outcome.kind === "projection-unavailable" && state.safeRead) {
+        const quarantined = await probeExecutableQuarantine(state, serviceId, viewId);
+        if (quarantined !== undefined) return quarantined;
+      }
+      return executableFailureResponse(outcome);
+    }
+    if (executablePagination.value?.consistency === "unsafe") {
+      options.afterUnsafeRead?.({
+        serviceId,
+        viewId,
+        entries: observedExecutableEntries(state.candidates),
+        observedAt: Date.now(),
+      });
+    }
+    return executableSuccessResponse(outcome);
+  } catch (caught) {
+    if (caught instanceof QueryAdmissionResponse) return caught.response;
+    const quarantined = await probeExecutableQuarantine(state, serviceId, viewId);
+    if (quarantined !== undefined) return quarantined;
+    return error(503, "projection_unavailable", "The mapped query projection is unavailable");
+  }
+}
+
 /**
  * V1 §5.4/§5.5 HTTP surface. It never starts a projection catch-up or writes
  * a source/checkpoint row: the query sees only the durable read-side snapshot.
@@ -472,6 +829,9 @@ export async function handleSerializedQuery(
   const definition = registry.resolve(parsed.value.queryType);
   if (definition === undefined || definition.endpoint !== endpoint) {
     return error(400, "validation_error", "queryType is not mapped for this endpoint");
+  }
+  if (isExecutableQueryDefinition(definition)) {
+    return executeTypedSerializedQuery(parsed.value, definition, endpoint, env, options, serviceId, requestStartedAt);
   }
   const unsupported = unsupportedQueryParams(endpoint, parsed.value.queryParams);
   if (unsupported !== undefined) {

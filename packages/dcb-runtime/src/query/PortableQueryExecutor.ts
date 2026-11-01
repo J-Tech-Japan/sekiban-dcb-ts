@@ -3,8 +3,12 @@ import type { QueryCodec, QueryHandlerContext, QueryJsonValue, QueryProjection }
 export const PORTABLE_QUERY_MAXIMUM = 10_000;
 
 export const INTENDED_PUBLIC_QUERY_FAILURE_MAPPING = {
-  "projection-unavailable": "projection_unavailable",
+  "params-invalid": "query_params_invalid",
+  "scan-limit-exceeded": "query_scan_limit_exceeded",
   "row-invalid": "query_row_invalid",
+  "result-invalid": "query_result_invalid",
+  "handler-failed": "query_handler_failed",
+  "projection-unavailable": "projection_unavailable",
 } as const;
 
 export type PortableQueryFailureKind =
@@ -107,6 +111,7 @@ export interface PortableQueryInput<Row, Params, Result, Item> {
   readonly scan: (limit: number) => Promise<PortableScanBatch>;
   readonly canonicalize: (candidate: unknown) => PortableCanonicalRow;
   readonly admit?: () => void | Promise<void>;
+  readonly afterScanAdmission?: () => void | Promise<void>;
   readonly page?: PortableListControls;
 }
 
@@ -385,6 +390,7 @@ export async function executePortableQuery<Row, Params, Result, Item>(
   }
   if (batch === null || typeof batch !== "object" || !Array.isArray(batch.candidates)) return failure("projection-unavailable");
   if (batch.readHead !== undefined && typeof batch.readHead !== "string") return failure("projection-unavailable");
+  if (input.afterScanAdmission !== undefined) await input.afterScanAdmission();
   if (batch.candidates.length > input.maximum) return failure("scan-limit-exceeded");
 
   const decodedRows: PortableCanonicalRow[] = [];

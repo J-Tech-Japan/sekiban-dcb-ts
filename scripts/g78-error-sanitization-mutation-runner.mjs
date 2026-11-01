@@ -49,6 +49,30 @@ const mutations = Object.freeze([
     oracle: "AC4: query_params_unsupported stays a sanitized client error on every query path",
     reason: "the canonical safe message must stay on the allowlist",
   },
+  ...[
+    ["query_params_invalid", "The query parameters are invalid."],
+    ["query_scan_limit_exceeded", "The query scan limit was exceeded."],
+    ["query_row_invalid", "The query projection contains an invalid row."],
+    ["query_result_invalid", "The query handler returned an invalid result."],
+    ["query_handler_failed", "The query handler failed."],
+  ].flatMap(([code, message]) => [
+    {
+      id: `${code}-safe-message-deleted`,
+      sourceFile: "packages/dcb-client/src/errors.ts",
+      from: `  ${code}: "${message}",\n`,
+      to: "",
+      oracle: "executable query failure codes stay sanitized client errors",
+      reason: `${code} must keep its canonical safe message`,
+    },
+    {
+      id: `${code}-safe-message-wrong`,
+      sourceFile: "packages/dcb-client/src/errors.ts",
+      from: `${code}: "${message}"`,
+      to: `${code}: "internal ${code} detail"`,
+      oracle: "executable query failure codes stay sanitized client errors",
+      reason: `${code} must not publish a substituted message`,
+    },
+  ]),
 ]);
 
 let reports;

@@ -23,7 +23,6 @@ import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_veri
 import rebuildProofMigration from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
 
 import {
-  DomainAuthoringError,
   defineListQuery,
   defineQuery,
   defineQueryView,
@@ -178,7 +177,7 @@ async function executeList(
 const PAGE = { pageNumber: 1, pageSize: 2, descending: false } as const;
 
 describe("dormant portable query executor", () => {
-  it("keeps both execution refusals and leaves the executor off the runtime root", () => {
+  it("bridges executable queries and leaves the executor off the runtime root", () => {
     const order = tagFamily("order");
     const placed = event("OrderPlaced", z.object({ orderId: z.string() }), {
       tags: (payload) => [order.of(payload.orderId)],
@@ -191,13 +190,17 @@ describe("dormant portable query executor", () => {
       handlers: { OrderPlaced: () => ({ kind: "placed" as const }) },
     });
     const orders = defineQueryView({ id: "orders", version: 1, row: z.strictObject({ orderId: z.string() }) });
+    let calls = 0;
     const authored = defineQuery({
       id: "reservation-count",
       version: 1,
       source: orders,
       params: z.strictObject({ roomId: z.string() }),
       result: z.strictObject({ count: z.number() }),
-      handleQuery: () => ({ count: 1 }),
+      handleQuery: () => {
+        calls += 1;
+        return { count: 1 };
+      },
     });
     const authoredDomain = domain({
       events: [placed],
@@ -205,35 +208,30 @@ describe("dormant portable query executor", () => {
       views: [{ id: "orders", source: orderProjector.id }],
       queries: [authored],
     });
-    expect(() => toRuntimeDomain(authoredDomain)).toThrow(DomainAuthoringError);
-    try {
-      toRuntimeDomain(authoredDomain);
-    } catch (error) {
-      expect(error).toMatchObject({
-        code: "QUERY_EXECUTION_UNAVAILABLE",
-        message: "Typed query execution is not available in this runtime bridge.",
-      });
-    }
-    expect(() => composeRuntime(
-      { queries: [{ ...authored, queryType: "reservation-count", tagGroup: TAG_GROUP, tagProjector: TAG_PROJECTOR, endpoint: "query" }] },
-      {},
-    )).toThrow(Error);
-    try {
-      composeRuntime(
-        { queries: [{ ...authored, queryType: "reservation-count", tagGroup: TAG_GROUP, tagProjector: TAG_PROJECTOR, endpoint: "query" }] },
-        {},
-      );
-    } catch (error) {
-      expect(error).toMatchObject({
-        name: "TypedQueryExecutionUnavailableError",
-        code: "QUERY_EXECUTION_UNAVAILABLE",
-        message: "Typed query execution is not available in runtime composition.",
-      });
-    }
+    const bridged = toRuntimeDomain(authoredDomain);
+    expect(bridged.queries).toHaveLength(1);
+    expect(bridged.queries[0]).toMatchObject({
+      queryType: "reservation-count",
+      endpoint: "query",
+      tagGroup: "order",
+      tagProjector: "order-projector",
+      materializedViewId: "orders",
+      version: 1,
+      enabled: true,
+    });
+    expect(bridged.queries[0]?.execution.kind).toBe("scalar");
+    const composed = composeRuntime(bridged);
+    expect(composed.queries.resolve("reservation-count")?.endpoint).toBe("query");
+    expect(composed.maxScanRows).toBe(1_000);
+    expect(calls).toBe(0);
     expect("executePortableQuery" in runtimeRoot).toBe(false);
     expect(INTENDED_PUBLIC_QUERY_FAILURE_MAPPING).toEqual({
-      "projection-unavailable": "projection_unavailable",
+      "params-invalid": "query_params_invalid",
+      "scan-limit-exceeded": "query_scan_limit_exceeded",
       "row-invalid": "query_row_invalid",
+      "result-invalid": "query_result_invalid",
+      "handler-failed": "query_handler_failed",
+      "projection-unavailable": "projection_unavailable",
     });
     const exported = Object.values(runtimeRoot) as readonly unknown[];
     expect(exported.includes("projection_unavailable")).toBe(false);
@@ -545,6 +543,72 @@ describe("dormant portable query executor", () => {
       expect(scans).toBe(0);
       expect(canonicalized).toBe(0);
     }
+  });
+
+  it("runs post-scan admission before overflow and handlers, and skips it when the scan rejects", async () => {
+    let canonicalized = 0;
+    let handled = 0;
+    const quarantine = new Error("post-scan-quarantine");
+    await expect(executePortableQuery({
+      definition: {
+        ...scalarDefinition(),
+        handleQuery: () => {
+          handled += 1;
+          return { count: 1 };
+        },
+      },
+      params: {},
+      maximum: 1,
+      scan: async () => ({ candidates: [candidate("a", "{"), candidate("b", "{")] }),
+      canonicalize: () => {
+        canonicalized += 1;
+        return canonicalizeCheckpointCandidate(candidate("a"), rowCodec().decode, {
+          tagGroup: TAG_GROUP,
+          tagProjector: TAG_PROJECTOR,
+        });
+      },
+      afterScanAdmission: () => { throw quarantine; },
+    })).rejects.toBe(quarantine);
+    expect(canonicalized).toBe(0);
+    expect(handled).toBe(0);
+    const generation = new Error("post-scan-generation");
+    await expect(executePortableQuery({
+      definition: scalarDefinition(),
+      params: {},
+      maximum: 10,
+      scan: async () => ({ candidates: [candidate("a")] }),
+      canonicalize: () => {
+        canonicalized += 1;
+        throw new Error("row");
+      },
+      afterScanAdmission: () => { throw generation; },
+    })).rejects.toBe(generation);
+    expect(canonicalized).toBe(0);
+    let afterScan = 0;
+    const provider = await executePortableQuery({
+      definition: scalarDefinition(),
+      params: {},
+      maximum: 10,
+      scan: async () => { throw new Error("connection reset secret"); },
+      canonicalize: () => { throw new Error("row"); },
+      afterScanAdmission: () => { afterScan += 1; },
+    });
+    expect(provider).toEqual({ ok: false, kind: "projection-unavailable", message: "Query projection is unavailable." });
+    expect(afterScan).toBe(0);
+    const overflow = await executePortableQuery({
+      definition: scalarDefinition(),
+      params: {},
+      maximum: 1,
+      scan: async () => ({ candidates: [candidate("a"), candidate("b")] }),
+      canonicalize: () => {
+        canonicalized += 1;
+        throw new Error("row");
+      },
+      afterScanAdmission: () => { afterScan += 1; },
+    });
+    expect(overflow).toEqual({ ok: false, kind: "scan-limit-exceeded", message: "Query scan limit was exceeded." });
+    expect(afterScan).toBe(1);
+    expect(canonicalized).toBe(0);
   });
 
   it("separates a corrupt raw candidate from a provider failure", async () => {

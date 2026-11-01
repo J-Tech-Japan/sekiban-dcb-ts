@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Release-shaped consumer proof for SDT-G74.  It installs the three packed
- * public packages into a clean directory, compiles them under Node16 and
+ * Release-shaped consumer proof for SDT-G74.  It installs the packed public
+ * packages into a clean directory, compiles them under Node16 and
  * Bundler resolution, and separately checks the declaration graph without
  * skipLibCheck.  A labelled expected-errors fixture proves read-lane, result
  * exhaustiveness and literal-inference boundaries, declaration mutants on the
@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const packageRoots = ["dcb-core", "dcb-domain", "dcb-client"].map((name) => join(root, "packages", name));
+const packageRoots = ["dcb-core", "dcb-domain", "dcb-client", "dcb-runtime"].map((name) => join(root, "packages", name));
 const temp = await mkdtemp(join(tmpdir(), "sdt-g74-consumer-"));
 const npmCache = process.env.NPM_CONFIG_CACHE ?? join(temp, ".npm-cache");
 
@@ -455,12 +455,36 @@ if (/\bzod\b|@sekiban\/dcb-domain|handleQuery|handleFilter|handleSort/.test(futu
   throw new Error("future-query-client.ts must import only structural contracts from @sekiban/dcb-core");
 }
 const deepImport = `import { createSekibanExecutor } from "@sekiban/dcb-client/dist/executor.js"; console.log(createSekibanExecutor);\n`;
+const runtimeScan = `
+import type { RuntimeWorkerConfig } from "@sekiban/dcb-runtime";
+
+type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+type Scan = RuntimeWorkerConfig["maxScanRows"];
+const scanIsNumber: Equals<Scan, number | undefined> = true;
+void scanIsNumber;
+`;
+
+const runtimeScanMutant = {
+  label: "runtime-max-scan-rows-narrowed",
+  file: "@sekiban/dcb-runtime/dist/composition.d.ts",
+  from: "readonly maxScanRows?: number;",
+  to: "readonly maxScanRows?: 1 | 10000;",
+};
+
 const runtimeCheck = `
+import { register } from "node:module";
+await register(new URL("./host-stub-loader.mjs", import.meta.url));
 const expected = {
   "@sekiban/dcb-core": ["assertJsonValue", "canonicalEventKey", "defineCommand", "defineEvent", "defineProjector", "defineTag", "done", "noop", "reject"],
   "@sekiban/dcb-domain": ["command", "defineListQuery", "defineQuery", "defineQueryView", "domain", "event", "eventUnion", "none", "projector", "read", "readExists", "readSet", "tagFamily", "toRuntimeDomain"],
   "@sekiban/dcb-domain/testing": ["evolve", "evolveTable", "given"],
   "@sekiban/dcb-client": ["ClientError", "ClaimLedger", "ClaimLedgerExecutor", "SerializedDcbClient", "createClaimLedgerExecutor", "createHttpTransport", "createInProcessTransport", "createSekibanExecutor", "createSerializedDcbClient", "preflightCommit"],
+  "@sekiban/dcb-runtime": ["composeRuntime", "createRuntimeWorker"],
+  "@sekiban/dcb-runtime/cosmos": ["CosmosEventStore", "createCosmosStoreProvider"],
+  "@sekiban/dcb-runtime/d1": ["D1EventStore", "createD1StoreProvider"],
+  "@sekiban/dcb-runtime/d1-mv": ["createD1MaterializedViewStore"],
+  "@sekiban/dcb-runtime/cloudflare": ["createCloudflareOnlyRuntimeWorker"],
+  "@sekiban/dcb-runtime/mv": ["MaterializedViewRuntime"],
 };
 for (const [specifier, names] of Object.entries(expected)) {
   const module = await import(specifier);
@@ -472,10 +496,24 @@ console.log("PASS packed runtime namespaces");
 try {
   await writeFile(join(temp, "package.json"), JSON.stringify({ private: true, type: "module" }, null, 2));
   await mkdir(join(temp, "src"), { recursive: true });
+  await mkdir(join(temp, "runtime-types"), { recursive: true });
   await mkdir(join(temp, "compile-negative"), { recursive: true });
   await writeFile(join(temp, "tsconfig.node16.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "Node16", moduleResolution: "Node16", strict: true, skipLibCheck: true, outDir: "dist-node16" }, include: ["src/**/*.ts"] }, null, 2));
   await writeFile(join(temp, "tsconfig.bundler.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", strict: true, skipLibCheck: true, outDir: "dist-bundler" }, include: ["src/**/*.ts"] }, null, 2));
   await writeFile(join(temp, "tsconfig.strict.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "Node16", moduleResolution: "Node16", strict: true, skipLibCheck: false, noEmit: true }, include: ["src/main.ts", "src/expected-errors.ts"] }, null, 2));
+  await writeFile(join(temp, "runtime-types/runtime-scan.ts"), runtimeScan);
+  await writeFile(join(temp, "postgres-stub.mjs"), "export default function postgres() { return {}; }\n");
+  await writeFile(join(temp, "cloudflare-workers-stub.mjs"), "export const tracing = {};\n");
+  await writeFile(join(temp, "host-stub-loader.mjs"), `const stubs = new Map([
+  ["postgres", new URL("./postgres-stub.mjs", import.meta.url).href],
+  ["cloudflare:workers", new URL("./cloudflare-workers-stub.mjs", import.meta.url).href],
+]);
+export async function resolve(specifier, context, nextResolve) {
+  const stub = stubs.get(specifier);
+  if (stub !== undefined) return { url: stub, shortCircuit: true };
+  return nextResolve(specifier, context);
+}
+`);
   await writeFile(join(temp, "src/main.ts"), positive);
   await writeFile(join(temp, "src/future-query-client.ts"), futureQueryClient);
   await writeFile(join(temp, "src/future-query-negative.ts"), futureQueryNegative);
@@ -565,6 +603,30 @@ try {
   }
   const notRed = mutantResults.filter((result) => result.status !== "RED");
   if (notRed.length > 0) throw new Error(`consumer mutants not detected:\n${JSON.stringify(notRed, null, 2)}`);
+  const runtimeScanArgs = ["--noEmit", "--target", "ES2022", "--module", "ESNext", "--moduleResolution", "Bundler", "--strict", "--skipLibCheck", "runtime-types/runtime-scan.ts"];
+  const runtimeScanCompile = await run(tsc, runtimeScanArgs);
+  const scanFile = join(temp, "node_modules", runtimeScanMutant.file);
+  const scanOriginal = await readFile(scanFile, "utf8");
+  const scanMatches = scanOriginal.split(runtimeScanMutant.from).length - 1;
+  if (scanMatches !== 1) throw new Error(`consumer mutant ${runtimeScanMutant.label} anchor matched ${scanMatches} times`);
+  await writeFile(scanFile, scanOriginal.replace(runtimeScanMutant.from, runtimeScanMutant.to));
+  let runtimeScanMutantResult;
+  try {
+    const outcome = await new Promise((resolvePromise) => {
+      run(tsc, runtimeScanArgs).then((result) => resolvePromise({ ...result, compiled: true }), (error) => resolvePromise({ compiled: false, output: String(error.message) }));
+    });
+    const output = outcome.compiled ? `${outcome.stdout}\n${outcome.stderr}` : outcome.output;
+    const diagnostics = output.split("\n").map((line) => line.trim()).filter((line) => /\): error TS\d+:/.test(line));
+    const inArtifact = diagnostics.filter((line) => line.startsWith("node_modules/"));
+    const inFixture = diagnostics.filter((line) => line.includes("runtime-scan.ts("));
+    const status = outcome.compiled ? "MISSED" : inArtifact.length > 0 || inFixture.length === 0 ? "INVALID" : "RED";
+    runtimeScanMutantResult = { label: runtimeScanMutant.label, status, firstDiagnostic: inFixture[0] ?? inArtifact[0] ?? null };
+  } finally {
+    await writeFile(scanFile, scanOriginal);
+  }
+  if (runtimeScanMutantResult.status !== "RED") throw new Error(`runtime scan mutant not detected:\n${JSON.stringify(runtimeScanMutantResult, null, 2)}`);
+  mutantResults.push(runtimeScanMutantResult);
+  const restoredScan = await run(tsc, runtimeScanArgs);
   const restored = await run(tsc, [...tscArgs, "src/expected-errors.ts"]);
   const runtime = await run(process.execPath, ["runtime-check.mjs"]);
   process.stdout.write(`${JSON.stringify({
@@ -575,6 +637,7 @@ try {
       node16: { status: node16.status, signal: node16.signal },
       bundler: { status: bundler.status, signal: bundler.signal },
       strictDeclarationResolution: { status: strict.status, signal: strict.signal, skipLibCheck: false },
+      runtimeScan: { status: runtimeScanCompile.status, signal: runtimeScanCompile.signal, moduleResolution: "Bundler" },
     },
     runtime: runtime.stdout.trim(),
     redReceipts: [
@@ -587,7 +650,7 @@ try {
     consumerMutants: {
       note: "declaration edits applied to the installed release artifacts; each must fail src/expected-errors.ts inside that file",
       results: mutantResults,
-      restoredControl: { status: restored.status, expected: "unmutated artifacts compile the fixture again" },
+      restoredControl: { status: restored.status, runtimeScan: restoredScan.status, expected: "unmutated artifacts compile the fixture again" },
     },
     publication: "not performed",
   }, null, 2)}\n`);

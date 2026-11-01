@@ -437,6 +437,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
           queryBacking: options.queryBacking,
           materializedViewQueryPort: options.materializedViewQueryPort,
           serviceIdentityProvider: serviceIdentity,
+          maxScanRows: composition.maxScanRows,
         });
       }
       if (operatorRepair) {

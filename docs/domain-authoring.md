@@ -292,10 +292,11 @@ list items are readonly. A list handler returns `readonly Readonly<Item>[]`.
 Codec outputs must support a detached copy. `Date`, `Map`, and `Set` are
 admitted and copied explicitly; they are not frozen. Handlers receive no
 database, network, environment, request, clock, paging, direction,
-consistency, waiting, or cancellation capability. There is no server execution,
-no public scan setting, no public runtime query error, and no typed client.
-Internal bounded scan adapters exist as unreached groundwork. The bridge and
-composition refusals remain.
+consistency, waiting, or cancellation capability. `toRuntimeDomain()` compiles
+a frozen server registration from those codecs and handlers and does not call
+them. Executable queries then run on the server through the existing raw V1
+routes. `RuntimeWorkerConfig.maxScanRows` bounds each raw scan. There is no
+typed client overload yet.
 
 Definition creation walks the Zod schema graph, including both sides of a
 `z.codec` and the cached target of `z.lazy`. It rejects one-way transforms
@@ -316,10 +317,13 @@ responsibility; invocation still fails closed for those cases.
 
 Register the source view on the same `domain()` call. The view id must equal
 the query source id. Duplicate query ids conflict across scalar and list
-definitions. This package does not call the handlers. `toRuntimeDomain()`
-refuses a domain that contains authored queries. Runtime composition refuses a
-typed definition on `domain.queries`, `config.queries`, and
-`config.queryDefinitions` before conversion, including a definition that would
-not have won precedence. Query-free domains and ordinary id/version metadata
-stay on the existing path. Server execution, provider reads, scan limits, and
-typed client calls are not available from these helpers.
+definitions. This package does not call the handlers while compiling the
+registration. The projector id is `view.projector` when present and
+`view.source` otherwise. A source view that cannot be mapped throws
+`QUERY_SOURCE_INVALID` with the message
+`Query source view cannot be mapped to a runtime projector.` Runtime composition
+rejects a malformed typed definition on `domain.queries`, `config.queries`, and
+`config.queryDefinitions` before precedence, including a definition that would
+not have won. The error code is `QUERY_DEFINITION_INVALID`. Query-free domains
+and ordinary id/version metadata stay on the existing path. Executable queries
+run through raw V1 calls. There is no typed client overload yet.

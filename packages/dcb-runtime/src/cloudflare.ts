@@ -334,6 +334,7 @@ export function createCloudflareOnlyRuntimeWorker(
           projectors: composition.projectors,
           storeProvider,
           queryBacking: "d1-mv",
+          maxScanRows: composition.maxScanRows,
           afterUnsafeRead: ({ serviceId, viewId, entries, observedAt }) => {
             for (const entry of entries) {
               const write = recordFirstUnsafeVisibleRead(env.D1, env.D1_MV, {

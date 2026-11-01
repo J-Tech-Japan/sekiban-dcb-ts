@@ -15,12 +15,15 @@ import {
 import {
   DEPLOYED_QUERY_REGISTRY,
   QueryRegistry,
+  RuntimeQueryDefinitionError,
+  type ExecutableQueryDefinition,
   type QueryDefinition,
   type QueryEndpoint,
+  type RuntimeListQueryExecution,
+  type RuntimeScalarQueryExecution,
 } from "./query/QueryRegistry";
 
-/** A query value accepted by the public runtime composition surface. */
-export interface RuntimeQueryDefinition {
+export interface RuntimeQueryMetadata {
   readonly queryType?: string;
   readonly id?: string;
   readonly name?: string;
@@ -29,7 +32,35 @@ export interface RuntimeQueryDefinition {
   readonly tagProjector: string;
   readonly materializedViewId?: string;
   readonly enabled?: boolean;
+  readonly version?: number;
 }
+
+export interface LegacyRuntimeQueryDefinition extends RuntimeQueryMetadata {
+  readonly execution?: undefined;
+  readonly kind?: undefined;
+  readonly contract?: undefined;
+  readonly handleQuery?: undefined;
+  readonly handleFilter?: undefined;
+  readonly handleSort?: undefined;
+}
+
+export interface ExecutableRuntimeScalarQueryDefinition extends RuntimeQueryMetadata {
+  readonly endpoint: "query";
+  readonly version: number;
+  readonly execution: RuntimeScalarQueryExecution;
+}
+
+export interface ExecutableRuntimeListQueryDefinition extends RuntimeQueryMetadata {
+  readonly endpoint: "list-query";
+  readonly version: number;
+  readonly execution: RuntimeListQueryExecution;
+}
+
+/** A query value accepted by the public runtime composition surface. */
+export type RuntimeQueryDefinition =
+  | LegacyRuntimeQueryDefinition
+  | ExecutableRuntimeScalarQueryDefinition
+  | ExecutableRuntimeListQueryDefinition;
 
 /** Values which affect registration, never the serialized V1 wire format. */
 export interface RuntimeWorkerConfig {
@@ -39,6 +70,8 @@ export interface RuntimeWorkerConfig {
   readonly queryDefinitions?: readonly RuntimeQueryDefinition[];
   readonly projectorPayloadNames?: Readonly<Record<string, string>>;
   readonly tagPayloadNames?: Readonly<Record<string, string>>;
+  /** Deploy-time raw scan bound. Callers cannot override it per request. */
+  readonly maxScanRows?: number;
 }
 
 /** A command already normalized by the authoring-to-runtime bridge. */
@@ -83,6 +116,7 @@ export interface RuntimeComposition {
   readonly projectors: ProjectorRegistry;
   readonly queries: QueryRegistry;
   readonly commands: RuntimeCommandRegistry;
+  readonly maxScanRows: number;
 }
 
 /** Structural bridge returned by @sekiban/dcb-domain without a reverse package import. */
@@ -193,19 +227,145 @@ function projectorFromDefinition(
   };
 }
 
-function queryFromDefinition(value: RuntimeQueryDefinition): QueryDefinition {
-  const queryType = value.queryType ?? value.id ?? value.name;
-  if (queryType === undefined || queryType.length === 0) {
-    throw new Error("Runtime query definitions require queryType or id");
+const QUERY_TYPED_MARKERS = ["kind", "contract", "handleQuery", "handleFilter", "handleSort"] as const;
+const DEFAULT_MAX_SCAN_ROWS = 1_000;
+const MAX_SCAN_ROWS_CEILING = 10_000;
+
+export class RuntimeWorkerConfigurationError extends Error {
+  readonly code = "QUERY_MAX_SCAN_ROWS_INVALID";
+
+  constructor() {
+    super("RuntimeWorkerConfig.maxScanRows must be a positive safe integer no greater than 10000.");
+    this.name = "RuntimeWorkerConfigurationError";
   }
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function isQueryRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function invalidQuery(): never {
+  throw new RuntimeQueryDefinitionError();
+}
+
+function sameIdentity(value: Record<string, unknown>): string {
+  const present = [value.queryType, value.id, value.name].filter((entry) => entry !== undefined);
+  if (present.length === 0 || present.some((entry) => typeof entry !== "string" || entry.length === 0)) invalidQuery();
+  const [first] = present;
+  if (present.some((entry) => entry !== first)) invalidQuery();
+  return first as string;
+}
+
+function legacyIdentity(value: Record<string, unknown>): string {
+  const queryType = value.queryType ?? value.id ?? value.name;
+  if (typeof queryType !== "string" || queryType.length === 0) invalidQuery();
+  return queryType;
+}
+
+function normalizeMaxScanRows(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_MAX_SCAN_ROWS;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > MAX_SCAN_ROWS_CEILING) {
+    throw new RuntimeWorkerConfigurationError();
+  }
+  return value;
+}
+
+function assertRuntimeQueryList(values: readonly unknown[] | undefined): void {
+  if (values === undefined) return;
+  for (const value of values) validateRuntimeQuery(value);
+}
+
+function validateRuntimeQuery(value: unknown): void {
+  if (!isQueryRecord(value)) invalidQuery();
+  const typed = QUERY_TYPED_MARKERS.some((marker) => hasOwn(value, marker)) || hasOwn(value, "execution");
+  if (!typed) {
+    legacyIdentity(value);
+    if (typeof value.tagGroup !== "string" || value.tagGroup.length === 0) invalidQuery();
+    if (typeof value.tagProjector !== "string" || value.tagProjector.length === 0) invalidQuery();
+    if (value.endpoint !== undefined && value.endpoint !== "query" && value.endpoint !== "list-query") invalidQuery();
+    if (value.enabled !== undefined && typeof value.enabled !== "boolean") invalidQuery();
+    return;
+  }
+  queryFromDefinition(value as unknown as RuntimeQueryDefinition);
+}
+
+function isCodec(value: unknown): boolean {
+  return isQueryRecord(value) && typeof value.encode === "function" && typeof value.decode === "function";
+}
+
+function assertExecutionClosures(execution: Record<string, unknown>, endpoint: "query" | "list-query"): void {
+  if (endpoint === "query") {
+    if (execution.kind !== "scalar") invalidQuery();
+    if (!isCodec(execution.rowCodec) || !isCodec(execution.paramsCodec) || !isCodec(execution.resultCodec)) invalidQuery();
+    if (typeof execution.handleQuery !== "function") invalidQuery();
+    if (hasOwn(execution, "handleFilter") || hasOwn(execution, "handleSort") || hasOwn(execution, "itemCodec")) invalidQuery();
+    return;
+  }
+  if (execution.kind !== "list") invalidQuery();
+  if (!isCodec(execution.rowCodec) || !isCodec(execution.paramsCodec) || !isCodec(execution.itemCodec)) invalidQuery();
+  if (typeof execution.handleFilter !== "function" || typeof execution.handleSort !== "function") invalidQuery();
+  if (hasOwn(execution, "handleQuery") || hasOwn(execution, "resultCodec")) invalidQuery();
+}
+
+function queryFromDefinition(value: RuntimeQueryDefinition): QueryDefinition {
+  if (!isQueryRecord(value)) invalidQuery();
+  const typed = QUERY_TYPED_MARKERS.some((marker) => hasOwn(value, marker)) || hasOwn(value, "execution");
+  if (!typed) {
+    const queryType = legacyIdentity(value);
+    return {
+      queryType,
+      endpoint: value.endpoint ?? "query",
+      tagGroup: value.tagGroup,
+      tagProjector: value.tagProjector,
+      materializedViewId: value.materializedViewId ?? value.tagProjector,
+      enabled: value.enabled ?? true,
+    };
+  }
+  for (const marker of QUERY_TYPED_MARKERS) {
+    if (hasOwn(value, marker)) invalidQuery();
+  }
+  if (!hasOwn(value, "execution") || !isQueryRecord(value.execution)) invalidQuery();
+  const queryType = sameIdentity(value);
+  const endpoint = value.endpoint;
+  const version = value.version;
+  if (endpoint !== "query" && endpoint !== "list-query") invalidQuery();
+  if (typeof version !== "number" || !Number.isSafeInteger(version) || version <= 0) invalidQuery();
+  if (typeof value.tagGroup !== "string" || value.tagGroup.length === 0) invalidQuery();
+  if (typeof value.tagProjector !== "string" || value.tagProjector.length === 0) invalidQuery();
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") invalidQuery();
+  if (value.materializedViewId !== undefined && (typeof value.materializedViewId !== "string" || value.materializedViewId.length === 0)) {
+    invalidQuery();
+  }
+  const execution = value.execution;
+  assertExecutionClosures(execution, endpoint);
+  if (endpoint === "query") {
+    if (execution.kind !== "scalar") invalidQuery();
+    return {
+      queryType,
+      endpoint,
+      tagGroup: value.tagGroup,
+      tagProjector: value.tagProjector,
+      materializedViewId: value.materializedViewId ?? value.tagProjector,
+      enabled: value.enabled ?? true,
+      version,
+      execution: execution as RuntimeScalarQueryExecution,
+    };
+  }
+  if (execution.kind !== "list") invalidQuery();
   return {
     queryType,
-    endpoint: value.endpoint ?? "query",
+    endpoint,
     tagGroup: value.tagGroup,
     tagProjector: value.tagProjector,
     materializedViewId: value.materializedViewId ?? value.tagProjector,
     enabled: value.enabled ?? true,
-  };
+    version,
+    execution: execution as RuntimeListQueryExecution,
+  } satisfies ExecutableQueryDefinition;
 }
 
 function isRuntimeCommandLike(value: unknown): value is RuntimeCommandLike {
@@ -359,50 +519,6 @@ export function createRuntimeCommitPort(
   });
 }
 
-class TypedQueryExecutionUnavailableError extends Error {
-  readonly code = "QUERY_EXECUTION_UNAVAILABLE";
-
-  constructor() {
-    super("Typed query execution is not available in runtime composition.");
-    this.name = "TypedQueryExecutionUnavailableError";
-  }
-}
-
-function hasQueryCodec(value: unknown): boolean {
-  if (typeof value !== "object" || value === null) return false;
-  const codec = value as { readonly encode?: unknown; readonly decode?: unknown };
-  return typeof codec.encode === "function" && typeof codec.decode === "function";
-}
-
-function isTypedQueryDefinition(value: unknown): boolean {
-  if (typeof value !== "object" || value === null) return false;
-  const definition = value as {
-    readonly contract?: unknown;
-    readonly handleQuery?: unknown;
-    readonly handleFilter?: unknown;
-    readonly handleSort?: unknown;
-  };
-  if (typeof definition.contract !== "object" || definition.contract === null) return false;
-  const contract = definition.contract as {
-    readonly params?: unknown;
-    readonly result?: unknown;
-    readonly item?: unknown;
-  };
-  if (!hasQueryCodec(contract.params)) return false;
-  const scalar = hasQueryCodec(contract.result) && typeof definition.handleQuery === "function";
-  const list = hasQueryCodec(contract.item)
-    && typeof definition.handleFilter === "function"
-    && typeof definition.handleSort === "function";
-  return scalar || list;
-}
-
-function rejectTypedQueryDefinitions(values: readonly unknown[] | undefined): void {
-  if (values === undefined) return;
-  for (const value of values) {
-    if (isTypedQueryDefinition(value)) throw new TypedQueryExecutionUnavailableError();
-  }
-}
-
 /**
  * Build the two private registries used by the HTTP runtime. The registries
  * intentionally never cross the package entrypoint; consumers provide only
@@ -412,11 +528,17 @@ export function composeRuntime(
   domain: DomainDefinition | RuntimeDomainLike | undefined,
   config: RuntimeWorkerConfig = {},
 ): RuntimeComposition {
-  rejectTypedQueryDefinitions(domain?.queries);
-  rejectTypedQueryDefinitions(config.queries);
-  rejectTypedQueryDefinitions(config.queryDefinitions);
+  const maxScanRows = normalizeMaxScanRows(config.maxScanRows);
+  assertRuntimeQueryList(domain?.queries);
+  assertRuntimeQueryList(config.queries);
+  assertRuntimeQueryList(config.queryDefinitions);
   if (domain === undefined && config.queries === undefined && config.queryDefinitions === undefined) {
-    return { projectors: DEPLOYED_PROJECTOR_REGISTRY, queries: DEPLOYED_QUERY_REGISTRY, commands: new RuntimeCommandRegistry() };
+    return {
+      projectors: DEPLOYED_PROJECTOR_REGISTRY,
+      queries: DEPLOYED_QUERY_REGISTRY,
+      commands: new RuntimeCommandRegistry(),
+      maxScanRows,
+    };
   }
   const projectors = new ProjectorRegistry(
     (domain?.projectors ?? []).map((value) => projectorFromDefinition(value as ProjectorDefinition, config)),
@@ -426,5 +548,5 @@ export function composeRuntime(
   const queries = new QueryRegistry(
     (configuredQueries ?? domainQueries).map(queryFromDefinition),
   );
-  return { projectors, queries, commands: new RuntimeCommandRegistry(domain?.commands ?? []) };
+  return { projectors, queries, commands: new RuntimeCommandRegistry(domain?.commands ?? []), maxScanRows };
 }

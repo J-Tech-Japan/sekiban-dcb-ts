@@ -76,6 +76,8 @@ const MUTANTS = [
   // Negative control: documentation is not surface, so this edit must leave the hash unchanged.
   { id: "member-jsdoc-only", category: "documentation", expectHashUnchanged: true, edits: [
     { package: "dcb-client", file: CLIENT_DTS, search: "/** The durable read-side head that actually backs this page, when supplied. */", replace: "/** Reworded documentation for the durable read-side head; no type change. */", expectedMatches: 1 }] },
+  { id: "runtime-max-scan-rows-narrowed", category: "type", expectedSections: ["entryPoints"], edits: [
+    { package: "dcb-runtime", file: "dist/composition.d.ts", search: "readonly maxScanRows?: number;", replace: "readonly maxScanRows?: 1 | 10000;", expectedMatches: 1 }] },
 ];
 
 
@@ -142,7 +144,7 @@ function extract(workdir, packDir, spec) {
 const workdir = mkdtempSync(join(tmpdir(), "sdt-g74-drift-"));
 try {
   const packDir = join(workdir, "packs");
-  for (const shortName of ["dcb-core", "dcb-domain", "dcb-client"]) {
+  for (const shortName of ["dcb-core", "dcb-domain", "dcb-client", "dcb-runtime"]) {
     const packed = spawnSync("npm", ["pack", "--pack-destination", packDir], { cwd: resolve(root, "packages", shortName), encoding: "utf8" });
     if (packed.status !== 0) {
       // npm pack needs the destination to exist
