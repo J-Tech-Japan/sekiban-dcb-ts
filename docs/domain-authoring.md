@@ -289,9 +289,13 @@ Params must be a strict Zod object and must not declare `PageNumber`,
 `newestFirst`, `descending`, `waitForSortableUniqueId`, or `signal`. Handlers
 are synchronous. Projection rows, decoded params, handler context, and returned
 list items are readonly. A list handler returns `readonly Readonly<Item>[]`.
-When execution is added, it will freeze every handler input. Handlers receive
-no database, network, environment, request, clock, paging, direction,
-consistency, waiting, or cancellation capability.
+Codec outputs must support a detached copy. `Date`, `Map`, and `Set` are
+admitted and copied explicitly; they are not frozen. Handlers receive no
+database, network, environment, request, clock, paging, direction,
+consistency, waiting, or cancellation capability. There is no server execution,
+no public scan setting, no public runtime query error, and no typed client.
+Internal bounded scan adapters exist as unreached groundwork. The bridge and
+composition refusals remain.
 
 Definition creation walks the Zod schema graph, including both sides of a
 `z.codec` and the cached target of `z.lazy`. It rejects one-way transforms
@@ -301,7 +305,11 @@ unchanged. `encode` and `decode` reject an asynchronous result, including a
 Promise returned directly by `z.default()` or `z.catch()`
 (`QUERY_CODEC_ASYNC_UNSUPPORTED`), and a value that is not JSON, including a
 sparse array or an array with extra properties
-(`QUERY_CODEC_NOT_JSON_SAFE`). A codec that type-checks and runs synchronously
+(`QUERY_CODEC_NOT_JSON_SAFE`). A codec output that cannot be detached, including
+`unknown`, `any`, `z.promise()`, `z.nan()`, `z.symbol()`, `z.custom()`, or
+`z.function()`, is rejected at definition
+(`QUERY_CODEC_OUTPUT_UNCOPYABLE`, message `Query codec output must support portable detached copies.`).
+A codec that type-checks and runs synchronously
 is accepted even when encode is not the inverse of decode. Conditional Promise
 callbacks and schemas modified after construction are the author's
 responsibility; invocation still fails closed for those cases.

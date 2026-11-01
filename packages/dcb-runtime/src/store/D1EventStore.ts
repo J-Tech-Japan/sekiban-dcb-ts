@@ -20,7 +20,9 @@ import {
   type PendingArrivalRecord,
   type ProjectionCheckpoint,
   type ProjectionCheckpointAdvance,
+  type ProjectionCheckpointCandidateScan,
   type ProjectionLag,
+  type RawProjectionCheckpointCandidate,
   type ProjectionStore,
   type StoredEvent,
 } from "./types";
@@ -1084,6 +1086,35 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       projectionId,
     );
     return rows[0] === undefined ? undefined : checkpointFrom(rows[0]);
+  }
+
+  async scanProjectionCheckpointCandidates(input: ProjectionCheckpointCandidateScan): Promise<RawProjectionCheckpointCandidate[]> {
+    this.ready();
+    const rows = await this.rows(
+      `SELECT projection_id, last_suid, state_json
+         FROM serialized_dcb_projection_checkpoints
+        WHERE service_id = ?
+          AND length(projection_id) >= length(?)
+          AND substr(projection_id, 1, length(?)) = ?
+          AND length(projection_id) >= length(?)
+          AND substr(projection_id, length(projection_id) - length(?) + 1, length(?)) = ?
+        ORDER BY projection_id COLLATE BINARY ASC
+        LIMIT ?`,
+      input.serviceId,
+      input.projectionIdPrefix,
+      input.projectionIdPrefix,
+      input.projectionIdPrefix,
+      input.projectionIdSuffix,
+      input.projectionIdSuffix,
+      input.projectionIdSuffix,
+      input.projectionIdSuffix,
+      input.limit,
+    );
+    return rows.map((row) => ({
+      projectionId: row.projection_id,
+      lastSuid: row.last_suid,
+      stateJson: row.state_json,
+    }));
   }
 
   async advanceProjectionCheckpoint(input: ProjectionCheckpointAdvance): Promise<boolean> {

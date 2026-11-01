@@ -1,11 +1,19 @@
 import { projectionIdFor } from "../projection/ProjectionRuntime";
-import type { ProjectionCheckpoint, ProjectionStore, StoredEvent } from "../store/types";
+import type {
+  ProjectionCheckpoint,
+  ProjectionCheckpointCandidateScan,
+  ProjectionStore,
+  RawProjectionCheckpointCandidate,
+  StoredEvent,
+} from "../store/types";
 import type { QueryDefinition } from "./QueryRegistry";
 import type {
   MaterializedViewListOptions,
   MaterializedViewListPage,
   MaterializedViewQueryOptions,
   MaterializedViewOrderingQuarantine,
+  MaterializedViewRawScan,
+  MaterializedViewRawScanOptions,
   MaterializedViewRow,
   MaterializedViewWaitForState,
 } from "../mv/MaterializedViewStore";
@@ -59,6 +67,11 @@ export interface MaterializedViewQueryPort {
     viewId: string,
     target: { readonly eventId?: string; readonly suid: string },
   ): Promise<MaterializedViewWaitForState>;
+  scanRows?(
+    serviceId: string,
+    viewId: string,
+    options: MaterializedViewRawScanOptions,
+  ): Promise<MaterializedViewRawScan>;
   /** D1-backed implementations may need to verify the versioned schema first. */
   initialize?: () => Promise<void>;
 }
@@ -323,4 +336,53 @@ export async function readRowsPageFromBacking(
   }
   const entries = await readRowsFromBacking(selection, serviceId, viewId, definition, options);
   return { entries, totalCount: entries.length, serverPaged: false };
+}
+
+export async function readRawCheckpointCandidates(
+  store: {
+    listProjectionTags(serviceId: string): Promise<readonly string[]>;
+    readProjectionCheckpoint(serviceId: string, projectionId: string): Promise<ProjectionCheckpoint | undefined>;
+    scanProjectionCheckpointCandidates?: (
+      input: ProjectionCheckpointCandidateScan,
+    ) => Promise<readonly RawProjectionCheckpointCandidate[]>;
+  },
+  serviceId: string,
+  tagGroup: string,
+  tagProjector: string,
+  limit: number,
+): Promise<readonly RawProjectionCheckpointCandidate[]> {
+  const projectionIdPrefix = `tag-state:${tagGroup}:`;
+  const projectionIdSuffix = `:${tagProjector}`;
+  if (store.scanProjectionCheckpointCandidates !== undefined) {
+    return store.scanProjectionCheckpointCandidates({
+      serviceId,
+      projectionIdPrefix,
+      projectionIdSuffix,
+      limit,
+    });
+  }
+  const identities: string[] = [];
+  for (const tag of await store.listProjectionTags(serviceId)) {
+    const separator = tag.indexOf(":");
+    if (separator <= 0 || tag.indexOf(":", separator + 1) !== -1) continue;
+    const group = tag.slice(0, separator);
+    const content = tag.slice(separator + 1);
+    if (group !== tagGroup || group.length === 0 || content.length === 0) continue;
+    const projectionId = `tag-state:${group}:${content}:${tagProjector}`;
+    if (!projectionId.startsWith(projectionIdPrefix) || !projectionId.endsWith(projectionIdSuffix)) continue;
+    identities.push(projectionId);
+  }
+  identities.sort(compareSuid);
+  const rows: RawProjectionCheckpointCandidate[] = [];
+  for (const projectionId of identities) {
+    if (rows.length >= limit) break;
+    const checkpoint = await store.readProjectionCheckpoint(serviceId, projectionId);
+    if (checkpoint === undefined) continue;
+    rows.push({
+      projectionId: checkpoint.projectionId,
+      lastSuid: checkpoint.lastSuid,
+      stateJson: checkpoint.stateJson,
+    });
+  }
+  return rows;
 }

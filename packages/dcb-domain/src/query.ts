@@ -29,6 +29,7 @@ const QUERY_CODEC_UNIDIRECTIONAL = "Query codecs do not support one-way Zod tran
 const QUERY_CODEC_SCHEMA_UNSUPPORTED = "Query codecs do not support this Zod schema node.";
 const QUERY_CODEC_ASYNC_UNSUPPORTED = "Query codecs must encode and decode synchronously.";
 const QUERY_CODEC_NOT_JSON_SAFE = "Query codec output must be JSON-safe.";
+const QUERY_CODEC_OUTPUT_UNCOPYABLE = "Query codec output must support portable detached copies.";
 
 const LEAF_SCHEMA_TYPES = new Set([
   "any",
@@ -100,6 +101,36 @@ function unidirectional(): DomainAuthoringError {
 function unsupported(): DomainAuthoringError {
   return new DomainAuthoringError("QUERY_CODEC_SCHEMA_UNSUPPORTED", QUERY_CODEC_SCHEMA_UNSUPPORTED);
 }
+
+function uncopyable(): DomainAuthoringError {
+  return new DomainAuthoringError("QUERY_CODEC_OUTPUT_UNCOPYABLE", QUERY_CODEC_OUTPUT_UNCOPYABLE);
+}
+
+const COPYABLE_OUTPUT_LEAVES = new Set([
+  "bigint",
+  "boolean",
+  "date",
+  "enum",
+  "literal",
+  "never",
+  "null",
+  "number",
+  "string",
+  "template_literal",
+  "undefined",
+]);
+
+const UNCOPYABLE_OUTPUT_TYPES = new Set([
+  "any",
+  "custom",
+  "file",
+  "function",
+  "nan",
+  "promise",
+  "symbol",
+  "unknown",
+  "void",
+]);
 
 function isZodInternal(value: unknown): value is ZodInternal {
   if (typeof value !== "object" || value === null) return false;
@@ -201,6 +232,76 @@ function assertSupportedSchema(root: z.ZodTypeAny): void {
   walk(root);
 }
 
+function assertCopyableOutput(root: z.ZodTypeAny): void {
+  const visited = new WeakSet<object>();
+  const lazyChildren = new WeakMap<object, ZodInternal>();
+  const walk = (value: unknown): void => {
+    const node = requireSchema(value);
+    if (visited.has(node)) return;
+    visited.add(node);
+    const def = node._zod.def;
+    if (node._zod.traits.has("$ZodCodec")) {
+      walk(requireSchema(def.out));
+      return;
+    }
+    if (COPYABLE_OUTPUT_LEAVES.has(def.type)) return;
+    if (UNCOPYABLE_OUTPUT_TYPES.has(def.type) || def.type === "transform") throw uncopyable();
+    if (INNER_SCHEMA_TYPES.has(def.type)) {
+      walk(requireSchema(def.innerType));
+      return;
+    }
+    switch (def.type) {
+      case "array":
+        walk(requireSchema(def.element));
+        return;
+      case "tuple": {
+        if (!Array.isArray(def.items)) throw uncopyable();
+        for (const item of def.items) walk(requireSchema(item));
+        if (def.rest !== undefined && def.rest !== null) walk(requireSchema(def.rest));
+        return;
+      }
+      case "object": {
+        if (typeof def.shape !== "object" || def.shape === null || Array.isArray(def.shape)) throw uncopyable();
+        for (const child of Object.values(def.shape)) walk(requireSchema(child));
+        if (def.catchall !== undefined) walk(requireSchema(def.catchall));
+        return;
+      }
+      case "union": {
+        if (!Array.isArray(def.options)) throw uncopyable();
+        for (const option of def.options) walk(requireSchema(option));
+        return;
+      }
+      case "intersection":
+        walk(requireSchema(def.left));
+        walk(requireSchema(def.right));
+        return;
+      case "record":
+      case "map":
+        walk(requireSchema(def.keyType));
+        walk(requireSchema(def.valueType));
+        return;
+      case "set":
+        walk(requireSchema(def.valueType));
+        return;
+      case "lazy": {
+        let child = lazyChildren.get(node);
+        if (child === undefined) {
+          child = requireSchema(node._zod.innerType);
+          lazyChildren.set(node, child);
+        }
+        walk(child);
+        return;
+      }
+      case "pipe":
+        walk(requireSchema(def.out));
+        return;
+      default:
+        throw uncopyable();
+    }
+  };
+  walk(root);
+}
+
 function assertQueryJsonValue(value: unknown): QueryJsonValue {
   const ancestors = new Set<object>();
   const visit = (candidate: unknown): QueryJsonValue => {
@@ -297,6 +398,7 @@ function invokeCodec<T>(operation: () => T): T {
 
 function createCodec<Schema extends z.ZodTypeAny>(schema: Schema): QueryCodec<z.output<Schema>> {
   assertSupportedSchema(schema);
+  assertCopyableOutput(schema);
   return Object.freeze({
     encode: (value: z.output<Schema>): QueryJsonValue => {
       const encoded = invokeCodec(() => z.encode(schema, value));

@@ -21,7 +21,9 @@ import {
   type PendingArrivalRecord,
   type ProjectionCheckpoint,
   type ProjectionCheckpointAdvance,
+  type ProjectionCheckpointCandidateScan,
   type ProjectionLag,
+  type RawProjectionCheckpointCandidate,
   type ProjectionStore,
   type StoredEvent,
 } from "./types";
@@ -804,6 +806,25 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     this.ready();
     const row = await this.client.read<CheckpointDocument>(this.containers.checkpoints, safeId(projectionId), serviceId);
     return row === undefined ? undefined : checkpointFrom(row.document);
+  }
+
+  async scanProjectionCheckpointCandidates(input: ProjectionCheckpointCandidateScan): Promise<RawProjectionCheckpointCandidate[]> {
+    this.ready();
+    const rows = await this.client.query<JsonObject>(
+      this.containers.checkpoints,
+      "SELECT TOP @limit c.projectionId, c.lastSuid, c.stateJson FROM c WHERE STARTSWITH(c.projectionId, @prefix) AND ENDSWITH(c.projectionId, @suffix) ORDER BY c.projectionId",
+      [
+        { name: "@limit", value: input.limit },
+        { name: "@prefix", value: input.projectionIdPrefix },
+        { name: "@suffix", value: input.projectionIdSuffix },
+      ],
+      input.serviceId,
+    );
+    return rows.map((row) => ({
+      projectionId: row.document.projectionId,
+      lastSuid: row.document.lastSuid,
+      stateJson: row.document.stateJson,
+    }));
   }
 
   async advanceProjectionCheckpoint(input: ProjectionCheckpointAdvance): Promise<boolean> {
