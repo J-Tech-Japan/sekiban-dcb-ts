@@ -34,12 +34,25 @@
   materialized views, PostgreSQL, and Cosmos. Metadata-only queries keep the
   previous parameter guard and response envelopes. Public failures are
   `query_params_invalid`, `query_scan_limit_exceeded`, `query_row_invalid`,
-  `query_result_invalid`, and `query_handler_failed`. There is no typed client
-  overload yet. The preview is unreleased and bound for `0.3.0`; it is not
-  part of the published `0.2.x` packages. Release hardening and the `0.3.0`
-  version bump are later changes. Handlers receive no database, network,
-  environment, request, clock, paging, direction, consistency, waiting, or
-  cancellation capability.
+  `query_result_invalid`, and `query_handler_failed`. The preview is
+  unreleased and bound for `0.3.0`; it is not part of the published `0.2.x`
+  packages. Release hardening and the `0.3.0` version bump are later changes.
+  Handlers receive no database, network, environment, request, clock, paging,
+  direction, consistency, waiting, or cancellation capability.
+
+### @sekiban/dcb-client
+
+- Add typed `SekibanExecutor.query` and `listQuery` overloads beside the raw
+  V1 overloads. `QueryCallOptions` is `waitForSortableUniqueId` and `signal`.
+  List controls stay separate and map to `PageNumber`, `PageSize`,
+  `NewestFirst`, and `consistency`. A request with string `queryType` and
+  `queryParamsJson` stays raw. Transports stay raw.
+- Local failures `query_params_encode_failed` (`invalid`, no status) and
+  `query_result_decode_failed` (`unavailable`, no status) are fresh client
+  errors. Recognized server codes are unchanged.
+  `projection_ordering_quarantined` stays `transport` with status 503 and is
+  not decoded. Package versions stay `0.2.2`. This client change is not in
+  the published `0.2.2` packages, and `0.3.0` is not released.
 
 ## @sekiban/dcb-domain 0.2.2 (matched release)
 
@@ -86,8 +99,9 @@
   binding is unconfigured, and returns 401 for a missing or wrong credential.
 - Denied bootstrap and repair requests are rejected before service-identity
   resolution and before downstream storage or Durable Object access.
-- Typed query handlers are planned for `0.3.0`. Their API is not defined in
-  this change. The V1 response envelope is unchanged.
+- This `0.2.2` release does not include typed query handlers. The V1 response
+  envelope is unchanged. The typed query API is defined in the repository and
+  remains unreleased for `0.3.0`.
 
 ### @sekiban/dcb-cloudflare 0.1.4
 

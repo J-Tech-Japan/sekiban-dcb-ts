@@ -2,6 +2,9 @@ import { z } from "zod";
 import {
   command,
   done,
+  defineListQuery,
+  defineQuery,
+  defineQueryView,
   domain,
   event,
   evolve,
@@ -232,6 +235,47 @@ export const releaseRoomCommand = command({
   },
 });
 
+const reservationQueryRow = z.object({
+  reservationId: z.string(),
+  roomId: z.string().nullable().optional(),
+  status: z.enum(["reserved", "cancelled"]),
+  version: z.number().int().nonnegative(),
+});
+
+const reservationQueryView = defineQueryView({
+  id: "ReservationProjector",
+  version: 1,
+  row: reservationQueryRow,
+});
+
+export const listActiveReservationsByRoomQuery = defineListQuery({
+  id: "ListActiveReservationsByRoomQuery",
+  version: 1,
+  source: reservationQueryView,
+  params: z.strictObject({ roomId: z.string().min(1).optional() }),
+  item: reservationQueryRow,
+  handleFilter: (projection, params) => projection.rows
+    .filter((row) => row.value.status === "reserved")
+    .filter((row) => params.roomId === undefined || row.value.roomId === params.roomId)
+    .map((row) => row.value),
+  handleSort: (items) => [...items].sort((left, right) => {
+    if (left.reservationId < right.reservationId) return -1;
+    if (left.reservationId > right.reservationId) return 1;
+    return 0;
+  }),
+});
+
+export const countActiveReservationsByRoomQuery = defineQuery({
+  id: "CountActiveReservationsByRoomQuery",
+  version: 1,
+  source: reservationQueryView,
+  params: z.strictObject({ roomId: z.string().min(1) }),
+  result: z.strictObject({ count: z.number().int().nonnegative() }),
+  handleQuery: (projection, params) => ({
+    count: projection.rows.filter((row) => row.value.status === "reserved" && row.value.roomId === params.roomId).length,
+  }),
+});
+
 const reservationQuery = {
   id: "GetReservationListQuery",
   version: 1,
@@ -251,6 +295,7 @@ export const bookingAuthoringDomain = domain({
   commands: [createRoomCommand, reserveRoomCommand, cancelReservationCommand, releaseRoomCommand],
   projectors: [roomProjector, reservationProjector],
   views: bookingViews,
+  queries: [listActiveReservationsByRoomQuery, countActiveReservationsByRoomQuery],
 });
 
 export const bookingDomain: RuntimeDomainDefinition = toRuntimeDomain(bookingAuthoringDomain);
@@ -258,18 +303,11 @@ export const bookingDomain: RuntimeDomainDefinition = toRuntimeDomain(bookingAut
 export const bookingRuntimeConfig = {
   deliveryClass: "immediate-preferred",
   projectorPayloadNames: { RoomProjector: "RoomState", ReservationProjector: "ReservationState" },
-  queries: [reservationQuery],
+  queries: [...bookingDomain.queries, reservationQuery],
 } satisfies {
   readonly deliveryClass: "immediate-preferred" | "queued";
   readonly projectorPayloadNames: Readonly<Record<string, string>>;
-  readonly queries: readonly {
-    readonly id: string;
-    readonly version: number;
-    readonly queryType: string;
-    readonly endpoint: "query" | "list-query";
-    readonly tagGroup: string;
-    readonly tagProjector: string;
-  }[];
+  readonly queries: readonly { readonly queryType: string }[];
 };
 
 export const bookingProjectors = { roomProjector, reservationProjector };

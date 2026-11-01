@@ -178,15 +178,24 @@ interface ListPage {
   readonly readHead?: string;
 }
 
-function rows(page: ListPage): Array<{ reservationId?: string; status?: string }> {
-  return JSON.parse(page.itemsJson) as Array<{ reservationId?: string; status?: string }>;
+function rows(page: {
+  readonly itemsJson?: string;
+  readonly items?: ReadonlyArray<{ reservationId?: string; status?: string }>;
+}): Array<{ reservationId?: string; status?: string }> {
+  if (page.items !== undefined) return [...page.items];
+  return JSON.parse(page.itemsJson ?? "[]") as Array<{ reservationId?: string; status?: string }>;
 }
 
 async function sampleUnsafePage(
   serviceId: string,
   requestEnvironment: Record<string, unknown>,
   pageNumber: number,
-): Promise<ListPage> {
+): Promise<{
+  readonly items: Array<{ reservationId?: string; status?: string }>;
+  readonly currentPage: number;
+  readonly pageSize: number;
+  readonly readHead?: string;
+}> {
   const waits: Promise<unknown>[] = [];
   const fetch = meetingRoomWorker.fetch as unknown as (
     request: Request,
@@ -200,7 +209,13 @@ async function sampleUnsafePage(
     waitUntil: (promise: Promise<unknown>) => { waits.push(promise); },
   } as unknown as ExecutionContext);
   await Promise.all(waits);
-  const body = await response.json<ListPage & { error?: string }>();
+  const body = await response.json<{
+    items: Array<{ reservationId?: string; status?: string }>;
+    currentPage: number;
+    pageSize: number;
+    readHead?: string;
+    error?: string;
+  }>();
   expect(response.status, JSON.stringify(body)).toBe(200);
   expect(body.currentPage).toBe(pageNumber);
   expect(body.pageSize).toBe(20);
@@ -297,11 +312,11 @@ describe("SDT-G71 Cloudflare-only composition", () => {
       await Promise.all(secondQueue.waits);
 
       const heldUnsafePage1 = await sampleUnsafePage(serviceId, requestEnvironment, 1);
-      expect(rows(heldUnsafePage1)).toEqual(expect.arrayContaining([
+      expect(heldUnsafePage1.items).toEqual(expect.arrayContaining([
         expect.objectContaining({ reservationId: commitA.reservationId, status: "reserved" }),
         expect.objectContaining({ reservationId: commitB.reservationId, status: "reserved" }),
       ]));
-      expect(rows(heldUnsafePage1)).toHaveLength(2);
+      expect(heldUnsafePage1.items).toHaveLength(2);
       expect(heldUnsafePage1.readHead).toBe(commitB.suid);
 
       const heldSafePage1 = await safePage(serviceId, requestEnvironment, 1);
@@ -313,7 +328,7 @@ describe("SDT-G71 Cloudflare-only composition", () => {
       expect(heldSafePage2.readHead).toBe(commitA.suid);
 
       const heldUnsafePage2 = await sampleUnsafePage(serviceId, requestEnvironment, 2);
-      expect(rows(heldUnsafePage2)).toEqual([]);
+      expect(heldUnsafePage2.items).toEqual([]);
       expect(heldUnsafePage2.readHead).not.toBe(commitA.suid);
 
       // The second Queue delivery registered the real SafeWindow follow-up.

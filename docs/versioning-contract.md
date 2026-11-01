@@ -22,8 +22,9 @@ change V1, event identities, or read-side identities, and a new read-side
 version does not require a new wire protocol.
 
 Serialized query requests now reject parameters the selected query does not
-accept. A scalar query accepts only `{}`. A list query accepts only
-`PageNumber`, `PageSize`, `NewestFirst`, and `consistency`. This is a V1
-request-acceptance rule. Response envelopes, event identities, and
-projector/query/materialized-view identity pairs stay the same. Typed query
-handlers are planned for `0.3.0`; their API is not defined yet.
+accept. A metadata-only scalar query accepts only `{}`. A metadata-only list
+query accepts only `PageNumber`, `PageSize`, `NewestFirst`, and `consistency`.
+This is a V1 request-acceptance rule. Response envelopes, event identities, and
+projector/query/materialized-view identity pairs stay the same. The typed query
+API is defined in this repository and unreleased, bound for `0.3.0`. Published
+package versions stay `0.2.2`. V1 wire identities are unchanged.

@@ -75,12 +75,18 @@ describe("SDT-G16 application query views", () => {
     }), { RUNTIME: runtime } as unknown as MeetingRoomEnv, {} as ExecutionContext);
     expect(reservations.status).toBe(200);
     expect(reservations.headers.get("content-type")).toBe("application/json; charset=utf-8");
-    expect(await reservations.json()).toMatchObject({ totalCount: 1, pageSize: 20, continuation: "opaque-next-page-token" });
+    expect(await reservations.json()).toEqual({
+      items: [{ reservationId: "reservation-1", roomId: "room-1", status: "reserved", version: 2 }],
+      totalCount: 1,
+      totalPages: 1,
+      currentPage: 1,
+      pageSize: 20,
+    });
 
     expect(calls).toHaveLength(1);
     expect(new URL(calls[0]!.request.url).pathname).toBe("/api/sekiban/serialized/list-query");
     expect(calls[0]!.body).toEqual({
-      queryType: "GetReservationListQuery",
+      queryType: "ListActiveReservationsByRoomQuery",
       queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20, consistency: "unsafe" }),
     });
     for (const call of calls) {

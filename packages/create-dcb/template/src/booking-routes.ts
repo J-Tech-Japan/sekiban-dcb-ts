@@ -5,7 +5,7 @@ import {
   parseBookingCommandRequest,
   type InternalRuntimeFetcher,
 } from "./booking-transport";
-import { reservationTag, roomTag } from "./booking-domain";
+import { countActiveReservationsByRoomQuery, listActiveReservationsByRoomQuery, reservationTag, roomTag } from "./booking-domain";
 import type { CloudflareOnlyEnv } from "@sekiban/dcb-runtime/cloudflare";
 
 export interface StarterEnvironment extends CloudflareOnlyEnv {
@@ -131,18 +131,34 @@ function positiveInteger(value: string | null, fallback: number): number | Respo
 async function readQuery(request: Request, env: StarterEnvironment, ctx: ExecutionContext, runtime: StarterRuntime): Promise<Response> {
   if (request.method !== "GET") return json({ error: "Query routes require GET", code: "validation_error" }, 405);
   const url = new URL(request.url);
-  if (url.pathname !== "/api/read/reservations") return json({ error: "Query route was not found", code: "not_found" }, 404);
+  const isList = url.pathname === "/api/read/reservations";
+  const isCount = url.pathname === "/api/read/reservation-count";
+  if (!isList && !isCount) return json({ error: "Query route was not found", code: "not_found" }, 404);
+  const roomId = url.searchParams.get("roomId");
+  if (roomId !== null && roomId.length === 0) return json({ error: "roomId must be non-empty", code: "validation_error" }, 400);
+  if (isCount && (roomId === null || roomId.length === 0)) return json({ error: "roomId is required", code: "validation_error" }, 400);
   const transport = createV1Transport(runtimeFetcher(runtime, env, ctx), env.SDT_SERVICE_ID);
   const executor = createSekibanExecutor(transport, { serviceId: env.SDT_SERVICE_ID });
   try {
+    if (isCount) {
+      const result = await executor.query(countActiveReservationsByRoomQuery.contract, { roomId: roomId ?? "" }, { signal: request.signal });
+      return json(result);
+    }
     const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), 1);
     const pageSize = positiveInteger(url.searchParams.get("pageSize"), 20);
     if (pageNumber instanceof Response) return pageNumber;
     if (pageSize instanceof Response) return pageSize;
-    const result = await executor.listQuery({
-      queryType: "GetReservationListQuery",
-      queryParamsJson: JSON.stringify({ PageNumber: pageNumber, PageSize: pageSize, NewestFirst: url.searchParams.get("newestFirst") === "true" }),
-    }, { consistency: "unsafe" });
+    const result = await executor.listQuery(
+      listActiveReservationsByRoomQuery.contract,
+      roomId === null ? {} : { roomId },
+      {
+        pageNumber,
+        pageSize,
+        descending: url.searchParams.get("newestFirst") === "true",
+        consistency: "unsafe",
+        signal: request.signal,
+      },
+    );
     return json(result);
   } catch (error) {
     if (error instanceof ClientError) return json({ error: error.message, code: error.code }, error.status ?? 502);
@@ -154,7 +170,7 @@ export async function applicationFetch(request: Request, env: StarterEnvironment
   const path = new URL(request.url).pathname;
   if (path.startsWith("/api/commands/")) return command(request, env, ctx, runtime);
   if (path === "/api/read/room" || path === "/api/read/reservation") return readProjection(request, env, ctx, runtime);
-  if (path === "/api/read/reservations") return readQuery(request, env, ctx, runtime);
+  if (path === "/api/read/reservations" || path === "/api/read/reservation-count") return readQuery(request, env, ctx, runtime);
   if (env.ASSETS !== undefined) return env.ASSETS.fetch(request);
   if (path === "/" || path === "/index.html") return new Response("Booking starter", { headers: { "content-type": "text/plain; charset=utf-8" } });
   return new Response("Not found", { status: 404 });

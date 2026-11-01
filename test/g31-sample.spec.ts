@@ -79,8 +79,8 @@ describe("SDT-G31 meeting-room list auto-refresh", () => {
     expect(runtimeCalls).toHaveLength(1);
     expect(new URL(runtimeCalls[0]!.request.url).pathname).toBe("/api/sekiban/serialized/list-query");
     expect(runtimeCalls[0]!.body).toEqual({
-      queryType: "GetReservationListQuery",
-      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20, consistency: "unsafe", NewestFirst: true }),
+      queryType: "ListActiveReservationsByRoomQuery",
+      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20, NewestFirst: true, consistency: "unsafe" }),
       waitForSortableUniqueId: suid,
     });
     expect(runtimeCalls[0]!.request.headers.has("authorization")).toBe(false);
@@ -107,9 +107,9 @@ describe("SDT-G31 meeting-room list auto-refresh", () => {
   it("keeps the Cloudflare-only deployed proxy on the same bounded waitFor/newest-first contract", () => {
     const source = cloudflareOnlySource as string;
     expect(source).toContain('url.searchParams.get("waitForSortableUniqueId")');
-    expect(source).toContain("waitForSortableUniqueId = requestedWait ?? undefined");
-    expect(source).toContain("NewestFirst: true");
-    expect(source).toContain("...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId })");
+    expect(source).toContain("waitForSortableUniqueId: requestedWait");
+    expect(source).toContain('newestFirst === "true" ? { descending: true }');
+    expect(source).toContain("listActiveReservationsByRoomQuery.contract");
   });
 
   it("runs MV safe catch-up and receipt-GC before generic scheduled polling can fail or stall", async () => {

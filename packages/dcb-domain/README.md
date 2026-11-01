@@ -133,8 +133,8 @@ the code is `QUERY_DEFINITION_INVALID`, and the message is
 existing path. `RuntimeWorkerConfig.maxScanRows` sets the deployed raw scan
 bound: omission uses 1000, and a positive safe integer from 1 through 10000 is
 accepted. Executable queries run on the server through the existing raw V1
-routes. There is no typed client overload yet. Release hardening and the
-`0.3.0` version bump are later changes.
+routes. `SekibanExecutor` can call the frozen contract directly. Release
+hardening and the `0.3.0` version bump are later changes.
 
 A `z.codec` is accepted when both directions are synchronous functions, even if
 encode is not the inverse of decode. Keeping that pair meaningful is the
@@ -148,8 +148,8 @@ fails closed:
 - `QUERY_CODEC_NOT_JSON_SAFE` — `Query codec output must be JSON-safe.`
 - `QUERY_CODEC_OUTPUT_UNCOPYABLE` — `Query codec output must support portable detached copies.`
 
-Executable queries run on the server through raw V1 calls. There is no typed
-client overload yet.
+Executable queries run on the server through raw V1 calls. The client package
+accepts the frozen contract on `query` and `listQuery`.
 
 ## Versioning
 
@@ -168,8 +168,11 @@ helpers for the `0.1.x` line:
 - No deep imports beyond `.` and `./testing` are supported.
 
 The typed query authoring preview above is unreleased and bound for `0.3.0`.
-It is not available in `0.2.x`. The helpers compile server registrations.
-There is no typed client overload yet.
+It is not available in the published `0.2.x` packages. The helpers compile
+server registrations. `SekibanExecutor.query` and `listQuery` accept the
+frozen `.contract` in this repository. Configured `queries` replace
+`domain.queries`, so a runtime config that keeps a metadata-only record must
+list the compiled registrations as well.
 
 The earlier `@sekiban/core` and related packages belong to the older
 sekiban-ts line; they are not dependencies or aliases for this package.

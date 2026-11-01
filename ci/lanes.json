@@ -141,7 +141,8 @@
         {"id": "references-self-test", "command": "npm run test:references:self-test"},
         {"id": "references", "command": "npm run test:references"},
         {"id": "query-portable", "command": "npm run test:query:portable"},
-        {"id": "query-activation", "command": "npm run test:query:activation"}
+        {"id": "query-activation", "command": "npm run test:query:activation"},
+        {"id": "query-client", "command": "npm run test:query:client"}
       ]
     },
     {

@@ -21401,6 +21401,54 @@
           }
         },
         {
+          "name": "QueryCallOptions",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/executor.d.ts",
+              "kind": "interface",
+              "text": "export interface QueryCallOptions { readonly waitForSortableUniqueId?: string; readonly signal?: AbortSignal; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "waitForSortableUniqueId",
+              "optional": true,
+              "readonly": true,
+              "type": "string | undefined"
+            },
+            {
+              "name": "signal",
+              "optional": true,
+              "readonly": true,
+              "type": "AbortSignal | undefined"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "QueryRequest",
           "namespace": {
             "value": false,
@@ -22089,7 +22137,7 @@
             {
               "file": "dist/executor.d.ts",
               "kind": "interface",
-              "text": "export interface SekibanExecutor { execute<C extends CommandDefinition>(command: C, input: CommandInput<C>, options?: ExecuteCommandOptions): Promise<ExecuteCommandResult>; readState<P extends ProjectorLike>(projector: P, tag: Tag, options?: ReadOptions): Promise<PortableSnapshot>; exists(tag: Tag, options?: ReadOptions): Promise<PortableSnapshot<undefined>>; query(request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>; listQuery(request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>; readonly transport: SerializedDcbTransport; }",
+              "text": "export interface SekibanExecutor { execute<C extends CommandDefinition>(command: C, input: CommandInput<C>, options?: ExecuteCommandOptions): Promise<ExecuteCommandResult>; readState<P extends ProjectorLike>(projector: P, tag: Tag, options?: ReadOptions): Promise<PortableSnapshot>; exists(tag: Tag, options?: ReadOptions): Promise<PortableSnapshot<undefined>>; query<P, R>(contract: QueryContract<P, R> & QueryHandlerFree, params: P, options?: QueryCallOptions): Promise<R>; query(request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>; listQuery<P, I>(contract: ListQueryContract<P, I> & QueryHandlerFree, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>; listQuery(request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>; readonly transport: SerializedDcbTransport; }",
               "typeParameters": []
             }
           ],
@@ -22121,13 +22169,13 @@
               "name": "query",
               "optional": false,
               "readonly": false,
-              "type": "(request: QueryRequest, options?: ReadOptions) => Promise<QueryResponse>"
+              "type": "{ <P, R>(contract: QueryContract<P, R> & QueryHandlerFree, params: P, options?: QueryCallOptions): Promise<R>; (request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>; }"
             },
             {
               "name": "listQuery",
               "optional": false,
               "readonly": false,
-              "type": "(request: ListQueryRequest, options?: ListQueryOptions) => Promise<ListQueryResponse>"
+              "type": "{ <P, I>(contract: ListQueryContract<P, I> & QueryHandlerFree, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>; (request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>; }"
             },
             {
               "name": "transport",
@@ -22138,7 +22186,7 @@
           ],
           "syntax": {
             "union": false,
-            "intersection": false,
+            "intersection": true,
             "tuple": false,
             "indexSignature": false,
             "conditional": true,
@@ -82469,9 +82517,44 @@
     {
       "package": "@sekiban/dcb-client",
       "file": "dist/executor.d.ts",
+      "name": "I",
+      "kind": "TypeParameter",
+      "text": "I"
+    },
+    {
+      "package": "@sekiban/dcb-client",
+      "file": "dist/executor.d.ts",
+      "name": "P",
+      "kind": "TypeParameter",
+      "text": "P"
+    },
+    {
+      "package": "@sekiban/dcb-client",
+      "file": "dist/executor.d.ts",
+      "name": "P",
+      "kind": "TypeParameter",
+      "text": "P"
+    },
+    {
+      "package": "@sekiban/dcb-client",
+      "file": "dist/executor.d.ts",
       "name": "P",
       "kind": "TypeParameter",
       "text": "P extends ProjectorLike"
+    },
+    {
+      "package": "@sekiban/dcb-client",
+      "file": "dist/executor.d.ts",
+      "name": "QueryHandlerFree",
+      "kind": "type",
+      "text": "type QueryHandlerFree = { readonly handleQuery?: never; readonly handleFilter?: never; readonly handleSort?: never; };"
+    },
+    {
+      "package": "@sekiban/dcb-client",
+      "file": "dist/executor.d.ts",
+      "name": "R",
+      "kind": "TypeParameter",
+      "text": "R"
     },
     {
       "package": "@sekiban/dcb-client",
@@ -85377,5 +85460,5 @@
       "materializedViewId"
     ]
   },
-  "publicSurfaceHash": "4beccaad1b3904da17a20cd079cfeb2404531b5fc02b91062e8d4aa53c32afec"
+  "publicSurfaceHash": "590e77382aacaa5482409e7e2d987b57a2548bdb7edbfe289b9515c82dc81db6"
 }

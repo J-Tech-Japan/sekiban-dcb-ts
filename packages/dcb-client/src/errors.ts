@@ -21,8 +21,10 @@ const SAFE_MESSAGES: Readonly<Record<string, string>> = Object.freeze({
   partial_write: "The command was partially written",
   projection_unavailable: "The mapped query projection is unavailable",
   query_handler_failed: "The query handler failed.",
+  query_params_encode_failed: "The query parameters could not be encoded.",
   query_params_invalid: "The query parameters are invalid.",
   query_params_unsupported: "The selected query does not support these parameters.",
+  query_result_decode_failed: "The query response could not be decoded.",
   query_result_invalid: "The query handler returned an invalid result.",
   query_row_invalid: "The query projection contains an invalid row.",
   query_scan_limit_exceeded: "The query scan limit was exceeded.",
@@ -91,6 +93,12 @@ function abortLike(value: unknown): boolean {
 
 function bodyOf(value: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   return value !== undefined && isRecord(value.body) ? value.body : undefined;
+}
+
+export function localQueryClientError(
+  code: "query_params_encode_failed" | "query_result_decode_failed",
+): ClientError {
+  return new ClientError(code, SAFE_MESSAGES[code]);
 }
 
 export interface TransportErrorSanitizationOptions {

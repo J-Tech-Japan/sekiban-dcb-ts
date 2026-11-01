@@ -33,7 +33,14 @@ import {
 } from "./transport";
 import { ClientError, createSekibanExecutor } from "@sekiban/dcb-client";
 import { deliveryPolicyFromDomain } from "@sekiban/dcb-domain";
-import { meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
+import {
+  countActiveReservationsByRoomQuery,
+  listActiveReservationsByRoomQuery,
+  meetingRoomDomain,
+  meetingRoomRuntimeConfig,
+  reservationTag,
+  roomTag,
+} from "./domain";
 import {
   catchUpMeetingRoomMaterializedViews,
   drainMeetingRoomUnsafeKicks,
@@ -834,35 +841,56 @@ async function readProjection(request: Request, env: MeetingRoomCloudflareEnv, c
 async function readQuery(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
   if (request.method !== "GET") return json({ error: "Query routes require GET", code: "validation_error" }, 400);
   const url = new URL(request.url);
-  if (url.pathname !== "/api/read/reservations") return json({ error: "Query route was not found", code: "not_found" }, 404);
-  const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), "pageNumber", 1);
-  if (pageNumber instanceof Response) return pageNumber;
-  const pageSize = positiveInteger(url.searchParams.get("pageSize"), "pageSize", 20);
-  if (pageSize instanceof Response) return pageSize;
-  const newestFirst = url.searchParams.get("newestFirst");
-  if (newestFirst !== null && newestFirst !== "true" && newestFirst !== "false") {
-    return json({ error: "newestFirst must be true or false", code: "validation_error" }, 400);
-  }
+  const isList = url.pathname === "/api/read/reservations";
+  const isCount = url.pathname === "/api/read/reservation-count";
+  if (!isList && !isCount) return json({ error: "Query route was not found", code: "not_found" }, 404);
   const requestedWait = url.searchParams.get("waitForSortableUniqueId");
   if (requestedWait !== null && requestedWait.length === 0) {
     return json({ error: "waitForSortableUniqueId must be non-empty", code: "validation_error" }, 400);
   }
-  const waitForSortableUniqueId = requestedWait ?? undefined;
-  const queryParams = {
-    PageNumber: pageNumber,
-    PageSize: pageSize,
-    ...(newestFirst === "true" ? { NewestFirst: true } : {}),
-  };
+  const roomId = url.searchParams.get("roomId");
+  if (roomId !== null && roomId.length === 0) {
+    return json({ error: "roomId must be non-empty", code: "validation_error" }, 400);
+  }
+  if (isCount && (roomId === null || roomId.length === 0)) {
+    return json({ error: "roomId is required", code: "validation_error" }, 400);
+  }
   const runtimeTransport = createV1Transport({
     fetch: (input, init) => runtimeFetch(new Request(input, init), env, ctx),
   }, serviceIdentity(env));
   const executor = createSekibanExecutor(runtimeTransport, { serviceId: serviceIdentity(env) });
   try {
-    const result = await executor.listQuery({
-      queryType: "GetReservationListQuery",
-      queryParamsJson: JSON.stringify(queryParams),
-      ...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId }),
-    }, { consistency: "unsafe" });
+    if (isCount) {
+      const result = await executor.query(
+        countActiveReservationsByRoomQuery.contract,
+        { roomId: roomId ?? "" },
+        {
+          ...(requestedWait === null ? {} : { waitForSortableUniqueId: requestedWait }),
+          signal: request.signal,
+        },
+      );
+      return json(result);
+    }
+    const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), "pageNumber", 1);
+    if (pageNumber instanceof Response) return pageNumber;
+    const pageSize = positiveInteger(url.searchParams.get("pageSize"), "pageSize", 20);
+    if (pageSize instanceof Response) return pageSize;
+    const newestFirst = url.searchParams.get("newestFirst");
+    if (newestFirst !== null && newestFirst !== "true" && newestFirst !== "false") {
+      return json({ error: "newestFirst must be true or false", code: "validation_error" }, 400);
+    }
+    const result = await executor.listQuery(
+      listActiveReservationsByRoomQuery.contract,
+      roomId === null ? {} : { roomId },
+      {
+        pageNumber,
+        pageSize,
+        ...(newestFirst === "true" ? { descending: true } : {}),
+        consistency: "unsafe",
+        ...(requestedWait === null ? {} : { waitForSortableUniqueId: requestedWait }),
+        signal: request.signal,
+      },
+    );
     return json(result);
   } catch (error) {
     if (error instanceof ClientError) return json({ error: error.message, code: error.code }, error.status ?? 502);
@@ -1179,7 +1207,7 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
     }
     if (path === "/api/sekiban/serialized" || path.startsWith("/api/sekiban/serialized/")) return json({ error: "Raw V1 routes are available only through the authenticated conformance lane", code: "not_found" }, 404);
     if (path === "/api/read/room" || path === "/api/read/reservation") return readProjection(request, env, ctx);
-    if (path === "/api/read/reservations") return readQuery(request, env, ctx);
+    if (path === "/api/read/reservations" || path === "/api/read/reservation-count") return readQuery(request, env, ctx);
     if (env.ASSETS !== undefined) return env.ASSETS.fetch(request);
     if (path === "/" || path === "/index.html") return new Response("Meeting-room sample", { headers: { "content-type": "text/html; charset=utf-8" } });
     return new Response("Not found", { status: 404 });
