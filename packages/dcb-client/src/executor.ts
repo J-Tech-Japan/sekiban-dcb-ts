@@ -1,4 +1,5 @@
 import { assertJsonValue as assertCoreJsonValue } from "@sekiban/dcb-core";
+import type { ListQueryContract, ListQueryControls, QueryContract, QueryPage } from "@sekiban/dcb-core";
 import {
   executeCommand,
   normalizeTag,
@@ -31,7 +32,7 @@ import {
 } from "./index.js";
 import { classifyFailure, commitReplyError, failureKindForCode } from "./classification.js";
 import { awaitControlled, totalBudgetMsProblem } from "./control.js";
-import { sanitizeTransportError } from "./errors.js";
+import { localQueryClientError, sanitizeTransportError } from "./errors.js";
 import { v1Envelope } from "./wire.js";
 
 /** The small Worker-side binding surface needed by the in-process adapter. */
@@ -59,6 +60,12 @@ export type ReadConsistency = "safe" | "unsafe";
 /** The consistency lane is deliberately available only on listQuery. */
 export interface ListQueryOptions {
   readonly consistency?: ReadConsistency;
+  readonly signal?: AbortSignal;
+}
+
+/** Scalar typed-call options. Paging and consistency stay on list controls. */
+export interface QueryCallOptions {
+  readonly waitForSortableUniqueId?: string;
   readonly signal?: AbortSignal;
 }
 
@@ -105,7 +112,9 @@ export interface SekibanExecutor {
   ): Promise<ExecuteCommandResult>;
   readState<P extends ProjectorLike>(projector: P, tag: Tag, options?: ReadOptions): Promise<PortableSnapshot>;
   exists(tag: Tag, options?: ReadOptions): Promise<PortableSnapshot<undefined>>;
+  query<P, R>(contract: QueryContract<P, R>, params: P, options?: QueryCallOptions): Promise<R>;
   query(request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>;
+  listQuery<P, I>(contract: ListQueryContract<P, I>, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>;
   listQuery(request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>;
   readonly transport: SerializedDcbTransport;
 }
@@ -612,6 +621,175 @@ function isDomainAuthoringError(error: unknown): error is { readonly code: strin
   return isRecord(error) && typeof error.code === "string" && typeof error.name === "string" && DOMAIN_AUTHORING_ERROR_NAMES.has(error.name);
 }
 
+const RESERVED_QUERY_PARAM_KEYS = new Set([
+  "PageNumber",
+  "PageSize",
+  "NewestFirst",
+  "consistency",
+  "pageNumber",
+  "pageSize",
+  "newestFirst",
+  "descending",
+  "waitForSortableUniqueId",
+  "signal",
+]);
+
+function isThenable(value: unknown): boolean {
+  return (typeof value === "object" || typeof value === "function")
+    && value !== null
+    && typeof (value as { then?: unknown }).then === "function";
+}
+
+function isQueryCodec(value: unknown): value is { encode: (input: unknown) => unknown; decode: (input: unknown) => unknown } {
+  return isRecord(value) && typeof value.encode === "function" && typeof value.decode === "function";
+}
+
+function isRawQueryRequest(value: unknown): value is QueryRequest {
+  return isRecord(value) && typeof value.queryType === "string" && typeof value.queryParamsJson === "string";
+}
+
+function isScalarContract(value: unknown): value is QueryContract<unknown, unknown> {
+  return isRecord(value)
+    && value.kind === "query"
+    && typeof value.id === "string"
+    && isQueryCodec(value.params)
+    && isQueryCodec(value.result);
+}
+
+function isListContract(value: unknown): value is ListQueryContract<unknown, unknown> {
+  return isRecord(value)
+    && value.kind === "list-query"
+    && typeof value.id === "string"
+    && isQueryCodec(value.params)
+    && isQueryCodec(value.item);
+}
+
+function queryParamsEncodeFailed(): never {
+  throw localQueryClientError("query_params_encode_failed");
+}
+
+function queryResultDecodeFailed(): never {
+  throw localQueryClientError("query_result_decode_failed");
+}
+
+function invalidQueryRequest(): never {
+  throw new ClientError("invalid_query_request", "The query request was invalid");
+}
+
+function copyEncodedObject(value: unknown): Record<string, unknown> {
+  if (isThenable(value) || !isRecord(value)) queryParamsEncodeFailed();
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) queryParamsEncodeFailed();
+  if (Object.getOwnPropertySymbols(value).length > 0) queryParamsEncodeFailed();
+  const names = Object.getOwnPropertyNames(value);
+  const keys = Object.keys(value);
+  if (names.length !== keys.length) queryParamsEncodeFailed();
+  const copy: Record<string, unknown> = Object.create(null);
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || descriptor.enumerable !== true || descriptor.get !== undefined || descriptor.set !== undefined) {
+      queryParamsEncodeFailed();
+    }
+    copy[key] = descriptor.value;
+  }
+  return copy;
+}
+
+function encodeDomainParams(
+  codec: { encode: (input: unknown) => unknown },
+  params: unknown,
+): Record<string, unknown> {
+  let encoded: unknown;
+  try {
+    encoded = codec.encode(params);
+  } catch {
+    queryParamsEncodeFailed();
+  }
+  if (isThenable(encoded)) queryParamsEncodeFailed();
+  return copyEncodedObject(encoded);
+}
+
+function rejectReservedEncodedKeys(params: Record<string, unknown>): void {
+  for (const key of Object.keys(params)) {
+    if (RESERVED_QUERY_PARAM_KEYS.has(key)) queryParamsEncodeFailed();
+  }
+}
+
+function applyListControls(params: Record<string, unknown>, controls: ListQueryControls | undefined): void {
+  if (controls === undefined) return;
+  if (controls.pageNumber !== undefined) params.PageNumber = controls.pageNumber;
+  if (controls.pageSize !== undefined) params.PageSize = controls.pageSize;
+  if (controls.descending !== undefined) params.NewestFirst = controls.descending;
+  if (controls.consistency !== undefined) params.consistency = controls.consistency;
+}
+
+function stringifyQueryValue(value: Record<string, unknown>): string {
+  try {
+    const text = JSON.stringify(value);
+    if (typeof text !== "string") queryParamsEncodeFailed();
+    return text;
+  } catch (error) {
+    if (error instanceof ClientError) throw error;
+    queryParamsEncodeFailed();
+  }
+}
+
+function assertSerializableRequest(request: QueryRequest): void {
+  try {
+    const text = JSON.stringify(request);
+    if (typeof text !== "string") queryParamsEncodeFailed();
+  } catch (error) {
+    if (error instanceof ClientError) throw error;
+    queryParamsEncodeFailed();
+  }
+}
+
+function decodeScalar(contract: QueryContract<unknown, unknown>, response: QueryResponse): unknown {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(response.resultJson);
+  } catch {
+    queryResultDecodeFailed();
+  }
+  let decoded: unknown;
+  try {
+    decoded = contract.result.decode(parsed);
+  } catch {
+    queryResultDecodeFailed();
+  }
+  if (isThenable(decoded)) queryResultDecodeFailed();
+  return decoded;
+}
+
+function decodePage(contract: ListQueryContract<unknown, unknown>, response: ListQueryResponse): QueryPage<unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(response.itemsJson);
+  } catch {
+    queryResultDecodeFailed();
+  }
+  if (!Array.isArray(parsed)) queryResultDecodeFailed();
+  const items: unknown[] = [];
+  for (const entry of parsed) {
+    let decoded: unknown;
+    try {
+      decoded = contract.item.decode(entry);
+    } catch {
+      queryResultDecodeFailed();
+    }
+    if (isThenable(decoded)) queryResultDecodeFailed();
+    items.push(decoded);
+  }
+  return {
+    items,
+    totalCount: response.totalCount,
+    totalPages: response.totalPages,
+    currentPage: response.currentPage,
+    pageSize: response.pageSize,
+    ...(response.readHead === undefined ? {} : { readHead: response.readHead }),
+  };
+}
+
 function maxConflictRetriesProblem(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return undefined;
@@ -718,20 +896,67 @@ export function createSekibanExecutor(
     return existsWith(tag, readOptions.signal, uncontrolled);
   };
 
-  const query = async (request: QueryRequest, readOptions: ReadOptions = {}): Promise<QueryResponse> => {
+  async function query<P, R>(contract: QueryContract<P, R>, params: P, options?: QueryCallOptions): Promise<R>;
+  async function query(request: QueryRequest, readOptions?: ReadOptions): Promise<QueryResponse>;
+  async function query(
+    requestOrContract: QueryRequest | QueryContract<unknown, unknown>,
+    second?: unknown,
+    third?: QueryCallOptions,
+  ): Promise<unknown> {
     assertScope();
-    rejectUnsupportedConsistency(readOptions);
-    rejectQueryEmbeddedConsistency(request);
-    return normalizedQueryResponse(await readCall(() => transport.query(request, readOptions.signal), "Query"));
-  };
-  const listQuery = async (request: ListQueryRequest, readOptions: ListQueryOptions = {}): Promise<ListQueryResponse> => {
+    if (isRawQueryRequest(requestOrContract)) {
+      const readOptions = (isRecord(second) ? second : {}) as ReadOptions;
+      rejectUnsupportedConsistency(readOptions);
+      rejectQueryEmbeddedConsistency(requestOrContract);
+      return normalizedQueryResponse(await readCall(() => transport.query(requestOrContract, readOptions.signal), "Query"));
+    }
+    if (!isScalarContract(requestOrContract)) invalidQueryRequest();
+    const options = third ?? {};
+    const request = {
+      queryType: requestOrContract.id,
+      queryParamsJson: stringifyQueryValue(encodeDomainParams(requestOrContract.params, second)),
+      ...(options.waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId: options.waitForSortableUniqueId }),
+    };
+    assertSerializableRequest(request);
+    const response = normalizedQueryResponse(await readCall(() => transport.query(request, options.signal), "Query"));
+    return decodeScalar(requestOrContract, response);
+  }
+  async function listQuery<P, I>(
+    contract: ListQueryContract<P, I>,
+    params: P,
+    controls?: ListQueryControls,
+  ): Promise<QueryPage<I>>;
+  async function listQuery(request: ListQueryRequest, readOptions?: ListQueryOptions): Promise<ListQueryResponse>;
+  async function listQuery(
+    requestOrContract: ListQueryRequest | ListQueryContract<unknown, unknown>,
+    second?: unknown,
+    third?: ListQueryControls,
+  ): Promise<unknown> {
     assertScope();
-    const withConsistency = requestWithListConsistency(request, readOptions);
-    return normalizedListQueryResponse(await readCall(
-      () => transport.listQuery(withConsistency, readOptions.signal),
+    if (isRawQueryRequest(requestOrContract)) {
+      const readOptions = (isRecord(second) ? second : {}) as ListQueryOptions;
+      const withConsistency = requestWithListConsistency(requestOrContract, readOptions);
+      return normalizedListQueryResponse(await readCall(
+        () => transport.listQuery(withConsistency, readOptions.signal),
+        "List-query",
+      ));
+    }
+    if (!isListContract(requestOrContract)) invalidQueryRequest();
+    const encoded = encodeDomainParams(requestOrContract.params, second);
+    rejectReservedEncodedKeys(encoded);
+    applyListControls(encoded, third);
+    const request = {
+      queryType: requestOrContract.id,
+      queryParamsJson: stringifyQueryValue(encoded),
+      ...(third?.waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId: third.waitForSortableUniqueId }),
+    };
+    assertSerializableRequest(request);
+    const response = normalizedListQueryResponse(await readCall(
+      () => transport.listQuery(request, third?.signal),
       "List-query",
     ));
-  };
+    return decodePage(requestOrContract, response);
+  }
 
   const execute = async <C extends CommandDefinition>(command: C, input: CommandInput<C>, executeOptions: ExecuteCommandOptions = {}): Promise<ExecuteCommandResult> => {
     if (scopeMismatch) return { kind: "invalid", attempts: 0, code: "scope.mismatch", error: "Executor service scope does not match its transport" };

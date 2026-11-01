@@ -17,7 +17,12 @@ package `src` directory.
 
 The application surface is `/api/commands/{create-room,reserve-room,cancel-reservation,release-room}`
 plus the read-only `/api/read/room?roomId=...` and
-`/api/read/reservation?reservationId=...` wrappers used by the browser. Each
+`/api/read/reservation?reservationId=...` wrappers used by the browser.
+`GET /api/read/reservations` returns a decoded page from
+`ListActiveReservationsByRoomQuery`. `GET /api/read/reservation-count?roomId=...`
+returns `{ count }` from `CountActiveReservationsByRoomQuery`. Optional
+`roomId` filters the list. `GetReservationListQuery` remains the metadata-only
+list. Each
 command is authored with `@sekiban/dcb-domain` and reaches the runtime through
 `toRuntimeDomain()` and the internal `RUNTIME` service binding. The booking
 workflow is deliberately two commits: if the reservation step conflicts, the
@@ -59,7 +64,10 @@ Hyperdrive, Postgres, or experimental Cosmos binding. The Queue consumer applies
 an immediate tentative view from the composed `D1_MV` read. `/api/read/room`
 is not that materialized-view query. It is a keyed serialized tag-state read:
 `GET /api/read/room?roomId=...` returns the decoded `RoomProjector` state, its
-version, and `lastSortedUniqueId`.
+version, and `lastSortedUniqueId`. The reservation list and count routes use
+the authored contracts against that same `D1_MV` backing when the Cloudflare-only
+worker is selected. A checkpoint row may omit `roomId`; the decoded item omits
+it too. A stored `userId` is not part of the meeting-room row.
 SafeWindow catch-up remains the definitive ordered fold; an unsafe failure is
 retried and is never silently acknowledged. Cron is only the recovery net for
 safe catch-up and residual kick/GC work. The existing PG config stays available

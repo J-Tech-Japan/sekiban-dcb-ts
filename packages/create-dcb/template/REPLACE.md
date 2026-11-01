@@ -6,10 +6,10 @@ shell and infrastructure listed afterwards.
 
 ## Delete or replace
 
-- `src/booking-domain.ts` — room/reservation commands, events, projectors, and queries.
+- `src/booking-domain.ts` — room/reservation commands, events, projectors, and queries. The authored list is `ListActiveReservationsByRoomQuery` and the authored count is `CountActiveReservationsByRoomQuery`. `GetReservationListQuery` is metadata-only. Runtime `queries` replace `domain.queries`, so a replacement config must include the compiled registrations and any metadata-only record that should remain.
 - `src/booking-transport.ts` — the command and query transport map.
 - `src/booking-mv.ts` — the two demo materializers and Queue delivery views.
-- `src/booking-routes.ts` — demo HTTP command/read routes. The room route reads tag state and returns `lastSortedUniqueId`.
+- `src/booking-routes.ts` — demo HTTP command/read routes. The room route reads tag state and returns `lastSortedUniqueId`. The reservation routes pass `.contract` and a separate controls argument; they do not build a typed `queryType` string.
 - `public/index.html` — demo form markup.
 - `public/app.js` — demo command/read client.
 - `public/styles.css` — demo presentation.

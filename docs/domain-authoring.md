@@ -295,8 +295,12 @@ database, network, environment, request, clock, paging, direction,
 consistency, waiting, or cancellation capability. `toRuntimeDomain()` compiles
 a frozen server registration from those codecs and handlers and does not call
 them. Executable queries then run on the server through the existing raw V1
-routes. `RuntimeWorkerConfig.maxScanRows` bounds each raw scan. There is no
-typed client overload yet.
+routes. `RuntimeWorkerConfig.maxScanRows` bounds each raw scan.
+`SekibanExecutor.query` and `listQuery` accept the frozen contract: domain
+parameters are encoded once, list controls stay in a separate argument, and
+the normalized raw envelope is decoded into the scalar result or the list
+page. A row schema may use `z.object` so an extra stored field is removed
+before the caller sees the item.
 
 Definition creation walks the Zod schema graph, including both sides of a
 `z.codec` and the cached target of `z.lazy`. It rejects one-way transforms
@@ -326,4 +330,6 @@ rejects a malformed typed definition on `domain.queries`, `config.queries`, and
 `config.queryDefinitions` before precedence, including a definition that would
 not have won. The error code is `QUERY_DEFINITION_INVALID`. Query-free domains
 and ordinary id/version metadata stay on the existing path. Executable queries
-run through raw V1 calls. There is no typed client overload yet.
+run through raw V1 calls. A runtime `queries` list replaces `domain.queries`,
+so keep each compiled registration when a metadata-only record must remain.
+The client call uses `.contract` and does not rebuild `queryType` by hand.

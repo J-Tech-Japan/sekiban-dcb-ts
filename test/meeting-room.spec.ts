@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { createSekibanExecutor } from "@sekiban/dcb-client";
 import { createRuntimeWorker } from "@sekiban/dcb-runtime";
 import { createMeetingRoomWorker, type MeetingRoomEnv } from "../samples/meeting-room/src/worker";
 import { createV1Transport } from "../samples/meeting-room/src/transport";
 import { bookRoomWorkflow } from "../samples/meeting-room/src/workflow";
-import { meetingRoomAuthoringDomain, meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-room/src/domain";
+import {
+  countActiveReservationsByRoomQuery,
+  listActiveReservationsByRoomQuery,
+  meetingRoomAuthoringDomain,
+  meetingRoomDomain,
+  meetingRoomRuntimeConfig,
+} from "../samples/meeting-room/src/domain";
 
 describe("SDT-G14 meeting-room consumer", () => {
   it("defines the authored domain surface and exercises the bridged command verbs", async () => {
@@ -15,7 +22,18 @@ describe("SDT-G14 meeting-room consumer", () => {
     ]);
     expect(meetingRoomAuthoringDomain.commands).toHaveLength(4);
     expect(meetingRoomDomain.projectors).toHaveLength(2);
-    expect(meetingRoomRuntimeConfig.queries.map((query) => query.queryType)).toEqual(["GetReservationListQuery"]);
+    expect(meetingRoomRuntimeConfig.queries.map((query) => query.queryType)).toEqual([
+      "ListActiveReservationsByRoomQuery",
+      "CountActiveReservationsByRoomQuery",
+      "GetReservationListQuery",
+    ]);
+    expect(meetingRoomRuntimeConfig.queries.filter((query) => "execution" in query).map((query) => query.queryType)).toEqual([
+      "ListActiveReservationsByRoomQuery",
+      "CountActiveReservationsByRoomQuery",
+    ]);
+    expect(meetingRoomRuntimeConfig.queries.filter((query) => !("execution" in query)).map((query) => query.queryType)).toEqual([
+      "GetReservationListQuery",
+    ]);
 
     const command = (id: string) => {
       const selected = meetingRoomDomain.commands.find((candidate) => candidate.id === id);
@@ -251,5 +269,101 @@ describe("SDT-G14 meeting-room consumer", () => {
       expect(runtimeCalls, row.label).toBe(row.calls);
       expect(jsonReads, row.label).toBe(0);
     }
+  });
+});
+
+describe("meeting-room typed queries", () => {
+  it("decodes checkpoint rows, including an omitted roomId, through the serialized worker", async () => {
+    const wait = "063923995692002000000693137505";
+    const rows = [
+      ["res-b", "063923995692002000000693137502", { reservationId: "res-b", roomId: "room-1", status: "reserved", version: 1 }],
+      ["res-a", "063923995692002000000693137501", { reservationId: "res-a", roomId: "room-1", status: "reserved", version: 1 }],
+      ["res-c", "063923995692002000000693137503", { reservationId: "res-c", roomId: "room-2", status: "reserved", version: 1 }],
+      ["res-d", "063923995692002000000693137504", { reservationId: "res-d", status: "reserved", version: 1 }],
+      ["res-e", wait, { reservationId: "res-e", roomId: "room-1", status: "cancelled", version: 2 }],
+    ].map(([key, lastSuid, value]) => ({
+      projectionId: `tag-state:reservation:${key}:ReservationProjector`,
+      lastSuid: String(lastSuid),
+      stateJson: JSON.stringify(value),
+    }));
+    const store = {
+      async initialize() {},
+      async currentLagBound() { return 0; },
+      async readAllEvents() {
+        return [{ suid: wait, eventTags: ["reservation:res-e"] }];
+      },
+      async listProjectionTags() {
+        return rows.map((row) => `reservation:${row.projectionId.split(":")[2]}`);
+      },
+      async readProjectionCheckpoint(_serviceId: string, projectionId: string) {
+        const found = rows.find((row) => row.projectionId === projectionId);
+        return found === undefined ? undefined : { serviceId: _serviceId, ...found, version: 1, updatedAt: 1 };
+      },
+      async scanProjectionCheckpointCandidates(input: { projectionIdPrefix: string; projectionIdSuffix: string; limit: number }) {
+        return rows
+          .filter((row) => row.projectionId.startsWith(input.projectionIdPrefix) && row.projectionId.endsWith(input.projectionIdSuffix))
+          .slice(0, input.limit);
+      },
+    };
+    const runtime = createRuntimeWorker({
+      domain: meetingRoomDomain,
+      config: meetingRoomRuntimeConfig,
+      storeProvider: { name: "memory", create: () => store as never },
+      queryBacking: "memory",
+    });
+    const captured: Array<{ readonly body: Record<string, unknown>; readonly signal: AbortSignal | undefined }> = [];
+    const signal = new AbortController().signal;
+    const transport = createV1Transport({
+      fetch: async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        captured.push({ body: await request.clone().json() as Record<string, unknown>, signal: init?.signal ?? undefined });
+        const fetchWorker = runtime.fetch as (input: Request, workerEnv: unknown, ctx: ExecutionContext) => Promise<Response>;
+        return fetchWorker(request, { SDT_SERVICE_ID: "meeting-room-typed-query" }, { waitUntil() {} } as unknown as ExecutionContext);
+      },
+    }, "meeting-room-typed-query");
+    const executor = createSekibanExecutor(transport, { serviceId: "meeting-room-typed-query" });
+    const page = await executor.listQuery(
+      listActiveReservationsByRoomQuery.contract,
+      {},
+      { pageNumber: 1, pageSize: 10, descending: false, consistency: "unsafe", waitForSortableUniqueId: wait, signal },
+    );
+    expect(page.items.map((item) => item.reservationId)).toEqual(["res-a", "res-b", "res-c", "res-d"]);
+    expect(page.items[3]).toEqual({ reservationId: "res-d", status: "reserved", version: 1 });
+    expect(page.items[3]).not.toHaveProperty("roomId");
+    expect(page).toMatchObject({ totalCount: 4, currentPage: 1, pageSize: 10, readHead: wait });
+    const descending = await executor.listQuery(
+      listActiveReservationsByRoomQuery.contract,
+      { roomId: "room-1" },
+      { pageNumber: 1, pageSize: 1, descending: true, consistency: "unsafe" },
+    );
+    expect(descending.items).toEqual([{ reservationId: "res-b", roomId: "room-1", status: "reserved", version: 1 }]);
+    expect(descending.totalCount).toBe(2);
+    const count = await executor.query(countActiveReservationsByRoomQuery.contract, { roomId: "room-1" });
+    expect(count).toEqual({ count: 2 });
+    const listCall = captured[0]!;
+    expect(listCall.signal).toBe(signal);
+    expect(listCall.body.waitForSortableUniqueId).toBe(wait);
+    expect(listCall.body).not.toHaveProperty("signal");
+    expect(listCall.body).not.toHaveProperty("version");
+    expect(JSON.parse(String(listCall.body.queryParamsJson))).toEqual({
+      PageNumber: 1,
+      PageSize: 10,
+      NewestFirst: false,
+      consistency: "unsafe",
+    });
+    expect(JSON.stringify(listCall.body)).not.toContain("handleFilter");
+    expect(JSON.stringify(captured.at(-1))).not.toContain("handleQuery");
+    const legacy = await executor.listQuery({
+      queryType: "GetReservationListQuery",
+      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20 }),
+    });
+    expect(typeof legacy.itemsJson).toBe("string");
+    await expect(executor.listQuery({
+      queryType: "GetReservationListQuery",
+      queryParamsJson: JSON.stringify({ roomId: "room-1", PageNumber: 1, PageSize: 20 }),
+    })).rejects.toMatchObject({
+      code: "query_params_unsupported",
+      message: "The selected query does not support these parameters.",
+    });
   });
 });

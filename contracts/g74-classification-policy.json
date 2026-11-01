@@ -11,9 +11,11 @@
     { "code": "timeout", "kind": "timeout", "readPathAction": "retry a read only under a renewed budget (before dispatch)", "commitPathAction": "reconcile before retry; never blindly reissue (after dispatch)" },
     { "code": "transport", "kind": "transport", "readPathAction": "inspect or reconcile rather than blindly retry", "commitPathAction": "reconcile before retry; never blindly reissue (after dispatch)" },
     { "code": "(commit-side unavailable)", "kind": "unavailable", "readPathAction": "renew the read budget before retrying projection work when on a read path", "commitPathAction": "reconcile before retry; never blindly reissue (after dispatch)" },
+    { "code": "query_params_encode_failed", "kind": "invalid", "readPathAction": "fix the query parameters; the client did not send them", "commitPathAction": "not a commit outcome" },
     { "code": "query_params_invalid", "kind": "invalid", "readPathAction": "fix the query parameters; do not retry the same input", "commitPathAction": "not a commit outcome" },
     { "code": "query_scan_limit_exceeded", "kind": "rejected", "readPathAction": "change the data, query, or deployed scan setting deliberately; do not retry unchanged", "commitPathAction": "not a commit outcome" },
     { "code": "query_row_invalid", "kind": "unavailable", "readPathAction": "repair or rebuild the projection data; no automatic retry", "commitPathAction": "not a commit outcome" },
+    { "code": "query_result_decode_failed", "kind": "unavailable", "readPathAction": "do not trust the query response; no automatic retry", "commitPathAction": "not a commit outcome" },
     { "code": "query_result_invalid", "kind": "unavailable", "readPathAction": "fix the deployed query definition; no automatic retry", "commitPathAction": "not a commit outcome" },
     { "code": "query_handler_failed", "kind": "unavailable", "readPathAction": "fix the deployed query definition; no automatic retry", "commitPathAction": "not a commit outcome" }
   ],

@@ -42,6 +42,11 @@ const classifications = Object.freeze({
     action: "fix the deployed query definition; no automatic retry",
     exactKind: "unavailable",
   },
+  query_params_encode_failed: {
+    class: "definite-refusal",
+    action: "fix the query parameters; the client did not send them",
+    exactKind: "invalid",
+  },
   query_params_invalid: {
     class: "definite-refusal",
     action: "fix the query parameters; do not retry the same input",
@@ -51,6 +56,11 @@ const classifications = Object.freeze({
     class: "definite-refusal",
     action: "remove the unsupported query parameters",
     exactKind: "invalid",
+  },
+  query_result_decode_failed: {
+    class: "deadline-or-unknown",
+    action: "do not trust the query response; no automatic retry",
+    exactKind: "unavailable",
   },
   query_result_invalid: {
     class: "deadline-or-unknown",
@@ -168,7 +178,7 @@ if (process.argv.includes("--self-test")) {
     rejects("missing-query-params-kind", () => checkKinds(result.codes, withoutQueryParamsKind)),
     rejects("wrong-exact-query-params-kind", () => checkKinds(result.codes, { ...kinds, query_params_unsupported: "rejected" })),
     rejects("query-params-kind-outside-class", () => checkKinds(result.codes, { ...kinds, query_params_unsupported: "transport" })),
-    ...["query_handler_failed", "query_params_invalid", "query_result_invalid", "query_row_invalid", "query_scan_limit_exceeded"].flatMap((code) => {
+    ...["query_handler_failed", "query_params_encode_failed", "query_params_invalid", "query_result_decode_failed", "query_result_invalid", "query_row_invalid", "query_scan_limit_exceeded"].flatMap((code) => {
       const withoutRow = { ...classifications };
       delete withoutRow[code];
       const withoutKind = { ...kinds };
@@ -176,7 +186,7 @@ if (process.argv.includes("--self-test")) {
       return [
         rejects(`missing-${code}-row`, () => check(sourceMap, withoutRow)),
         rejects(`missing-${code}-kind`, () => checkKinds(result.codes, withoutKind)),
-        rejects(`wrong-exact-${code}-kind`, () => checkKinds(result.codes, { ...kinds, [code]: code === "query_scan_limit_exceeded" ? "invalid" : code === "query_params_invalid" ? "rejected" : "timeout" })),
+        rejects(`wrong-exact-${code}-kind`, () => checkKinds(result.codes, { ...kinds, [code]: code === "query_scan_limit_exceeded" ? "invalid" : code === "query_params_invalid" || code === "query_params_encode_failed" ? "rejected" : "timeout" })),
         rejects(`${code}-kind-outside-class`, () => checkKinds(result.codes, { ...kinds, [code]: "transport" })),
       ];
     }),

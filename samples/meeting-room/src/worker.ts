@@ -16,6 +16,8 @@ import {
 } from "./transport";
 import { createSekibanExecutor, ClientError } from "@sekiban/dcb-client";
 import {
+  countActiveReservationsByRoomQuery,
+  listActiveReservationsByRoomQuery,
   meetingRoomDomain,
   meetingRoomRuntimeConfig,
   reservationTag,
@@ -184,41 +186,59 @@ async function readApplicationQuery(
 ): Promise<Response> {
   if (request.method !== "GET") return json({ error: "Query routes require GET", code: "validation_error" }, 400);
   const url = new URL(request.url);
-  if (url.pathname !== "/api/read/reservations") {
+  const isList = url.pathname === "/api/read/reservations";
+  const isCount = url.pathname === "/api/read/reservation-count";
+  if (!isList && !isCount) {
     return json({ error: "Query route was not found", code: "not_found" }, 404);
-  }
-
-  const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), "pageNumber", 1);
-  if (pageNumber instanceof Response) return pageNumber;
-  const pageSize = positiveInteger(url.searchParams.get("pageSize"), "pageSize", 20);
-  if (pageSize instanceof Response) return pageSize;
-  const newestFirst = url.searchParams.get("newestFirst");
-  if (newestFirst !== null && newestFirst !== "true" && newestFirst !== "false") {
-    return json({ error: "newestFirst must be true or false", code: "validation_error" }, 400);
   }
   const requestedWait = url.searchParams.get("waitForSortableUniqueId");
   if (requestedWait !== null && requestedWait.length === 0) {
     return json({ error: "waitForSortableUniqueId must be non-empty", code: "validation_error" }, 400);
   }
-  const queryParams = {
-    PageNumber: pageNumber,
-    PageSize: pageSize,
-    ...(newestFirst === "true" ? { NewestFirst: true } : {}),
-  };
-  // Keep the public sample route GET-shaped, but make the read itself use the
-  // published client executor.  In particular, the immediate lane is an
-  // executor listQuery option rather than an untyped serialized field.
+  const roomId = url.searchParams.get("roomId");
+  if (roomId !== null && roomId.length === 0) {
+    return json({ error: "roomId must be non-empty", code: "validation_error" }, 400);
+  }
+  if (isCount && (roomId === null || roomId.length === 0)) {
+    return json({ error: "roomId is required", code: "validation_error" }, 400);
+  }
   const runtimeTransport = createV1Transport(
     runtimeFetcher(env, ctx, runtimeHandler),
     env.SDT_SERVICE_ID,
   );
   const executor = createSekibanExecutor(runtimeTransport, { serviceId: env.SDT_SERVICE_ID });
   try {
-    const result = await executor.listQuery({
-      queryType: "GetReservationListQuery",
-      queryParamsJson: JSON.stringify(queryParams),
-      ...(requestedWait === null ? {} : { waitForSortableUniqueId: requestedWait }),
-    }, { consistency: "unsafe" });
+    if (isCount) {
+      const result = await executor.query(
+        countActiveReservationsByRoomQuery.contract,
+        { roomId: roomId ?? "" },
+        {
+          ...(requestedWait === null ? {} : { waitForSortableUniqueId: requestedWait }),
+          signal: request.signal,
+        },
+      );
+      return json(result);
+    }
+    const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), "pageNumber", 1);
+    if (pageNumber instanceof Response) return pageNumber;
+    const pageSize = positiveInteger(url.searchParams.get("pageSize"), "pageSize", 20);
+    if (pageSize instanceof Response) return pageSize;
+    const newestFirst = url.searchParams.get("newestFirst");
+    if (newestFirst !== null && newestFirst !== "true" && newestFirst !== "false") {
+      return json({ error: "newestFirst must be true or false", code: "validation_error" }, 400);
+    }
+    const result = await executor.listQuery(
+      listActiveReservationsByRoomQuery.contract,
+      roomId === null ? {} : { roomId },
+      {
+        pageNumber,
+        pageSize,
+        ...(newestFirst === "true" ? { descending: true } : {}),
+        consistency: "unsafe",
+        ...(requestedWait === null ? {} : { waitForSortableUniqueId: requestedWait }),
+        signal: request.signal,
+      },
+    );
     return json(result);
   } catch (error) {
     if (error instanceof ClientError) return json({ error: error.message, code: error.code }, error.status ?? 502);
@@ -295,7 +315,7 @@ export function createMeetingRoomWorker(options: MeetingRoomWorkerOptions = {}):
       if (path === "/api/read/room" || path === "/api/read/reservation") {
         return readApplicationProjection(request, env, ctx, runtimeHandler);
       }
-      if (path === "/api/read/reservations") {
+      if (path === "/api/read/reservations" || path === "/api/read/reservation-count") {
         return readApplicationQuery(request, env, ctx, runtimeHandler);
       }
       if (path.startsWith("/api/commands/")) return commandRequest(request, env, ctx, runtimeHandler);

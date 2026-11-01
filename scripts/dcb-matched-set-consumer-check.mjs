@@ -153,7 +153,7 @@ console.log(JSON.stringify({
 `;
 
 
-const queryAuthoring = "import { defineListQuery, defineQuery, defineQueryView, domain, event, projector, tagFamily } from \"@sekiban/dcb-domain\";\nimport { z } from \"zod\";\n\ntype Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;\n\nconst order = tagFamily(\"order\");\nconst placed = event(\"OrderPlaced\", z.object({ orderId: z.string() }), {\n  tags: (payload) => [order.of(payload.orderId)],\n});\nconst orderProjector = projector({\n  id: \"order-projector\",\n  tag: order,\n  events: [placed],\n  initialState: { kind: \"placed\" as const },\n  handlers: { OrderPlaced: () => ({ kind: \"placed\" as const }) },\n});\nconst orders = defineQueryView({ id: \"orders\", version: 1, row: z.strictObject({ orderId: z.string() }) });\nconst params = z.strictObject({ roomId: z.string() });\nconst result = z.strictObject({ count: z.number() });\nconst item = z.strictObject({ id: z.string() });\nconst countQuery = defineQuery({\n  id: \"reservation-count\",\n  version: 1,\n  source: orders,\n  params,\n  result,\n  handleQuery: (_projection, queryParams) => ({ count: queryParams.roomId.length }),\n});\nconst listQuery = defineListQuery({\n  id: \"reservation-list\",\n  version: 2,\n  source: orders,\n  params,\n  item,\n  handleFilter: (projection) => projection.rows.map((row) => ({ id: row.value.orderId })),\n  handleSort: (items) => items,\n});\nconst idMatch: Equals<typeof countQuery.id, \"reservation-count\"> = true;\nconst versionMatch: Equals<typeof countQuery.version, 1> = true;\nconst listIdMatch: Equals<typeof listQuery.id, \"reservation-list\"> = true;\nconst listVersionMatch: Equals<typeof listQuery.version, 2> = true;\nconst paramsMatch: Equals<Parameters<typeof countQuery.handleQuery>[1], Readonly<{ roomId: string }>> = true;\nconst resultMatch: Equals<ReturnType<typeof countQuery.handleQuery>, { count: number }> = true;\nconst itemMatch: Equals<ReturnType<typeof listQuery.handleFilter>[number], Readonly<{ id: string }>> = true;\nconst authored = domain({\n  events: [placed],\n  projectors: [orderProjector],\n  views: [{ id: \"orders\", source: orderProjector.id }],\n  queries: [countQuery, listQuery],\n});\nconst queriesMatch: Equals<typeof authored.queries, readonly [typeof countQuery, typeof listQuery]> = true;\nvoid [idMatch, versionMatch, listIdMatch, listVersionMatch, paramsMatch, resultMatch, itemMatch, queriesMatch];\n\ndefineQuery({\n  id: \"mutate-row\",\n  version: 1,\n  source: orders,\n  params,\n  result,\n  handleQuery: (projection, queryParams, context) => {\n    // @ts-expect-error [query-row-array-readonly]\n    projection.rows.push(projection.rows[0]);\n    const row = projection.rows[0];\n    if (row !== undefined) {\n      // @ts-expect-error [query-row-value-readonly]\n      row.value.orderId = \"mutated\";\n    }\n    // @ts-expect-error [query-params-readonly]\n    queryParams.roomId = \"mutated\";\n    // @ts-expect-error [query-context-readonly]\n    context.readHead = \"mutated\";\n    return { count: queryParams.roomId.length };\n  },\n});\nconst filtered = listQuery.handleFilter({ rows: [] }, { roomId: \"r\" }, {});\n// @ts-expect-error [query-filter-result-readonly]\nfiltered[0].id = \"mutated\";\n// @ts-expect-error [query-filter-array-readonly]\nfiltered.push({ id: \"extra\" });\nconst sortedItems = listQuery.handleSort(filtered, { roomId: \"r\" }, {});\n// @ts-expect-error [query-sort-result-array-readonly]\nsortedItems.splice(0, 1);\ndefineListQuery({\n  id: \"mutate-sort\",\n  version: 1,\n  source: orders,\n  params,\n  item,\n  handleFilter: () => [{ id: \"a\" }],\n  handleSort: (items) => {\n    // @ts-expect-error [query-sort-input-readonly]\n    items[0].id = \"mutated\";\n    // @ts-expect-error [query-sort-input-array-readonly]\n    items.pop();\n    const sorted = items.slice();\n    // @ts-expect-error [query-sort-result-readonly]\n    sorted[0].id = \"mutated\";\n    return sorted;\n  },\n});\ndefineQuery({\n  id: \"promise-query\",\n  version: 1,\n  source: orders,\n  params,\n  result,\n  // @ts-expect-error [query-handler-sync]\n  handleQuery: async () => ({ count: 1 }),\n});\ndefineListQuery({\n  id: \"promise-list\",\n  version: 1,\n  source: orders,\n  params,\n  item,\n  // @ts-expect-error [query-filter-sync]\n  handleFilter: async () => [{ id: \"a\" }],\n  handleSort: (items) => items,\n});\ndefineQuery({\n  id: \"wrong-result\",\n  version: 1,\n  source: orders,\n  params,\n  result,\n  // @ts-expect-error [query-result-matches-schema]\n  handleQuery: () => ({ count: \"nope\" }),\n});\ndefineListQuery({\n  id: \"wrong-item\",\n  version: 1,\n  source: orders,\n  params,\n  item,\n  // @ts-expect-error [query-item-matches-schema]\n  handleFilter: () => [{ id: 1 }],\n  handleSort: (items) => items,\n});\ndefineQuery({\n  id: \"generic-handler\",\n  version: 1,\n  source: orders,\n  params,\n  result,\n  handleQuery: () => ({ count: 1 }),\n  // @ts-expect-error [query-no-generic-handler]\n  handler: () => ({ count: 1 }),\n});\n// @ts-expect-error [query-contract-hides-handler]\ncountQuery.contract.handleQuery({ rows: [] }, { roomId: \"r\" }, {});\ndefineQuery({\n  id: \"reserved-PageNumber\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-PageNumber]\n  params: z.strictObject({ PageNumber: z.number() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-PageSize\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-PageSize]\n  params: z.strictObject({ PageSize: z.number() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-NewestFirst\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-NewestFirst]\n  params: z.strictObject({ NewestFirst: z.boolean() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-consistency\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-consistency]\n  params: z.strictObject({ consistency: z.string() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-pageNumber\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-pageNumber]\n  params: z.strictObject({ pageNumber: z.number() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-pageSize\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-pageSize]\n  params: z.strictObject({ pageSize: z.number() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-newestFirst\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-newestFirst]\n  params: z.strictObject({ newestFirst: z.boolean() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-descending\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-descending]\n  params: z.strictObject({ descending: z.boolean() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-waitForSortableUniqueId\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-waitForSortableUniqueId]\n  params: z.strictObject({ waitForSortableUniqueId: z.string() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-signal\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-signal]\n  params: z.strictObject({ signal: z.string() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\n";
+const queryAuthoring = "import { defineListQuery, defineQuery, defineQueryView, domain, event, projector, tagFamily } from \"@sekiban/dcb-domain\";\nimport { z } from \"zod\";\nimport type { QueryPage } from \"@sekiban/dcb-core\";\nimport type { SekibanExecutor } from \"@sekiban/dcb-client\";\n\ntype Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;\n\nconst order = tagFamily(\"order\");\nconst placed = event(\"OrderPlaced\", z.object({ orderId: z.string() }), {\n  tags: (payload) => [order.of(payload.orderId)],\n});\nconst orderProjector = projector({\n  id: \"order-projector\",\n  tag: order,\n  events: [placed],\n  initialState: { kind: \"placed\" as const },\n  handlers: { OrderPlaced: () => ({ kind: \"placed\" as const }) },\n});\nconst orders = defineQueryView({ id: \"orders\", version: 1, row: z.strictObject({ orderId: z.string() }) });\nconst params = z.strictObject({ roomId: z.string() });\nconst result = z.strictObject({ count: z.number() });\nconst item = z.strictObject({ id: z.string() });\nconst countQuery = defineQuery({\n  id: \"reservation-count\",\n  version: 1,\n  source: orders,\n  params,\n  result,\n  handleQuery: (_projection, queryParams) => ({ count: queryParams.roomId.length }),\n});\nconst listQuery = defineListQuery({\n  id: \"reservation-list\",\n  version: 2,\n  source: orders,\n  params,\n  item,\n  handleFilter: (projection) => projection.rows.map((row) => ({ id: row.value.orderId })),\n  handleSort: (items) => items,\n});\nconst idMatch: Equals<typeof countQuery.id, \"reservation-count\"> = true;\nconst versionMatch: Equals<typeof countQuery.version, 1> = true;\nconst listIdMatch: Equals<typeof listQuery.id, \"reservation-list\"> = true;\nconst listVersionMatch: Equals<typeof listQuery.version, 2> = true;\nconst paramsMatch: Equals<Parameters<typeof countQuery.handleQuery>[1], Readonly<{ roomId: string }>> = true;\nconst resultMatch: Equals<ReturnType<typeof countQuery.handleQuery>, { count: number }> = true;\nconst itemMatch: Equals<ReturnType<typeof listQuery.handleFilter>[number], Readonly<{ id: string }>> = true;\nconst authored = domain({\n  events: [placed],\n  projectors: [orderProjector],\n  views: [{ id: \"orders\", source: orderProjector.id }],\n  queries: [countQuery, listQuery],\n});\nconst queriesMatch: Equals<typeof authored.queries, readonly [typeof countQuery, typeof listQuery]> = true;\nvoid [idMatch, versionMatch, listIdMatch, listVersionMatch, paramsMatch, resultMatch, itemMatch, queriesMatch];\n\ndefineQuery({\n  id: \"mutate-row\",\n  version: 1,\n  source: orders,\n  params,\n  result,\n  handleQuery: (projection, queryParams, context) => {\n    // @ts-expect-error [query-row-array-readonly]\n    projection.rows.push(projection.rows[0]);\n    const row = projection.rows[0];\n    if (row !== undefined) {\n      // @ts-expect-error [query-row-value-readonly]\n      row.value.orderId = \"mutated\";\n    }\n    // @ts-expect-error [query-params-readonly]\n    queryParams.roomId = \"mutated\";\n    // @ts-expect-error [query-context-readonly]\n    context.readHead = \"mutated\";\n    return { count: queryParams.roomId.length };\n  },\n});\nconst filtered = listQuery.handleFilter({ rows: [] }, { roomId: \"r\" }, {});\n// @ts-expect-error [query-filter-result-readonly]\nfiltered[0].id = \"mutated\";\n// @ts-expect-error [query-filter-array-readonly]\nfiltered.push({ id: \"extra\" });\nconst sortedItems = listQuery.handleSort(filtered, { roomId: \"r\" }, {});\n// @ts-expect-error [query-sort-result-array-readonly]\nsortedItems.splice(0, 1);\ndefineListQuery({\n  id: \"mutate-sort\",\n  version: 1,\n  source: orders,\n  params,\n  item,\n  handleFilter: () => [{ id: \"a\" }],\n  handleSort: (items) => {\n    // @ts-expect-error [query-sort-input-readonly]\n    items[0].id = \"mutated\";\n    // @ts-expect-error [query-sort-input-array-readonly]\n    items.pop();\n    const sorted = items.slice();\n    // @ts-expect-error [query-sort-result-readonly]\n    sorted[0].id = \"mutated\";\n    return sorted;\n  },\n});\ndefineQuery({\n  id: \"promise-query\",\n  version: 1,\n  source: orders,\n  params,\n  result,\n  // @ts-expect-error [query-handler-sync]\n  handleQuery: async () => ({ count: 1 }),\n});\ndefineListQuery({\n  id: \"promise-list\",\n  version: 1,\n  source: orders,\n  params,\n  item,\n  // @ts-expect-error [query-filter-sync]\n  handleFilter: async () => [{ id: \"a\" }],\n  handleSort: (items) => items,\n});\ndefineQuery({\n  id: \"wrong-result\",\n  version: 1,\n  source: orders,\n  params,\n  result,\n  // @ts-expect-error [query-result-matches-schema]\n  handleQuery: () => ({ count: \"nope\" }),\n});\ndefineListQuery({\n  id: \"wrong-item\",\n  version: 1,\n  source: orders,\n  params,\n  item,\n  // @ts-expect-error [query-item-matches-schema]\n  handleFilter: () => [{ id: 1 }],\n  handleSort: (items) => items,\n});\ndefineQuery({\n  id: \"generic-handler\",\n  version: 1,\n  source: orders,\n  params,\n  result,\n  handleQuery: () => ({ count: 1 }),\n  // @ts-expect-error [query-no-generic-handler]\n  handler: () => ({ count: 1 }),\n});\n// @ts-expect-error [query-contract-hides-handler]\ncountQuery.contract.handleQuery({ rows: [] }, { roomId: \"r\" }, {});\ndefineQuery({\n  id: \"reserved-PageNumber\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-PageNumber]\n  params: z.strictObject({ PageNumber: z.number() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-PageSize\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-PageSize]\n  params: z.strictObject({ PageSize: z.number() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-NewestFirst\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-NewestFirst]\n  params: z.strictObject({ NewestFirst: z.boolean() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-consistency\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-consistency]\n  params: z.strictObject({ consistency: z.string() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-pageNumber\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-pageNumber]\n  params: z.strictObject({ pageNumber: z.number() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-pageSize\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-pageSize]\n  params: z.strictObject({ pageSize: z.number() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-newestFirst\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-newestFirst]\n  params: z.strictObject({ newestFirst: z.boolean() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-descending\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-descending]\n  params: z.strictObject({ descending: z.boolean() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-waitForSortableUniqueId\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-waitForSortableUniqueId]\n  params: z.strictObject({ waitForSortableUniqueId: z.string() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndefineQuery({\n  id: \"reserved-signal\",\n  version: 1,\n  source: orders,\n  // @ts-expect-error [query-reserved-signal]\n  params: z.strictObject({ signal: z.string() }),\n  result,\n  handleQuery: () => ({ count: 1 }),\n});\ndeclare const typedExecutor: SekibanExecutor;\nconst authoredCount: Promise<{ count: number }> = typedExecutor.query(countQuery.contract, { roomId: \"room-1\" });\nconst authoredPage: Promise<QueryPage<{ id: string }>> = typedExecutor.listQuery(listQuery.contract, { roomId: \"room-1\" }, { pageNumber: 1, pageSize: 20, descending: false, consistency: \"safe\" });\nvoid [authoredCount, authoredPage];\n";
 
 const queryExpectations = new Map([
   ["query-row-array-readonly", /TS2339: Property 'push' does not exist/],
@@ -211,11 +211,23 @@ function queryTargets(source, expectations) {
 
 function queryDiagnostics(output, file) {
   const byLine = new Map();
-  for (const line of output.split("\n")) {
-    const match = /^(.+?)\((\d+),(\d+)\): error (TS\d+: .*)$/.exec(line.trim());
-    if (!match || !match[1].endsWith(file)) continue;
-    const lineNumber = Number(match[2]);
-    byLine.set(lineNumber, [...(byLine.get(lineNumber) ?? []), match[4]]);
+  let current;
+  for (const rawLine of output.split("\n")) {
+    const match = /^(.+?)\((\d+),(\d+)\): error (TS\d+: .*)$/.exec(rawLine.trim());
+    if (match && match[1].endsWith(file)) {
+      const lineNumber = Number(match[2]);
+      const messages = byLine.get(lineNumber) ?? [];
+      messages.push(match[4]);
+      byLine.set(lineNumber, messages);
+      current = { lineNumber, index: messages.length - 1 };
+      continue;
+    }
+    if (current !== undefined && rawLine.trim().length > 0 && !/^(.+?)\(\d+,\d+\): error TS\d+:/.test(rawLine.trim())) {
+      const messages = byLine.get(current.lineNumber);
+      messages[current.index] = `${messages[current.index]}\n${rawLine.trim()}`;
+      continue;
+    }
+    if (rawLine.trim().length === 0) current = undefined;
   }
   return byLine;
 }
@@ -246,6 +258,89 @@ async function assertInstalledQueryContracts(cwd) {
   if (!source.includes("export interface QueryContract") || !source.includes("export interface ListQueryContract") || !source.includes("export interface QueryPage")) {
     throw new Error("installed @sekiban/dcb-core is missing the local query contracts");
   }
+}
+const queryClientFixture = `import { createSekibanExecutor, type SerializedDcbTransport } from "@sekiban/dcb-client";
+import type { ListQueryContract, QueryContract, QueryPage } from "@sekiban/dcb-core";
+
+declare const count: QueryContract<{ readonly roomId: string }, { readonly count: number }>;
+declare const list: ListQueryContract<{ readonly roomId: string }, { readonly id: string }>;
+declare const rawTransport: SerializedDcbTransport;
+
+const executor = createSekibanExecutor({
+  readTagState: async () => { throw new Error("unused"); },
+  commit: async () => { throw new Error("unused"); },
+  query: async () => ({ resultJson: "{}" }),
+  listQuery: async () => ({ itemsJson: "[]", totalCount: 0, totalPages: 0, currentPage: 1, pageSize: 20 }),
+});
+
+export async function readCount(): Promise<{ readonly count: number }> {
+  return executor.query(count, { roomId: "room-1" }, { waitForSortableUniqueId: "wait-1" });
+}
+
+export async function readPage(): Promise<QueryPage<{ readonly id: string }>> {
+  return executor.listQuery(list, { roomId: "room-1" }, {
+    pageNumber: 1,
+    pageSize: 20,
+    descending: false,
+    consistency: "unsafe",
+    waitForSortableUniqueId: "wait-2",
+  });
+}
+
+void rawTransport;
+`;
+const queryClientNegative = `import { createSekibanExecutor, type SerializedDcbTransport } from "@sekiban/dcb-client";
+import type { ListQueryContract, QueryContract, QueryPage } from "@sekiban/dcb-core";
+
+declare const count: QueryContract<{ readonly roomId: string }, { readonly count: number }>;
+declare const list: ListQueryContract<{ readonly roomId: string }, { readonly id: string }>;
+declare const rawTransport: SerializedDcbTransport;
+
+const executor = createSekibanExecutor({
+  readTagState: async () => { throw new Error("unused"); },
+  commit: async () => { throw new Error("unused"); },
+  query: async () => ({ resultJson: "{}" }),
+  listQuery: async () => ({ itemsJson: "[]", totalCount: 0, totalPages: 0, currentPage: 1, pageSize: 20 }),
+});
+
+const countResult: Promise<{ readonly count: number }> = executor.query(count, { roomId: "r" });
+const page: Promise<QueryPage<{ readonly id: string }>> = executor.listQuery(list, { roomId: "r" }, { pageNumber: 1, pageSize: 20 });
+// @ts-expect-error [typed-query-param-type]
+executor.query(count, { roomId: 1 });
+// @ts-expect-error [typed-query-result-type]
+const wrongResult: Promise<{ total: number }> = executor.query(count, { roomId: "r" });
+// @ts-expect-error [typed-list-rejects-scalar-contract]
+executor.listQuery(count, { roomId: "r" });
+// @ts-expect-error [typed-query-rejects-list-contract]
+executor.query(list, { roomId: "r" });
+// @ts-expect-error [typed-list-param-keys]
+executor.listQuery(list, { missing: true });
+// @ts-expect-error [typed-list-controls-inside-params]
+executor.listQuery(list, { roomId: "r", pageNumber: 1 });
+// @ts-expect-error [typed-list-page-number-type]
+executor.listQuery(list, { roomId: "r" }, { pageNumber: "1" });
+// @ts-expect-error [typed-list-consistency-type]
+executor.listQuery(list, { roomId: "r" }, { consistency: "maybe" });
+// @ts-expect-error [typed-list-item-type]
+const wrongPage: Promise<QueryPage<{ name: string }>> = executor.listQuery(list, { roomId: "r" });
+// @ts-expect-error [raw-transport-rejects-contract]
+void rawTransport.query(count);
+void [countResult, page, wrongResult, wrongPage];
+`;
+const queryClientExpectations = new Map([
+  ["typed-query-param-type", /TS2769:[\s\S]*Type 'number' is not assignable to type 'string'/],
+  ["typed-query-result-type", /TS2322: Type 'Promise<\{ readonly count: number; \}>' is not assignable to type 'Promise<\{ total: number; \}>'/],
+  ["typed-list-rejects-scalar-contract", /TS2769:[\s\S]*Property 'item' is missing/],
+  ["typed-query-rejects-list-contract", /TS2769:[\s\S]*Property 'result' is missing/],
+  ["typed-list-param-keys", /TS2769:[\s\S]*'missing' does not exist in type '\{ readonly roomId: string; \}'/],
+  ["typed-list-controls-inside-params", /TS2769:[\s\S]*'pageNumber' does not exist in type '\{ readonly roomId: string; \}'/],
+  ["typed-list-page-number-type", /TS2322: Type 'string' is not assignable to type 'number'/],
+  ["typed-list-consistency-type", /TS2322: Type '"maybe"' is not assignable to type '"(?:safe|unsafe)" \| "(?:safe|unsafe)" \| undefined'/],
+  ["typed-list-item-type", /TS2322:[\s\S]*Property 'name' is missing in type '\{ readonly id: string; \}'/],
+  ["raw-transport-rejects-contract", /TS2345:[\s\S]*queryType/],
+]);
+if (/\bzod\b|@sekiban\/dcb-domain|handleQuery|handleFilter|handleSort/.test(queryClientFixture) || /\bzod\b|@sekiban\/dcb-domain|handleQuery|handleFilter|handleSort/.test(queryClientNegative)) {
+  throw new Error("query-client.ts must import only structural contracts from @sekiban/dcb-core");
 }
 const deepImports = [
   ["dcb-core", `import { assertJsonValue } from "@sekiban/dcb-core/dist/index.js"; console.log(assertJsonValue);`],
@@ -285,6 +380,8 @@ try {
   await writeFile(join(temp, "tsconfig.bundler.json"), tsconfig("ESNext", "Bundler", "dist-bundler"));
   await writeFile(join(temp, "src", "main.ts"), consumer);
   await writeFile(join(temp, "src", "query-authoring.ts"), queryAuthoring);
+  await writeFile(join(temp, "src", "query-client.ts"), queryClientFixture);
+  await writeFile(join(temp, "src", "query-client-negative.ts"), queryClientNegative);
   await writeFile(join(temp, "src", "unsupported-modes.ts"), `
 import type { ListQueryOptions, ListQueryRequest, SekibanExecutor } from "@sekiban/dcb-client";
 import type { ProjectorLike, Tag } from "@sekiban/dcb-domain";
@@ -305,6 +402,7 @@ void executor.query(request, { consistency: "safe" });
 `);
   await mkdir(join(temp, "compile-negative"), { recursive: true });
   await writeFile(join(temp, "compile-negative", "query-authoring-blanked.ts"), blankQueryDirectives(queryAuthoring));
+  await writeFile(join(temp, "compile-negative", "query-client-negative-blanked.ts"), blankQueryDirectives(queryClientNegative));
   await writeFile(join(temp, "compile-negative", "unsupported-modes-raw.ts"), `
 import type { ListQueryRequest, SekibanExecutor } from "@sekiban/dcb-client";
 import type { ProjectorLike, Tag } from "@sekiban/dcb-domain";
@@ -337,6 +435,14 @@ void executor.query(request, { consistency: "safe" });
     fileName: "query-authoring-blanked.ts",
     expectations: queryExpectations,
   });
+  const queryClientRejections = await proveQueryFixture({
+    tsc,
+    cwd: temp,
+    source: queryClientNegative,
+    blankedPath: "compile-negative/query-client-negative-blanked.ts",
+    fileName: "query-client-negative-blanked.ts",
+    expectations: queryClientExpectations,
+  });
   for (const resolution of [["Node16", "Node16", "Node16"], ["Bundler", "ESNext", "Bundler"]]) {
     const [label, module, moduleResolution] = resolution;
     await run(tsc, ["--noEmit", "--target", "ES2022", "--module", module, "--moduleResolution", moduleResolution, "--strict", "--skipLibCheck", "src/unsupported-modes.ts"], temp);
@@ -361,8 +467,9 @@ void executor.query(request, { consistency: "safe" });
   }
   console.log(JSON.stringify({
     status: "PASS",
-    greenReceipts: ["Node16 consumer compile/runtime", "Bundler consumer compile/runtime", "esbuild consumer bundle/runtime", "portable readState-to-snapshot-only workflow", "local core query contracts", "Node16 and Bundler query authoring positives and labelled negatives"],
+    greenReceipts: ["Node16 consumer compile/runtime", "Bundler consumer compile/runtime", "esbuild consumer bundle/runtime", "portable readState-to-snapshot-only workflow", "local core query contracts", "Node16 and Bundler query authoring positives and labelled negatives", "Node16 and Bundler typed query client overloads"],
     queryRejections,
+    queryClientRejections,
     rawV1Receipts: [node16.stdout.trim(), bundler.stdout.trim(), bundled.stdout.trim()],
     redReceipts,
     compileNegativeReceipts,

@@ -112,14 +112,81 @@ describe("generated starter room state", () => {
       runtime,
     );
     expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      items: [],
+      totalCount: 0,
+      totalPages: 0,
+      currentPage: 2,
+      pageSize: 5,
+    });
     expect(calls).toHaveLength(1);
     expect(new URL(calls[0]!.url).pathname).toBe("/api/sekiban/serialized/list-query");
-    expect(calls[0]!.body.queryType).toBe("GetReservationListQuery");
-    expect(JSON.parse(String(calls[0]!.body.queryParamsJson))).toEqual({
-      PageNumber: 2,
-      PageSize: 5,
-      NewestFirst: true,
-      consistency: "unsafe",
+    expect(calls[0]!.body).toEqual({
+      queryType: "ListActiveReservationsByRoomQuery",
+      queryParamsJson: JSON.stringify({
+        PageNumber: 2,
+        PageSize: 5,
+        NewestFirst: true,
+        consistency: "unsafe",
+      }),
     });
+    expect(JSON.stringify(calls[0]!.body)).not.toContain("handleFilter");
+  });
+
+  it("decodes a starter materialized reservation and strips userId", async () => {
+    const runtime: StarterRuntime = {
+      fetch: async () => jsonResponse({
+        itemsJson: JSON.stringify([{
+          reservationId: "res-user",
+          roomId: "room-7",
+          status: "reserved",
+          version: 1,
+          userId: "user-7",
+        }]),
+        totalCount: 1,
+        totalPages: 1,
+        currentPage: 1,
+        pageSize: 20,
+        readHead: "head-user",
+      }),
+    };
+    const response = await applicationFetch(
+      new Request("https://starter.test/api/read/reservations"),
+      { SDT_SERVICE_ID: "starter-room-test" } as StarterEnvironment,
+      {} as ExecutionContext,
+      runtime,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json<{ items: Array<Record<string, unknown>> }>();
+    expect(body.items).toEqual([{
+      reservationId: "res-user",
+      roomId: "room-7",
+      status: "reserved",
+      version: 1,
+    }]);
+    expect(body.items[0]).not.toHaveProperty("userId");
+  });
+
+  it("calls the scalar room-count contract", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const runtime: StarterRuntime = {
+      fetch: async (request) => {
+        calls.push(await request.clone().json<Record<string, unknown>>());
+        return jsonResponse({ resultJson: JSON.stringify({ count: 2 }) });
+      },
+    };
+    const response = await applicationFetch(
+      new Request("https://starter.test/api/read/reservation-count?roomId=room-7"),
+      { SDT_SERVICE_ID: "starter-room-test" } as StarterEnvironment,
+      {} as ExecutionContext,
+      runtime,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ count: 2 });
+    expect(calls[0]).toEqual({
+      queryType: "CountActiveReservationsByRoomQuery",
+      queryParamsJson: JSON.stringify({ roomId: "room-7" }),
+    });
+    expect(JSON.stringify(calls[0])).not.toContain("handleQuery");
   });
 });

@@ -8,6 +8,7 @@
     "ReadOptions": "public",
     "ReadConsistency": "public",
     "ListQueryOptions": "public",
+    "QueryCallOptions": "public",
     "WrittenEvent": "public",
     "TagWriteResult": "public",
     "ExecutorCommitted": "public",

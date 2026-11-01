@@ -435,7 +435,17 @@ function finishInstall(work, env, mode, artifact, receipt) {
     assert(routes.includes("/api/sekiban/serialized/tag-state"), "packed room read is missing the tag-state endpoint");
     assert(routes.includes("lastSortedUniqueId"), "packed room read dropped lastSortedUniqueId");
     assert(routes.includes('"/api/read/reservations"'), "packed reservation list route is missing");
+    assert(routes.includes('"/api/read/reservation-count"'), "packed reservation count route is missing");
+    assert(routes.includes("listActiveReservationsByRoomQuery.contract"), "packed list route does not use the list contract");
+    assert(routes.includes("countActiveReservationsByRoomQuery.contract"), "packed count route does not use the scalar contract");
+    assert(!routes.includes("queryType: \"ListActiveReservationsByRoomQuery\""), "packed routes hand-build the list query type");
+    assert(!routes.includes("queryType: \"CountActiveReservationsByRoomQuery\""), "packed routes hand-build the count query type");
     assert(domain.includes("GetReservationListQuery"), "packed reservation list query is missing");
+    assert(domain.includes("ListActiveReservationsByRoomQuery"), "packed active reservation list query is missing");
+    assert(domain.includes("CountActiveReservationsByRoomQuery"), "packed reservation count query is missing");
+    assert(domain.includes("defineQueryView("), "packed domain is missing defineQueryView");
+    assert(domain.includes("defineListQuery("), "packed domain is missing defineListQuery");
+    assert(domain.includes("defineQuery("), "packed domain is missing defineQuery");
     assert(!routes.includes("/api/read/room-query"), "packed routes still dispatch /api/read/room-query");
     assert(!routes.includes("GetRoomStateQuery"), "packed routes still name GetRoomStateQuery");
     assert(!domain.includes("GetRoomStateQuery"), "packed domain still registers GetRoomStateQuery");

@@ -598,6 +598,7 @@ export type {
   ExecutorConflict,
   ExecutorRejected,
   ListQueryOptions,
+  QueryCallOptions,
   ReadConsistency,
   ReadOptions,
   RuntimeBindings,

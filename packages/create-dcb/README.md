@@ -22,6 +22,12 @@ After generation, follow the project's [DEPLOYMENT.md](template/DEPLOYMENT.md)
 for the complete topology, offline `npm run deploy:check`, and future
 deployment steps. The generated check creates no Cloudflare resources.
 
+The generated booking demo keeps the keyed room tag-state read and adds
+`ListActiveReservationsByRoomQuery` and `CountActiveReservationsByRoomQuery`.
+Application routes call those contracts. `GetReservationListQuery` stays
+metadata-only. A runtime `queries` array replaces the domain list, so both
+compiled registrations and that metadata record are configured together.
+
 The generated Worker mounts only the maintenance prefix under
 `/internal/sekiban`. Application commands and reads call the runtime
 in-process. The stock `deploy:check` attests the exact maintenance-only mount.

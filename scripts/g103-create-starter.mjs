@@ -290,7 +290,17 @@ function assertInventory(project) {
   assert(routes.includes("/api/sekiban/serialized/tag-state"), "generated room read is missing the tag-state endpoint");
   assert(routes.includes("lastSortedUniqueId"), "generated room read dropped lastSortedUniqueId");
   assert(routes.includes('"/api/read/reservations"'), "generated reservation list route is missing");
+  assert(routes.includes('"/api/read/reservation-count"'), "generated reservation count route is missing");
+  assert(routes.includes("listActiveReservationsByRoomQuery.contract"), "generated list route does not use the list contract");
+  assert(routes.includes("countActiveReservationsByRoomQuery.contract"), "generated count route does not use the scalar contract");
+  assert(!routes.includes("queryType: \"ListActiveReservationsByRoomQuery\""), "generated routes hand-build the list query type");
+  assert(!routes.includes("queryType: \"CountActiveReservationsByRoomQuery\""), "generated routes hand-build the count query type");
   assert(domain.includes("GetReservationListQuery"), "generated reservation list query is missing");
+  assert(domain.includes("ListActiveReservationsByRoomQuery"), "generated active reservation list query is missing");
+  assert(domain.includes("CountActiveReservationsByRoomQuery"), "generated reservation count query is missing");
+  assert(domain.includes("defineQueryView("), "generated domain is missing defineQueryView");
+  assert(domain.includes("defineListQuery("), "generated domain is missing defineListQuery");
+  assert(domain.includes("defineQuery("), "generated domain is missing defineQuery");
   assert(!routes.includes("/api/read/room-query"), "generated routes still dispatch /api/read/room-query");
   assert(!routes.includes("GetRoomStateQuery"), "generated routes still name GetRoomStateQuery");
   assert(!domain.includes("GetRoomStateQuery"), "generated domain still registers GetRoomStateQuery");
