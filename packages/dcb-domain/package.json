@@ -40,7 +40,7 @@
     "zod": "4.4.3"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --external:zod --outfile=dist/index.js && esbuild src/testing.ts --bundle --format=esm --platform=neutral --external:zod --outfile=dist/testing.js",
+    "build": "npm --prefix ../.. run build --workspace @sekiban/dcb-core && tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --external:zod --outfile=dist/index.js && esbuild src/testing.ts --bundle --format=esm --platform=neutral --external:zod --outfile=dist/testing.js",
     "prepack": "node ../../scripts/dcb-domain-prepare-package.mjs && node ../../scripts/dcb-domain-fix-declarations.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }

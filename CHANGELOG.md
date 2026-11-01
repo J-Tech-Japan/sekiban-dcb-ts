@@ -24,7 +24,11 @@
   `config.queries`, or `config.queryDefinitions` before conversion. Ordinary
   id/version metadata is unchanged.
 - Server execution, provider adapters, scan limits, and typed client calls are
-  not part of this change.
+  not part of this change. The preview is unreleased and bound for `0.3.0`;
+  it is not part of the published `0.2.x` packages. Future execution will
+  freeze every handler input. Handlers receive no database, network,
+  environment, request, clock, paging, direction, consistency, waiting, or
+  cancellation capability.
 
 ## @sekiban/dcb-domain 0.2.2 (matched release)
 

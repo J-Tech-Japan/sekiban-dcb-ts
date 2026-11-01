@@ -91,6 +91,9 @@ imports stay type-only.
 
 ## Typed query authoring preview
 
+This preview is unreleased. It is bound for the matched `0.3.0` release and is
+not part of the published `0.2.x` packages.
+
 `defineQueryView`, `defineQuery`, and `defineListQuery` build frozen
 definitions and frozen contracts. Params must be a strict Zod object
 (`z.strictObject` or `.strict()`) and must not use a reserved control name:
@@ -98,9 +101,16 @@ definitions and frozen contracts. Params must be a strict Zod object
 `pageSize`, `newestFirst`, `descending`, `waitForSortableUniqueId`, or
 `signal`. Each codec exposes `encode` and `decode`. One-way Zod transforms,
 including `.transform()` and `z.preprocess()`, are rejected when the definition
-is created. Codecs run synchronously. After a successful encode, the value must
-be JSON-safe. Handlers are synchronous. Their inputs are readonly, and a list
-handler returns `readonly Readonly<Item>[]`.
+is created. Codecs run synchronously. A Promise or other thenable returned by
+encode or decode, including a `z.default()` or `z.catch()` callback, is
+rejected. After a successful encode, the value must be JSON-safe: array holes
+and extra array properties are rejected, and every JSON key, including
+`"__proto__"`, is kept as an own property. Handlers are synchronous. Their
+inputs are readonly, and a list handler returns `readonly Readonly<Item>[]`.
+When execution is added, it will
+freeze every handler input. Handlers receive no database, network, environment,
+request, clock, paging, direction, consistency, waiting, or cancellation
+capability.
 
 These definitions are not executed. `toRuntimeDomain()` throws
 `DomainAuthoringError` with code `QUERY_EXECUTION_UNAVAILABLE` and message
@@ -143,8 +153,9 @@ helpers for the `0.1.x` line:
   `@sekiban/dcb-domain/testing`.
 - No deep imports beyond `.` and `./testing` are supported.
 
-The 0.2.x line adds the typed query authoring preview above. Those helpers do
-not execute a query and do not add a typed client call.
+The typed query authoring preview above is unreleased and bound for `0.3.0`.
+It is not available in `0.2.x`. Those helpers do not execute a query and do
+not add a typed client call.
 
 The earlier `@sekiban/core` and related packages belong to the older
 sekiban-ts line; they are not dependencies or aliases for this package.

@@ -333,6 +333,27 @@ describe("typed query authoring", () => {
     });
     expect(expectAuthoring(() => refined.rowCodec.decode("a"), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage).cause).toBeInstanceOf(z.core.$ZodAsyncError);
 
+    const defaulted = defineQueryView({
+      id: "defaulted",
+      version: 1,
+      row: z.string().default((async () => "from-default") as unknown as () => string),
+    });
+    const defaultError = expectAuthoring(() => defaulted.rowCodec.decode(undefined), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage);
+    expect(defaultError.cause).toBeInstanceOf(Promise);
+    expect(defaulted.rowCodec.encode("kept")).toBe("kept");
+    const caught = defineQueryView({
+      id: "caught",
+      version: 1,
+      row: z.string().catch((async () => "from-catch") as unknown as () => string),
+    });
+    const catchError = expectAuthoring(() => caught.rowCodec.decode(1), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage);
+    expect(catchError.cause).toBeInstanceOf(Promise);
+    expect(caught.rowCodec.encode("kept")).toBe("kept");
+    const thenable = { then(resolve: (value: string) => void) { resolve("later"); } };
+    const open = defineQueryView({ id: "thenable", version: 1, row: z.any() });
+    expect(expectAuthoring(() => open.rowCodec.decode(thenable), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage).cause).toBe(thenable);
+    expect(expectAuthoring(() => open.rowCodec.encode(thenable), "QUERY_CODEC_ASYNC_UNSUPPORTED", asyncMessage).cause).toBe(thenable);
+
     expect(() => countQuery.contract.params.decode({ roomId: 1 })).toThrow(z.ZodError);
     try {
       countQuery.contract.params.decode({ roomId: 1 });
@@ -403,6 +424,96 @@ describe("typed query authoring", () => {
       "QUERY_CODEC_NOT_JSON_SAFE",
       message,
     );
+
+    const sparse: number[] = [];
+    sparse[1] = 1;
+    const extra = [1] as number[] & { extra?: boolean };
+    extra.extra = true;
+    const proto = Object.create(null);
+    Object.defineProperty(proto, "__proto__", {
+      value: { admin: true },
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+    proto.name = "room";
+    const returning = (value: unknown) => z.codec(z.unknown(), z.unknown(), {
+      decode: (input) => input,
+      encode: () => value,
+    });
+    const nested = (value: unknown) => ({ profile: value });
+    const positions: Array<readonly [string, () => unknown]> = [
+      ["params-sparse", () => defineQuery({
+        id: "params-sparse",
+        version: 1,
+        source: orders,
+        params: z.strictObject({ profile: returning(nested(sparse)) }),
+        result,
+        handleQuery: () => ({ count: 1 }),
+      }).contract.params.encode({ profile: {} })],
+      ["row-extra", () => defineQueryView({
+        id: "row-extra",
+        version: 1,
+        row: z.strictObject({ profile: returning(nested(extra)) }),
+      }).rowCodec.encode({ profile: {} })],
+      ["result-sparse", () => defineQuery({
+        id: "result-sparse",
+        version: 1,
+        source: orders,
+        params,
+        result: z.strictObject({ profile: returning(nested(sparse)) }),
+        handleQuery: () => ({ profile: {} }),
+      }).contract.result.encode({ profile: {} })],
+      ["item-extra", () => defineListQuery({
+        id: "item-extra",
+        version: 1,
+        source: orders,
+        params,
+        item: z.strictObject({ profile: returning(nested(extra)) }),
+        handleFilter: () => [],
+        handleSort: (items) => items,
+      }).contract.item.encode({ profile: {} })],
+    ];
+    for (const [position, run] of positions) {
+      const error = expectAuthoring(run, "QUERY_CODEC_NOT_JSON_SAFE", message);
+      expect(error.message).not.toContain(position);
+    }
+    const ownProto = (value: unknown) => {
+      const profile = (value as { profile: { profile: object } }).profile.profile;
+      expect(Object.getOwnPropertyDescriptor(profile, "__proto__")?.value).toEqual({ admin: true });
+      expect(Object.getPrototypeOf(profile)).toBe(null);
+    };
+    ownProto(defineQueryView({
+      id: "proto-row",
+      version: 1,
+      row: z.strictObject({ profile: returning(nested(proto)) }),
+    }).rowCodec.encode({ profile: {} }));
+    expect(Object.prototype).not.toHaveProperty("admin");
+    ownProto(defineQuery({
+      id: "proto-params",
+      version: 1,
+      source: orders,
+      params: z.strictObject({ profile: returning(nested(proto)) }),
+      result,
+      handleQuery: () => ({ count: 1 }),
+    }).contract.params.encode({ profile: {} }));
+    ownProto(defineQuery({
+      id: "proto-result",
+      version: 1,
+      source: orders,
+      params,
+      result: z.strictObject({ profile: returning(nested(proto)) }),
+      handleQuery: () => ({ profile: {} }),
+    }).contract.result.encode({ profile: {} }));
+    ownProto(defineListQuery({
+      id: "proto-item",
+      version: 1,
+      source: orders,
+      params,
+      item: z.strictObject({ profile: returning(nested(proto)) }),
+      handleFilter: () => [],
+      handleSort: (items) => items,
+    }).contract.item.encode({ profile: {} }));
   });
 
   it("requires a non-empty id, a positive safe-integer version, and strict object params", () => {
@@ -601,6 +712,66 @@ describe("typed query authoring", () => {
     expect(scalarCalls.count).toBe(0);
     expect(listCalls.count).toBe(0);
 
+    const overwrittenScalar = {
+      ...defineQuery({
+        id: "overwrite-scalar",
+        version: 1,
+        source: orders,
+        params,
+        result,
+        handleQuery: () => ({ count: 1 }),
+      }),
+      id: "legacy-id",
+      version: 2,
+      queryType: "legacy-id",
+      tagGroup: "room",
+      tagProjector: "room-projector",
+      endpoint: "query" as const,
+    };
+    const overwrittenList = {
+      ...defineListQuery({
+        id: "overwrite-list",
+        version: 1,
+        source: orders,
+        params,
+        item,
+        handleFilter: () => [{ id: "a" }],
+        handleSort: (items) => items,
+      }),
+      id: "legacy-list",
+      version: 2,
+      queryType: "legacy-list",
+      tagGroup: "room",
+      tagProjector: "room-projector",
+      endpoint: "list-query" as const,
+    };
+    const overwritten = [
+      { input: "domain.queries", value: overwrittenScalar },
+      { input: "domain.queries", value: overwrittenList },
+      { input: "config.queries", value: overwrittenScalar },
+      { input: "config.queries", value: overwrittenList },
+      { input: "config.queryDefinitions", value: overwrittenScalar },
+      { input: "config.queryDefinitions", value: overwrittenList },
+    ] as const;
+    expect(overwritten).toHaveLength(6);
+    for (const entry of overwritten) {
+      expect(entry.value.id).not.toBe(entry.value.contract.id);
+      const typed = entry.value as RuntimeQueryDefinition;
+      const domainQueries = entry.input === "domain.queries" ? [typed] : [legacy];
+      const configQueries = entry.input === "config.queries" ? [typed] : [legacy];
+      const queryDefinitions = entry.input === "config.queryDefinitions" ? [typed] : [legacy];
+      let failure: unknown;
+      try {
+        composeRuntime({ queries: domainQueries }, { queries: configQueries, queryDefinitions });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toMatchObject({
+        name: "TypedQueryExecutionUnavailableError",
+        code: "QUERY_EXECUTION_UNAVAILABLE",
+        message: "Typed query execution is not available in runtime composition.",
+      });
+    }
     const roomQuery = { id: "rooms", version: 1, tagGroup: "room", tagProjector: "room-projector" };
     const metadata = composeRuntime(undefined, { queries: [roomQuery] });
     expect(metadata.queries.resolve("rooms")?.tagGroup).toBe("room");

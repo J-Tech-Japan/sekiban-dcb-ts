@@ -214,7 +214,29 @@ function assertQueryJsonValue(value: unknown): QueryJsonValue {
     if (Array.isArray(candidate)) {
       ancestors.add(candidate);
       try {
-        return candidate.map(visit);
+        if (Object.getOwnPropertySymbols(candidate).length > 0) {
+          throw new DomainAuthoringError("QUERY_CODEC_NOT_JSON_SAFE", QUERY_CODEC_NOT_JSON_SAFE);
+        }
+        const names = Object.getOwnPropertyNames(candidate);
+        const indexes = new Set<string>();
+        for (let index = 0; index < candidate.length; index += 1) {
+          const descriptor = Object.getOwnPropertyDescriptor(candidate, index);
+          if (descriptor === undefined || descriptor.enumerable !== true) {
+            throw new DomainAuthoringError("QUERY_CODEC_NOT_JSON_SAFE", QUERY_CODEC_NOT_JSON_SAFE);
+          }
+          indexes.add(String(index));
+        }
+        if (names.length !== indexes.size + 1 || !names.includes("length")) {
+          throw new DomainAuthoringError("QUERY_CODEC_NOT_JSON_SAFE", QUERY_CODEC_NOT_JSON_SAFE);
+        }
+        for (const name of names) {
+          if (name !== "length" && !indexes.has(name)) {
+            throw new DomainAuthoringError("QUERY_CODEC_NOT_JSON_SAFE", QUERY_CODEC_NOT_JSON_SAFE);
+          }
+        }
+        const items: QueryJsonValue[] = [];
+        for (let index = 0; index < candidate.length; index += 1) items.push(visit(candidate[index]));
+        return items;
       } finally {
         ancestors.delete(candidate);
       }
@@ -231,8 +253,15 @@ function assertQueryJsonValue(value: unknown): QueryJsonValue {
     if (names.length !== keys.length) throw new DomainAuthoringError("QUERY_CODEC_NOT_JSON_SAFE", QUERY_CODEC_NOT_JSON_SAFE);
     ancestors.add(candidate);
     try {
-      const record: { [key: string]: QueryJsonValue } = {};
-      for (const key of keys) record[key] = visit((candidate as Record<string, unknown>)[key]);
+      const record: { [key: string]: QueryJsonValue } = Object.create(null);
+      for (const key of keys) {
+        Object.defineProperty(record, key, {
+          value: visit((candidate as Record<string, unknown>)[key]),
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+      }
       return record;
     } finally {
       ancestors.delete(candidate);
@@ -241,10 +270,21 @@ function assertQueryJsonValue(value: unknown): QueryJsonValue {
   return visit(value);
 }
 
+function isThenable(value: unknown): boolean {
+  return (typeof value === "object" || typeof value === "function")
+    && value !== null
+    && typeof (value as { then?: unknown }).then === "function";
+}
+
 function invokeCodec<T>(operation: () => T): T {
   try {
-    return operation();
+    const value = operation();
+    if (isThenable(value)) {
+      throw new DomainAuthoringError("QUERY_CODEC_ASYNC_UNSUPPORTED", QUERY_CODEC_ASYNC_UNSUPPORTED, { cause: value });
+    }
+    return value;
   } catch (error) {
+    if (error instanceof DomainAuthoringError) throw error;
     if (error instanceof z.core.$ZodAsyncError) {
       throw new DomainAuthoringError("QUERY_CODEC_ASYNC_UNSUPPORTED", QUERY_CODEC_ASYNC_UNSUPPORTED, { cause: error });
     }

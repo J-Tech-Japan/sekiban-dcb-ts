@@ -115,6 +115,8 @@ defineQuery({
 const filteredItems = listQuery.handleFilter({ rows: [] }, { roomId: "r" }, {});
 // @ts-expect-error returned filter elements are readonly
 filteredItems[0].id = "mutated";
+// @ts-expect-error returned filter array is readonly
+filteredItems.push({ id: "extra" });
 
 defineListQuery({
   id: "mutate-sort",
@@ -126,12 +128,17 @@ defineListQuery({
   handleSort: (items) => {
     // @ts-expect-error sort input elements are readonly
     items[0].id = "mutated";
+    // @ts-expect-error sort input array is readonly
+    items.pop();
     const sortedItems = items.slice();
     // @ts-expect-error sort result elements are readonly
     sortedItems[0].id = "mutated";
     return sortedItems;
   },
 });
+const sortedItems = listQuery.handleSort(filteredItems, { roomId: "r" }, {});
+// @ts-expect-error returned sort array is readonly
+sortedItems.splice(0, 1);
 
 defineQuery({
   id: "promise-query",

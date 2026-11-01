@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-import { readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rename, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -63,6 +65,38 @@ const maxUnpackedBytes = 1_000_000;
 if (report.unpackedSize > maxUnpackedBytes) {
   throw new Error(`SDT-G59 pack guard: unpacked tarball is ${report.unpackedSize} bytes, limit is ${maxUnpackedBytes}`);
 }
+const directBuild = packageJson.scripts?.build ?? "";
+if (!directBuild.startsWith("npm --prefix ../.. run build --workspace @sekiban/dcb-core && ")) {
+  throw new Error("SDT-G59 pack guard: domain workspace build must build @sekiban/dcb-core before emitting declarations");
+}
+const coreDist = resolve(root, "packages/dcb-core/dist");
+const stashParent = await mkdtemp(join(tmpdir(), "sdt-g139-core-dist-"));
+const stash = join(stashParent, "dist");
+const hadCoreDist = existsSync(coreDist);
+if (hadCoreDist) await rename(coreDist, stash);
+let directBuildPassed = false;
+try {
+  const built = spawnSync("npm", ["run", "build", "--workspace", "@sekiban/dcb-domain"], {
+    cwd: root,
+    encoding: "utf8",
+    env: process.env,
+  });
+  if (built.status !== 0) {
+    throw new Error(`SDT-G59 pack guard: direct domain workspace build failed without a prebuilt core dist\n${built.stdout}\n${built.stderr}`);
+  }
+  if (!existsSync(resolve(coreDist, "index.d.ts"))) {
+    throw new Error("SDT-G59 pack guard: direct domain workspace build did not produce @sekiban/dcb-core declarations");
+  }
+  directBuildPassed = true;
+} finally {
+  if (hadCoreDist) {
+    await rm(coreDist, { recursive: true, force: true });
+    await rename(stash, coreDist);
+  } else if (!directBuildPassed) {
+    await rm(coreDist, { recursive: true, force: true });
+  }
+  await rm(stashParent, { recursive: true, force: true });
+}
 console.log(JSON.stringify({
   status: "PASS",
   package: packageJson.name,
@@ -71,4 +105,5 @@ console.log(JSON.stringify({
   fileCount: names.length,
   unpackedSize: report.unpackedSize,
   maxUnpackedBytes,
+  directDomainWorkspaceBuild: "PASS",
 }));

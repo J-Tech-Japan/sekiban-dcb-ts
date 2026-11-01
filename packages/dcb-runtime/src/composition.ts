@@ -377,9 +377,6 @@ function hasQueryCodec(value: unknown): boolean {
 function isTypedQueryDefinition(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
   const definition = value as {
-    readonly kind?: unknown;
-    readonly id?: unknown;
-    readonly version?: unknown;
     readonly contract?: unknown;
     readonly handleQuery?: unknown;
     readonly handleFilter?: unknown;
@@ -387,24 +384,16 @@ function isTypedQueryDefinition(value: unknown): boolean {
   };
   if (typeof definition.contract !== "object" || definition.contract === null) return false;
   const contract = definition.contract as {
-    readonly kind?: unknown;
-    readonly id?: unknown;
-    readonly version?: unknown;
     readonly params?: unknown;
     readonly result?: unknown;
     readonly item?: unknown;
   };
-  if (contract.kind !== definition.kind || contract.id !== definition.id || contract.version !== definition.version) return false;
   if (!hasQueryCodec(contract.params)) return false;
-  if (definition.kind === "query") {
-    return hasQueryCodec(contract.result) && typeof definition.handleQuery === "function";
-  }
-  if (definition.kind === "list-query") {
-    return hasQueryCodec(contract.item)
-      && typeof definition.handleFilter === "function"
-      && typeof definition.handleSort === "function";
-  }
-  return false;
+  const scalar = hasQueryCodec(contract.result) && typeof definition.handleQuery === "function";
+  const list = hasQueryCodec(contract.item)
+    && typeof definition.handleFilter === "function"
+    && typeof definition.handleSort === "function";
+  return scalar || list;
 }
 
 function rejectTypedQueryDefinitions(values: readonly unknown[] | undefined): void {
