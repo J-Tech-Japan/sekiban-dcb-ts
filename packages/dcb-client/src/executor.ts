@@ -657,7 +657,7 @@ function isRawQueryRequest(value: unknown): value is QueryRequest {
 const QUERY_HANDLER_KEYS = ["handleQuery", "handleFilter", "handleSort"] as const;
 
 function hasQueryHandler(value: Record<string, unknown>): boolean {
-  return QUERY_HANDLER_KEYS.some((key) => Object.hasOwn(value, key));
+  return QUERY_HANDLER_KEYS.some((key) => key in value);
 }
 
 function isScalarContract(value: unknown): value is QueryContract<unknown, unknown> {
