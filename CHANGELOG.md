@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### @sekiban/dcb-core
+
+- Export structural query contracts: `QueryJsonValue`, `QueryCodec`,
+  `QueryRow`, `QueryProjection`, `QueryHandlerContext`, `QueryContract`,
+  `ListQueryContract`, `ListQueryControls`, `QueryPageMetadata`, and
+  `QueryPage`. Codecs are bidirectional `encode` / `decode` pairs. Contracts
+  do not carry handlers. Nothing in this package executes a query.
+
+### @sekiban/dcb-domain
+
+- Add `defineQueryView`, `defineQuery`, and `defineListQuery` as an authoring
+  preview. Params must be a strict Zod object and must not use a reserved
+  control name. Definitions and contracts are frozen. Handlers stay
+  synchronous and receive readonly inputs.
+- Depend on the matched `@sekiban/dcb-core` `0.2.2` package. Domain source
+  imports it only as types. `zod` stays pinned at `4.4.3`.
+- `toRuntimeDomain()` rejects a domain that contains authored queries with
+  `QUERY_EXECUTION_UNAVAILABLE`. A query-free domain still bridges.
+- Runtime composition rejects a typed query definition on `domain.queries`,
+  `config.queries`, or `config.queryDefinitions` before conversion. Ordinary
+  id/version metadata is unchanged.
+- Server execution, provider adapters, scan limits, and typed client calls are
+  not part of this change.
+
 ## @sekiban/dcb-domain 0.2.2 (matched release)
 
 ### @sekiban/dcb-core 0.2.2

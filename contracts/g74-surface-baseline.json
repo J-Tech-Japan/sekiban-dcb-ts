@@ -65,6 +65,7 @@
         ]
       },
       "dependencies": {
+        "@sekiban/dcb-core": "0.2.2",
         "zod": "4.4.3"
       },
       "otherFields": {
@@ -2862,6 +2863,157 @@
           }
         },
         {
+          "name": "ListQueryContract",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/index.d.ts",
+              "kind": "interface",
+              "text": "export interface ListQueryContract<Params, Item> { readonly kind: \"list-query\"; readonly id: string; readonly version: number; readonly params: QueryCodec<Params>; readonly item: QueryCodec<Item>; }",
+              "typeParameters": [
+                {
+                  "name": "Params",
+                  "constraint": null,
+                  "default": null,
+                  "const": false
+                },
+                {
+                  "name": "Item",
+                  "constraint": null,
+                  "default": null,
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "kind",
+              "optional": false,
+              "readonly": true,
+              "type": "\"list-query\""
+            },
+            {
+              "name": "id",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "params",
+              "optional": false,
+              "readonly": true,
+              "type": "QueryCodec<Params>"
+            },
+            {
+              "name": "item",
+              "optional": false,
+              "readonly": true,
+              "type": "QueryCodec<Item>"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "ListQueryControls",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/index.d.ts",
+              "kind": "interface",
+              "text": "export interface ListQueryControls { readonly pageNumber?: number; readonly pageSize?: number; readonly descending?: boolean; readonly consistency?: \"safe\" | \"unsafe\"; readonly waitForSortableUniqueId?: string; readonly signal?: AbortSignal; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "pageNumber",
+              "optional": true,
+              "readonly": true,
+              "type": "number | undefined"
+            },
+            {
+              "name": "pageSize",
+              "optional": true,
+              "readonly": true,
+              "type": "number | undefined"
+            },
+            {
+              "name": "descending",
+              "optional": true,
+              "readonly": true,
+              "type": "boolean | undefined"
+            },
+            {
+              "name": "consistency",
+              "optional": true,
+              "readonly": true,
+              "type": "\"safe\" | \"unsafe\" | undefined"
+            },
+            {
+              "name": "waitForSortableUniqueId",
+              "optional": true,
+              "readonly": true,
+              "type": "string | undefined"
+            },
+            {
+              "name": "signal",
+              "optional": true,
+              "readonly": true,
+              "type": "AbortSignal | undefined"
+            }
+          ],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "MaterializedViewIndexDescriptor",
           "namespace": {
             "value": false,
@@ -4540,6 +4692,478 @@
           }
         },
         {
+          "name": "QueryCodec",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/index.d.ts",
+              "kind": "interface",
+              "text": "export interface QueryCodec<Value> { readonly encode: (value: Value) => QueryJsonValue; readonly decode: (value: unknown) => Value; }",
+              "typeParameters": [
+                {
+                  "name": "Value",
+                  "constraint": null,
+                  "default": null,
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "encode",
+              "optional": false,
+              "readonly": true,
+              "type": "(value: Value) => QueryJsonValue"
+            },
+            {
+              "name": "decode",
+              "optional": false,
+              "readonly": true,
+              "type": "(value: unknown) => Value"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": true,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "QueryContract",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/index.d.ts",
+              "kind": "interface",
+              "text": "export interface QueryContract<Params, Result> { readonly kind: \"query\"; readonly id: string; readonly version: number; readonly params: QueryCodec<Params>; readonly result: QueryCodec<Result>; }",
+              "typeParameters": [
+                {
+                  "name": "Params",
+                  "constraint": null,
+                  "default": null,
+                  "const": false
+                },
+                {
+                  "name": "Result",
+                  "constraint": null,
+                  "default": null,
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "kind",
+              "optional": false,
+              "readonly": true,
+              "type": "\"query\""
+            },
+            {
+              "name": "id",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "params",
+              "optional": false,
+              "readonly": true,
+              "type": "QueryCodec<Params>"
+            },
+            {
+              "name": "result",
+              "optional": false,
+              "readonly": true,
+              "type": "QueryCodec<Result>"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "QueryHandlerContext",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/index.d.ts",
+              "kind": "interface",
+              "text": "export interface QueryHandlerContext { readonly readHead?: string; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "readHead",
+              "optional": true,
+              "readonly": true,
+              "type": "string | undefined"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "QueryJsonValue",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/index.d.ts",
+              "kind": "type",
+              "text": "export type QueryJsonValue = null | boolean | number | string | readonly QueryJsonValue[] | { readonly [key: string]: QueryJsonValue; };",
+              "typeParameters": []
+            }
+          ],
+          "type": "null | boolean | number | string | readonly QueryJsonValue[] | { readonly [key: string]: QueryJsonValue; }",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": true,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "QueryPage",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/index.d.ts",
+              "kind": "interface",
+              "text": "export interface QueryPage<Item> extends QueryPageMetadata { readonly items: readonly Item[]; }",
+              "typeParameters": [
+                {
+                  "name": "Item",
+                  "constraint": null,
+                  "default": null,
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "items",
+              "optional": false,
+              "readonly": true,
+              "type": "readonly Item[]"
+            },
+            {
+              "name": "totalCount",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "totalPages",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "currentPage",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "pageSize",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "readHead",
+              "optional": true,
+              "readonly": true,
+              "type": "string | undefined"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "QueryPageMetadata",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/index.d.ts",
+              "kind": "interface",
+              "text": "export interface QueryPageMetadata { readonly totalCount: number; readonly totalPages: number; readonly currentPage: number; readonly pageSize: number; readonly readHead?: string; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "totalCount",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "totalPages",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "currentPage",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "pageSize",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "readHead",
+              "optional": true,
+              "readonly": true,
+              "type": "string | undefined"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "QueryProjection",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/index.d.ts",
+              "kind": "type",
+              "text": "export type QueryProjection<Row> = Readonly<{ rows: readonly QueryRow<Row>[]; readHead?: string; }>;",
+              "typeParameters": [
+                {
+                  "name": "Row",
+                  "constraint": null,
+                  "default": null,
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": "Readonly<{ rows: readonly QueryRow<Row>[]; readHead?: string; }>",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "rows",
+              "optional": false,
+              "readonly": false,
+              "type": "readonly Readonly<{ key: string; value: Readonly<Row>; sourceSuid: string; }>[]"
+            },
+            {
+              "name": "readHead",
+              "optional": true,
+              "readonly": false,
+              "type": "string | undefined"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "QueryRow",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/index.d.ts",
+              "kind": "type",
+              "text": "export type QueryRow<Row> = Readonly<{ key: string; value: Readonly<Row>; sourceSuid: string; }>;",
+              "typeParameters": [
+                {
+                  "name": "Row",
+                  "constraint": null,
+                  "default": null,
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": "Readonly<{ key: string; value: Readonly<Row>; sourceSuid: string; }>",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "key",
+              "optional": false,
+              "readonly": false,
+              "type": "string"
+            },
+            {
+              "name": "value",
+              "optional": false,
+              "readonly": false,
+              "type": "Readonly<Row>"
+            },
+            {
+              "name": "sourceSuid",
+              "optional": false,
+              "readonly": false,
+              "type": "string"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "reject",
           "namespace": {
             "value": true,
@@ -5059,7 +5683,7 @@
             {
               "file": "dist/domain.d.ts",
               "kind": "interface",
-              "text": "export interface AuthoringDomain<Events extends readonly EventDefinition[] = readonly EventDefinition[], Projectors extends readonly unknown[] = readonly ProjectorDefinition[], Commands extends readonly unknown[] = readonly CommandDefinition[]> { readonly events: Events; readonly projectors: Projectors; readonly commands: Commands; readonly views: readonly DomainViewDefinition[]; readonly eventByType: ReadonlyMap<string, EventDefinition>; readonly eventByName: ReadonlyMap<string, EventDefinition>; }",
+              "text": "export interface AuthoringDomain<Events extends readonly EventDefinition[] = readonly EventDefinition[], Projectors extends readonly unknown[] = readonly ProjectorDefinition[], Commands extends readonly unknown[] = readonly CommandDefinition[], Queries extends readonly (QueryDefinition | ListQueryDefinition)[] = readonly (QueryDefinition | ListQueryDefinition)[]> { readonly events: Events; readonly projectors: Projectors; readonly commands: Commands; readonly views: readonly DomainViewDefinition[]; readonly queries: Queries; readonly eventByType: ReadonlyMap<string, EventDefinition>; readonly eventByName: ReadonlyMap<string, EventDefinition>; }",
               "typeParameters": [
                 {
                   "name": "Events",
@@ -5077,6 +5701,12 @@
                   "name": "Commands",
                   "constraint": "readonly unknown[]",
                   "default": "readonly CommandDefinition[]",
+                  "const": false
+                },
+                {
+                  "name": "Queries",
+                  "constraint": "readonly (QueryDefinition | ListQueryDefinition)[]",
+                  "default": "readonly (QueryDefinition | ListQueryDefinition)[]",
                   "const": false
                 }
               ]
@@ -5113,6 +5743,12 @@
               "type": "readonly DomainViewDefinition[]"
             },
             {
+              "name": "queries",
+              "optional": false,
+              "readonly": true,
+              "type": "Queries"
+            },
+            {
               "name": "eventByType",
               "optional": false,
               "readonly": true,
@@ -5126,7 +5762,7 @@
             }
           ],
           "syntax": {
-            "union": false,
+            "union": true,
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
@@ -5482,7 +6118,7 @@
               "type": "\"none\" | \"done\" | \"reject\""
             },
             {
-              "name": "__@terminalDecisionBrand@40862",
+              "name": "__@terminalDecisionBrand@40918",
               "optional": false,
               "readonly": true,
               "type": "\"none\" | \"done\" | \"reject\""
@@ -6140,6 +6776,312 @@
           }
         },
         {
+          "name": "defineListQuery",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/query.d.ts",
+              "kind": "function",
+              "text": "export declare function defineListQuery<const Id extends string, const Version extends number, const Source extends QueryViewDefinition, const ParamsSchema extends z.ZodObject, const ItemSchema extends z.ZodTypeAny>(options: ListQueryOptions<Id, Version, Source, ParamsSchema, ItemSchema>): ListQueryDefinition<Id, Version, Source, ParamsSchema, ItemSchema>;",
+              "typeParameters": [
+                {
+                  "name": "Id",
+                  "constraint": "string",
+                  "default": null,
+                  "const": true
+                },
+                {
+                  "name": "Version",
+                  "constraint": "number",
+                  "default": null,
+                  "const": true
+                },
+                {
+                  "name": "Source",
+                  "constraint": "QueryViewDefinition",
+                  "default": null,
+                  "const": true
+                },
+                {
+                  "name": "ParamsSchema",
+                  "constraint": "z.ZodObject",
+                  "default": null,
+                  "const": true
+                },
+                {
+                  "name": "ItemSchema",
+                  "constraint": "z.ZodTypeAny",
+                  "default": null,
+                  "const": true
+                }
+              ]
+            }
+          ],
+          "type": "<const Id extends string, const Version extends number, const Source extends QueryViewDefinition, const ParamsSchema extends z.ZodObject, const ItemSchema extends z.ZodTypeAny>(options: ListQueryOptions<Id, Version, Source, ParamsSchema, ItemSchema>) => ListQueryDefinition<Id, Version, Source, ParamsSchema, ItemSchema>",
+          "signatures": {
+            "call": [
+              {
+                "typeParameters": [
+                  {
+                    "name": "Id",
+                    "constraint": "string",
+                    "default": "{}",
+                    "const": false
+                  },
+                  {
+                    "name": "Version",
+                    "constraint": "number",
+                    "default": "{}",
+                    "const": false
+                  },
+                  {
+                    "name": "Source",
+                    "constraint": "QueryViewDefinition<string, number, z.ZodType<unknown, unknown, z.core.$ZodTypeInternals<unknown, unknown>>>",
+                    "default": "{}",
+                    "const": false
+                  },
+                  {
+                    "name": "ParamsSchema",
+                    "constraint": "z.ZodObject<z.core.$ZodLooseShape, z.core.$strip>",
+                    "default": "{}",
+                    "const": false
+                  },
+                  {
+                    "name": "ItemSchema",
+                    "constraint": "z.ZodType<unknown, unknown, z.core.$ZodTypeInternals<unknown, unknown>>",
+                    "default": "{}",
+                    "const": false
+                  }
+                ],
+                "parameters": [
+                  {
+                    "name": "options",
+                    "optional": false,
+                    "rest": false,
+                    "type": "ListQueryOptions<Id, Version, Source, ParamsSchema, ItemSchema>"
+                  }
+                ],
+                "returnType": "ListQueryDefinition<Id, Version, Source, ParamsSchema, ItemSchema>"
+              }
+            ],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "defineQuery",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/query.d.ts",
+              "kind": "function",
+              "text": "export declare function defineQuery<const Id extends string, const Version extends number, const Source extends QueryViewDefinition, const ParamsSchema extends z.ZodObject, const ResultSchema extends z.ZodTypeAny>(options: QueryOptions<Id, Version, Source, ParamsSchema, ResultSchema>): QueryDefinition<Id, Version, Source, ParamsSchema, ResultSchema>;",
+              "typeParameters": [
+                {
+                  "name": "Id",
+                  "constraint": "string",
+                  "default": null,
+                  "const": true
+                },
+                {
+                  "name": "Version",
+                  "constraint": "number",
+                  "default": null,
+                  "const": true
+                },
+                {
+                  "name": "Source",
+                  "constraint": "QueryViewDefinition",
+                  "default": null,
+                  "const": true
+                },
+                {
+                  "name": "ParamsSchema",
+                  "constraint": "z.ZodObject",
+                  "default": null,
+                  "const": true
+                },
+                {
+                  "name": "ResultSchema",
+                  "constraint": "z.ZodTypeAny",
+                  "default": null,
+                  "const": true
+                }
+              ]
+            }
+          ],
+          "type": "<const Id extends string, const Version extends number, const Source extends QueryViewDefinition, const ParamsSchema extends z.ZodObject, const ResultSchema extends z.ZodTypeAny>(options: QueryOptions<Id, Version, Source, ParamsSchema, ResultSchema>) => QueryDefinition<Id, Version, Source, ParamsSchema, ResultSchema>",
+          "signatures": {
+            "call": [
+              {
+                "typeParameters": [
+                  {
+                    "name": "Id",
+                    "constraint": "string",
+                    "default": "{}",
+                    "const": false
+                  },
+                  {
+                    "name": "Version",
+                    "constraint": "number",
+                    "default": "{}",
+                    "const": false
+                  },
+                  {
+                    "name": "Source",
+                    "constraint": "QueryViewDefinition<string, number, z.ZodType<unknown, unknown, z.core.$ZodTypeInternals<unknown, unknown>>>",
+                    "default": "{}",
+                    "const": false
+                  },
+                  {
+                    "name": "ParamsSchema",
+                    "constraint": "z.ZodObject<z.core.$ZodLooseShape, z.core.$strip>",
+                    "default": "{}",
+                    "const": false
+                  },
+                  {
+                    "name": "ResultSchema",
+                    "constraint": "z.ZodType<unknown, unknown, z.core.$ZodTypeInternals<unknown, unknown>>",
+                    "default": "{}",
+                    "const": false
+                  }
+                ],
+                "parameters": [
+                  {
+                    "name": "options",
+                    "optional": false,
+                    "rest": false,
+                    "type": "QueryOptions<Id, Version, Source, ParamsSchema, ResultSchema>"
+                  }
+                ],
+                "returnType": "QueryDefinition<Id, Version, Source, ParamsSchema, ResultSchema>"
+              }
+            ],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "defineQueryView",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/query.d.ts",
+              "kind": "function",
+              "text": "export declare function defineQueryView<const Id extends string, const Version extends number, const RowSchema extends z.ZodTypeAny>(options: QueryViewOptions<Id, Version, RowSchema>): QueryViewDefinition<Id, Version, RowSchema>;",
+              "typeParameters": [
+                {
+                  "name": "Id",
+                  "constraint": "string",
+                  "default": null,
+                  "const": true
+                },
+                {
+                  "name": "Version",
+                  "constraint": "number",
+                  "default": null,
+                  "const": true
+                },
+                {
+                  "name": "RowSchema",
+                  "constraint": "z.ZodTypeAny",
+                  "default": null,
+                  "const": true
+                }
+              ]
+            }
+          ],
+          "type": "<const Id extends string, const Version extends number, const RowSchema extends z.ZodTypeAny>(options: QueryViewOptions<Id, Version, RowSchema>) => QueryViewDefinition<Id, Version, RowSchema>",
+          "signatures": {
+            "call": [
+              {
+                "typeParameters": [
+                  {
+                    "name": "Id",
+                    "constraint": "string",
+                    "default": "{}",
+                    "const": false
+                  },
+                  {
+                    "name": "Version",
+                    "constraint": "number",
+                    "default": "{}",
+                    "const": false
+                  },
+                  {
+                    "name": "RowSchema",
+                    "constraint": "z.ZodType<unknown, unknown, z.core.$ZodTypeInternals<unknown, unknown>>",
+                    "default": "{}",
+                    "const": false
+                  }
+                ],
+                "parameters": [
+                  {
+                    "name": "options",
+                    "optional": false,
+                    "rest": false,
+                    "type": "QueryViewOptions<Id, Version, RowSchema>"
+                  }
+                ],
+                "returnType": "QueryViewDefinition<Id, Version, RowSchema>"
+              }
+            ],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "defineTag",
           "namespace": {
             "value": true,
@@ -6326,7 +7268,7 @@
             {
               "file": "dist/domain.d.ts",
               "kind": "function",
-              "text": "export declare function domain<const Events extends readonly DomainEventInput[], const Projectors extends readonly unknown[], const Commands extends readonly unknown[]>(options: DomainOptions<Events, Projectors, Commands>): AuthoringDomain<Extract<Events[number], EventDefinition> extends never ? readonly EventDefinition[] : readonly EventDefinition[], Projectors, Commands>;",
+              "text": "export declare function domain<const Events extends readonly DomainEventInput[], const Projectors extends readonly unknown[], const Commands extends readonly unknown[], const Queries extends readonly (QueryDefinition | ListQueryDefinition)[] = readonly []>(options: DomainOptions<Events, Projectors, Commands, Queries>): AuthoringDomain<Extract<Events[number], EventDefinition> extends never ? readonly EventDefinition[] : readonly EventDefinition[], Projectors, Commands, Queries>;",
               "typeParameters": [
                 {
                   "name": "Events",
@@ -6345,11 +7287,17 @@
                   "constraint": "readonly unknown[]",
                   "default": null,
                   "const": true
+                },
+                {
+                  "name": "Queries",
+                  "constraint": "readonly (QueryDefinition | ListQueryDefinition)[]",
+                  "default": "readonly []",
+                  "const": true
                 }
               ]
             }
           ],
-          "type": "<const Events extends readonly DomainEventInput[], const Projectors extends readonly unknown[], const Commands extends readonly unknown[]>(options: DomainOptions<Events, Projectors, Commands>) => AuthoringDomain<Extract<Events[number], EventDefinition> extends never ? readonly EventDefinition[] : readonly EventDefinition[], Projectors, Commands>",
+          "type": "<const Events extends readonly DomainEventInput[], const Projectors extends readonly unknown[], const Commands extends readonly unknown[], const Queries extends readonly (QueryDefinition | ListQueryDefinition)[] = readonly []>(options: DomainOptions<Events, Projectors, Commands, Queries>) => AuthoringDomain<Extract<Events[number], EventDefinition> extends never ? readonly EventDefinition[] : readonly EventDefinition[], Projectors, Commands, Queries>",
           "signatures": {
             "call": [
               {
@@ -6371,6 +7319,12 @@
                     "constraint": "readonly unknown[]",
                     "default": "{}",
                     "const": false
+                  },
+                  {
+                    "name": "Queries",
+                    "constraint": "readonly (QueryDefinition<string, number, import(\"@sekiban/dcb-domain/dist/query\").QueryViewDefinition<string, number, import(\"zod/index\").ZodType<unknown, unknown, import(\"zod/v4/core/schemas\").$ZodTypeInternals<unknown, unknown>>>, import(\"zod/index\").ZodObject<import(\"zod/v4/core/schemas\").$ZodLooseShape, import(\"zod/v4/core/schemas\").$strip>, import(\"zod/index\").ZodType<unknown, unknown, import(\"zod/v4/core/schemas\").$ZodTypeInternals<unknown, unknown>>> | ListQueryDefinition<string, number, import(\"@sekiban/dcb-domain/dist/query\").QueryViewDefinition<string, number, import(\"zod/index\").ZodType<unknown, unknown, import(\"zod/v4/core/schemas\").$ZodTypeInternals<unknown, unknown>>>, import(\"zod/index\").ZodObject<import(\"zod/v4/core/schemas\").$ZodLooseShape, import(\"zod/v4/core/schemas\").$strip>, import(\"zod/index\").ZodType<unknown, unknown, import(\"zod/v4/core/schemas\").$ZodTypeInternals<unknown, unknown>>>)[]",
+                    "default": "readonly []",
+                    "const": false
                   }
                 ],
                 "parameters": [
@@ -6378,17 +7332,17 @@
                     "name": "options",
                     "optional": false,
                     "rest": false,
-                    "type": "DomainOptions<Events, Projectors, Commands>"
+                    "type": "DomainOptions<Events, Projectors, Commands, Queries>"
                   }
                 ],
-                "returnType": "AuthoringDomain<Extract<Events[number], EventDefinition<string, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>, string>> extends never ? readonly EventDefinition<string, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>, string>[] : readonly EventDefinition<string, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>, string>[], Projectors, Commands>"
+                "returnType": "AuthoringDomain<Extract<Events[number], EventDefinition<string, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>, string>> extends never ? readonly EventDefinition<string, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>, string>[] : readonly EventDefinition<string, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>, string>[], Projectors, Commands, Queries>"
               }
             ],
             "construct": []
           },
           "members": [],
           "syntax": {
-            "union": false,
+            "union": true,
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
@@ -6887,7 +7841,7 @@
             {
               "file": "dist/domain.d.ts",
               "kind": "interface",
-              "text": "export interface DomainOptions<Events extends readonly DomainEventInput[] = readonly DomainEventInput[], Projectors extends readonly unknown[] = readonly ProjectorDefinition[], Commands extends readonly unknown[] = readonly CommandDefinition[]> { readonly events?: Events; readonly eventUnions?: readonly EventUnion[]; readonly projectors?: Projectors; readonly commands?: Commands; readonly views?: readonly DomainViewDefinition[]; }",
+              "text": "export interface DomainOptions<Events extends readonly DomainEventInput[] = readonly DomainEventInput[], Projectors extends readonly unknown[] = readonly ProjectorDefinition[], Commands extends readonly unknown[] = readonly CommandDefinition[], Queries extends readonly (QueryDefinition | ListQueryDefinition)[] = readonly (QueryDefinition | ListQueryDefinition)[]> { readonly events?: Events; readonly eventUnions?: readonly EventUnion[]; readonly projectors?: Projectors; readonly commands?: Commands; readonly views?: readonly DomainViewDefinition[]; readonly queries?: Queries; }",
               "typeParameters": [
                 {
                   "name": "Events",
@@ -6905,6 +7859,12 @@
                   "name": "Commands",
                   "constraint": "readonly unknown[]",
                   "default": "readonly CommandDefinition[]",
+                  "const": false
+                },
+                {
+                  "name": "Queries",
+                  "constraint": "readonly (QueryDefinition | ListQueryDefinition)[]",
+                  "default": "readonly (QueryDefinition | ListQueryDefinition)[]",
                   "const": false
                 }
               ]
@@ -6945,10 +7905,16 @@
               "optional": true,
               "readonly": true,
               "type": "readonly DomainViewDefinition[] | undefined"
+            },
+            {
+              "name": "queries",
+              "optional": true,
+              "readonly": true,
+              "type": "Queries | undefined"
             }
           ],
           "syntax": {
-            "union": false,
+            "union": true,
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
@@ -7215,7 +8181,7 @@
               "type": "Value | undefined"
             },
             {
-              "name": "__@terminalDecisionBrand@40862",
+              "name": "__@terminalDecisionBrand@40918",
               "optional": false,
               "readonly": true,
               "type": "\"done\""
@@ -7483,7 +8449,7 @@
           },
           "members": [
             {
-              "name": "__@eventPayloadBrand@40860",
+              "name": "__@eventPayloadBrand@40916",
               "optional": false,
               "readonly": true,
               "type": "Event"
@@ -7599,7 +8565,7 @@
           },
           "members": [
             {
-              "name": "__@eventPayloadBrand@40860",
+              "name": "__@eventPayloadBrand@40916",
               "optional": false,
               "readonly": true,
               "type": "Event"
@@ -7979,7 +8945,7 @@
           },
           "members": [
             {
-              "name": "__@eventPayloadBrand@40860",
+              "name": "__@eventPayloadBrand@40916",
               "optional": false,
               "readonly": true,
               "type": "Union[\"events\"][number]"
@@ -8773,6 +9739,127 @@
           }
         },
         {
+          "name": "ListQueryDefinition",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/query.d.ts",
+              "kind": "interface",
+              "text": "export interface ListQueryDefinition<Id extends string = string, Version extends number = number, Source extends QueryViewDefinition = QueryViewDefinition, ParamsSchema extends z.ZodObject = z.ZodObject, ItemSchema extends z.ZodTypeAny = z.ZodTypeAny> { readonly kind: \"list-query\"; readonly id: Id; readonly version: Version; readonly source: Source; readonly params: ParamsSchema; readonly item: ItemSchema; readonly handleFilter: (projection: QueryProjection<z.output<Source[\"row\"]>>, params: Readonly<z.output<ParamsSchema>>, context: QueryHandlerContext) => readonly Readonly<z.output<ItemSchema>>[]; readonly handleSort: (items: readonly Readonly<z.output<ItemSchema>>[], params: Readonly<z.output<ParamsSchema>>, context: QueryHandlerContext) => readonly Readonly<z.output<ItemSchema>>[]; readonly contract: ListQueryContract<z.output<ParamsSchema>, z.output<ItemSchema>>; }",
+              "typeParameters": [
+                {
+                  "name": "Id",
+                  "constraint": "string",
+                  "default": "string",
+                  "const": false
+                },
+                {
+                  "name": "Version",
+                  "constraint": "number",
+                  "default": "number",
+                  "const": false
+                },
+                {
+                  "name": "Source",
+                  "constraint": "QueryViewDefinition",
+                  "default": "QueryViewDefinition",
+                  "const": false
+                },
+                {
+                  "name": "ParamsSchema",
+                  "constraint": "z.ZodObject",
+                  "default": "z.ZodObject",
+                  "const": false
+                },
+                {
+                  "name": "ItemSchema",
+                  "constraint": "z.ZodTypeAny",
+                  "default": "z.ZodTypeAny",
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "kind",
+              "optional": false,
+              "readonly": true,
+              "type": "\"list-query\""
+            },
+            {
+              "name": "id",
+              "optional": false,
+              "readonly": true,
+              "type": "Id"
+            },
+            {
+              "name": "version",
+              "optional": false,
+              "readonly": true,
+              "type": "Version"
+            },
+            {
+              "name": "source",
+              "optional": false,
+              "readonly": true,
+              "type": "Source"
+            },
+            {
+              "name": "params",
+              "optional": false,
+              "readonly": true,
+              "type": "ParamsSchema"
+            },
+            {
+              "name": "item",
+              "optional": false,
+              "readonly": true,
+              "type": "ItemSchema"
+            },
+            {
+              "name": "handleFilter",
+              "optional": false,
+              "readonly": true,
+              "type": "(projection: QueryProjection<z.output<Source[\"row\"]>>, params: Readonly<z.output<ParamsSchema>>, context: QueryHandlerContext) => readonly Readonly<z.output<ItemSchema>>[]"
+            },
+            {
+              "name": "handleSort",
+              "optional": false,
+              "readonly": true,
+              "type": "(items: readonly Readonly<z.output<ItemSchema>>[], params: Readonly<z.output<ParamsSchema>>, context: QueryHandlerContext) => readonly Readonly<z.output<ItemSchema>>[]"
+            },
+            {
+              "name": "contract",
+              "optional": false,
+              "readonly": true,
+              "type": "ListQueryContract<z.core.output<ParamsSchema>, z.core.output<ItemSchema>>"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "none",
           "namespace": {
             "value": true,
@@ -8854,7 +9941,7 @@
               "type": "string | undefined"
             },
             {
-              "name": "__@terminalDecisionBrand@40862",
+              "name": "__@terminalDecisionBrand@40918",
               "optional": false,
               "readonly": true,
               "type": "\"none\""
@@ -8899,7 +9986,7 @@
                     "name": "domain",
                     "optional": false,
                     "rest": false,
-                    "type": "LegacyDomainDefinition | AuthoringDomain<readonly EventDefinition<string, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>, string>[], readonly unknown[], readonly unknown[]>"
+                    "type": "LegacyDomainDefinition | AuthoringDomain<readonly EventDefinition<string, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>, string>[], readonly unknown[], readonly unknown[], readonly (QueryDefinition<string, number, QueryViewDefinition<string, number, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>>, ZodObject<$ZodLooseShape, $strip>, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>> | ListQueryDefinition<string, number, QueryViewDefinition<string, number, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>>, ZodObject<$ZodLooseShape, $strip>, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>>)[]>"
                   }
                 ],
                 "returnType": "RuntimeDomainDefinition"
@@ -9166,7 +10253,7 @@
           },
           "members": [
             {
-              "name": "__@parsedBoundaryBrand@40861",
+              "name": "__@parsedBoundaryBrand@40917",
               "optional": false,
               "readonly": true,
               "type": "Boundary"
@@ -9951,7 +11038,7 @@
               "type": "(serialized: string) => State"
             },
             {
-              "name": "__@projectorFamilyInvariant@41119",
+              "name": "__@projectorFamilyInvariant@41175",
               "optional": false,
               "readonly": true,
               "type": "(value: Family) => Family"
@@ -10560,6 +11647,200 @@
           }
         },
         {
+          "name": "QueryDefinition",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/query.d.ts",
+              "kind": "interface",
+              "text": "export interface QueryDefinition<Id extends string = string, Version extends number = number, Source extends QueryViewDefinition = QueryViewDefinition, ParamsSchema extends z.ZodObject = z.ZodObject, ResultSchema extends z.ZodTypeAny = z.ZodTypeAny> { readonly kind: \"query\"; readonly id: Id; readonly version: Version; readonly source: Source; readonly params: ParamsSchema; readonly result: ResultSchema; readonly handleQuery: (projection: QueryProjection<z.output<Source[\"row\"]>>, params: Readonly<z.output<ParamsSchema>>, context: QueryHandlerContext) => z.output<ResultSchema>; readonly contract: QueryContract<z.output<ParamsSchema>, z.output<ResultSchema>>; }",
+              "typeParameters": [
+                {
+                  "name": "Id",
+                  "constraint": "string",
+                  "default": "string",
+                  "const": false
+                },
+                {
+                  "name": "Version",
+                  "constraint": "number",
+                  "default": "number",
+                  "const": false
+                },
+                {
+                  "name": "Source",
+                  "constraint": "QueryViewDefinition",
+                  "default": "QueryViewDefinition",
+                  "const": false
+                },
+                {
+                  "name": "ParamsSchema",
+                  "constraint": "z.ZodObject",
+                  "default": "z.ZodObject",
+                  "const": false
+                },
+                {
+                  "name": "ResultSchema",
+                  "constraint": "z.ZodTypeAny",
+                  "default": "z.ZodTypeAny",
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "kind",
+              "optional": false,
+              "readonly": true,
+              "type": "\"query\""
+            },
+            {
+              "name": "id",
+              "optional": false,
+              "readonly": true,
+              "type": "Id"
+            },
+            {
+              "name": "version",
+              "optional": false,
+              "readonly": true,
+              "type": "Version"
+            },
+            {
+              "name": "source",
+              "optional": false,
+              "readonly": true,
+              "type": "Source"
+            },
+            {
+              "name": "params",
+              "optional": false,
+              "readonly": true,
+              "type": "ParamsSchema"
+            },
+            {
+              "name": "result",
+              "optional": false,
+              "readonly": true,
+              "type": "ResultSchema"
+            },
+            {
+              "name": "handleQuery",
+              "optional": false,
+              "readonly": true,
+              "type": "(projection: QueryProjection<z.output<Source[\"row\"]>>, params: Readonly<z.output<ParamsSchema>>, context: QueryHandlerContext) => z.output<ResultSchema>"
+            },
+            {
+              "name": "contract",
+              "optional": false,
+              "readonly": true,
+              "type": "QueryContract<z.core.output<ParamsSchema>, z.core.output<ResultSchema>>"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "QueryViewDefinition",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/query.d.ts",
+              "kind": "interface",
+              "text": "export interface QueryViewDefinition<Id extends string = string, Version extends number = number, RowSchema extends z.ZodTypeAny = z.ZodTypeAny> { readonly id: Id; readonly version: Version; readonly row: RowSchema; readonly rowCodec: QueryCodec<z.output<RowSchema>>; }",
+              "typeParameters": [
+                {
+                  "name": "Id",
+                  "constraint": "string",
+                  "default": "string",
+                  "const": false
+                },
+                {
+                  "name": "Version",
+                  "constraint": "number",
+                  "default": "number",
+                  "const": false
+                },
+                {
+                  "name": "RowSchema",
+                  "constraint": "z.ZodTypeAny",
+                  "default": "z.ZodTypeAny",
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "id",
+              "optional": false,
+              "readonly": true,
+              "type": "Id"
+            },
+            {
+              "name": "version",
+              "optional": false,
+              "readonly": true,
+              "type": "Version"
+            },
+            {
+              "name": "row",
+              "optional": false,
+              "readonly": true,
+              "type": "RowSchema"
+            },
+            {
+              "name": "rowCodec",
+              "optional": false,
+              "readonly": true,
+              "type": "QueryCodec<z.core.output<RowSchema>>"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "read",
           "namespace": {
             "value": true,
@@ -11141,7 +12422,7 @@
               "type": "Details | undefined"
             },
             {
-              "name": "__@terminalDecisionBrand@40862",
+              "name": "__@terminalDecisionBrand@40918",
               "optional": false,
               "readonly": true,
               "type": "\"reject\""
@@ -14337,7 +15618,7 @@
               "type": "string"
             },
             {
-              "name": "__@tagFamilyBrand@40859",
+              "name": "__@tagFamilyBrand@40915",
               "optional": false,
               "readonly": true,
               "type": "Family"
@@ -14556,7 +15837,7 @@
               "type": "(value: string) => Tag<Family>"
             },
             {
-              "name": "__@tagFamilyBrand@40859",
+              "name": "__@tagFamilyBrand@40915",
               "optional": false,
               "readonly": true,
               "type": "Family"
@@ -15476,7 +16757,7 @@
               "type": "\"none\" | \"done\" | \"reject\""
             },
             {
-              "name": "__@terminalDecisionBrand@40862",
+              "name": "__@terminalDecisionBrand@40918",
               "optional": false,
               "readonly": true,
               "type": "\"none\" | \"done\" | \"reject\""
@@ -15563,7 +16844,7 @@
                     "name": "domain",
                     "optional": false,
                     "rest": false,
-                    "type": "LegacyDomainDefinition | AuthoringDomain<readonly EventDefinition<string, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>, string>[], readonly unknown[], readonly unknown[]>"
+                    "type": "LegacyDomainDefinition | AuthoringDomain<readonly EventDefinition<string, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>, string>[], readonly unknown[], readonly unknown[], readonly (QueryDefinition<string, number, QueryViewDefinition<string, number, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>>, ZodObject<$ZodLooseShape, $strip>, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>> | ListQueryDefinition<string, number, QueryViewDefinition<string, number, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>>, ZodObject<$ZodLooseShape, $strip>, ZodType<unknown, unknown, $ZodTypeInternals<unknown, unknown>>>)[]>"
                   }
                 ],
                 "returnType": "RuntimeDomainDefinition"
@@ -16412,6 +17693,9 @@
         "command",
         "createWasmRestoreDecoder",
         "decider",
+        "defineListQuery",
+        "defineQuery",
+        "defineQueryView",
         "defineTag",
         "deliveryPolicyFromDomain",
         "deserializePortableSnapshot",
@@ -20860,6 +22144,55 @@
     {
       "package": "@sekiban/dcb-core",
       "file": "dist/index.d.ts",
+      "name": "Item",
+      "kind": "TypeParameter",
+      "text": "Item"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "Item",
+      "kind": "TypeParameter",
+      "text": "Item"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "Params",
+      "kind": "TypeParameter",
+      "text": "Params"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "Params",
+      "kind": "TypeParameter",
+      "text": "Params"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "Result",
+      "kind": "TypeParameter",
+      "text": "Result"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "Row",
+      "kind": "TypeParameter",
+      "text": "Row"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "Row",
+      "kind": "TypeParameter",
+      "text": "Row"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
       "name": "T",
       "kind": "TypeParameter",
       "text": "T extends JsonValue = JsonValue"
@@ -20968,6 +22301,13 @@
       "name": "TState",
       "kind": "TypeParameter",
       "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "Value",
+      "kind": "TypeParameter",
+      "text": "Value"
     },
     {
       "package": "@sekiban/dcb-core",
@@ -21230,6 +22570,27 @@
     },
     {
       "package": "@sekiban/dcb-domain",
+      "file": "dist/domain.d.ts",
+      "name": "Queries",
+      "kind": "TypeParameter",
+      "text": "const Queries extends readonly (QueryDefinition | ListQueryDefinition)[] = readonly []"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/domain.d.ts",
+      "name": "Queries",
+      "kind": "TypeParameter",
+      "text": "Queries extends readonly (QueryDefinition | ListQueryDefinition)[] = readonly (QueryDefinition | ListQueryDefinition)[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/domain.d.ts",
+      "name": "Queries",
+      "kind": "TypeParameter",
+      "text": "Queries extends readonly (QueryDefinition | ListQueryDefinition)[] = readonly (QueryDefinition | ListQueryDefinition)[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
       "file": "dist/event.d.ts",
       "name": "Deriver",
       "kind": "TypeParameter",
@@ -21423,6 +22784,328 @@
       "name": "Value",
       "kind": "TypeParameter",
       "text": "Value"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Id",
+      "kind": "TypeParameter",
+      "text": "const Id extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Id",
+      "kind": "TypeParameter",
+      "text": "const Id extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Id",
+      "kind": "TypeParameter",
+      "text": "const Id extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Id",
+      "kind": "TypeParameter",
+      "text": "Id extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Id",
+      "kind": "TypeParameter",
+      "text": "Id extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Id",
+      "kind": "TypeParameter",
+      "text": "Id extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Id",
+      "kind": "TypeParameter",
+      "text": "Id extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Id",
+      "kind": "TypeParameter",
+      "text": "Id extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Id",
+      "kind": "TypeParameter",
+      "text": "Id extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ItemSchema",
+      "kind": "TypeParameter",
+      "text": "const ItemSchema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ItemSchema",
+      "kind": "TypeParameter",
+      "text": "ItemSchema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ItemSchema",
+      "kind": "TypeParameter",
+      "text": "ItemSchema extends z.ZodTypeAny = z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ListQueryOptions",
+      "kind": "interface",
+      "text": "interface ListQueryOptions<Id extends string, Version extends number, Source extends QueryViewDefinition, ParamsSchema extends z.ZodObject, ItemSchema extends z.ZodTypeAny> { readonly id: Id; readonly version: Version; readonly source: Source; readonly params: ParamsField<ParamsSchema>; readonly item: ItemSchema; readonly handleFilter: (projection: QueryProjection<z.output<Source[\"row\"]>>, params: Readonly<z.output<ParamsSchema>>, context: QueryHandlerContext) => readonly Readonly<z.output<ItemSchema>>[]; readonly handleSort: (items: readonly Readonly<z.output<ItemSchema>>[], params: Readonly<z.output<ParamsSchema>>, context: QueryHandlerContext) => readonly Readonly<z.output<ItemSchema>>[]; }"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ParamsField",
+      "kind": "type",
+      "text": "type ParamsField<ParamsSchema extends z.ZodObject> = Extract<keyof z.output<ParamsSchema>, ReservedParamName> extends never ? ParamsSchema : never;"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ParamsSchema",
+      "kind": "TypeParameter",
+      "text": "const ParamsSchema extends z.ZodObject"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ParamsSchema",
+      "kind": "TypeParameter",
+      "text": "const ParamsSchema extends z.ZodObject"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ParamsSchema",
+      "kind": "TypeParameter",
+      "text": "ParamsSchema extends z.ZodObject"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ParamsSchema",
+      "kind": "TypeParameter",
+      "text": "ParamsSchema extends z.ZodObject"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ParamsSchema",
+      "kind": "TypeParameter",
+      "text": "ParamsSchema extends z.ZodObject"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ParamsSchema",
+      "kind": "TypeParameter",
+      "text": "ParamsSchema extends z.ZodObject = z.ZodObject"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ParamsSchema",
+      "kind": "TypeParameter",
+      "text": "ParamsSchema extends z.ZodObject = z.ZodObject"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "QueryOptions",
+      "kind": "interface",
+      "text": "interface QueryOptions<Id extends string, Version extends number, Source extends QueryViewDefinition, ParamsSchema extends z.ZodObject, ResultSchema extends z.ZodTypeAny> { readonly id: Id; readonly version: Version; readonly source: Source; readonly params: ParamsField<ParamsSchema>; readonly result: ResultSchema; readonly handleQuery: (projection: QueryProjection<z.output<Source[\"row\"]>>, params: Readonly<z.output<ParamsSchema>>, context: QueryHandlerContext) => z.output<ResultSchema>; }"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "QueryViewOptions",
+      "kind": "interface",
+      "text": "interface QueryViewOptions<Id extends string, Version extends number, RowSchema extends z.ZodTypeAny> { readonly id: Id; readonly version: Version; readonly row: RowSchema; }"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "RESERVED_PARAM_NAMES",
+      "kind": "variable",
+      "text": "RESERVED_PARAM_NAMES: readonly [\"PageNumber\", \"PageSize\", \"NewestFirst\", \"consistency\", \"pageNumber\", \"pageSize\", \"newestFirst\", \"descending\", \"waitForSortableUniqueId\", \"signal\"]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ReservedParamName",
+      "kind": "type",
+      "text": "type ReservedParamName = (typeof RESERVED_PARAM_NAMES)[number];"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ResultSchema",
+      "kind": "TypeParameter",
+      "text": "const ResultSchema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ResultSchema",
+      "kind": "TypeParameter",
+      "text": "ResultSchema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "ResultSchema",
+      "kind": "TypeParameter",
+      "text": "ResultSchema extends z.ZodTypeAny = z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "RowSchema",
+      "kind": "TypeParameter",
+      "text": "const RowSchema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "RowSchema",
+      "kind": "TypeParameter",
+      "text": "RowSchema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "RowSchema",
+      "kind": "TypeParameter",
+      "text": "RowSchema extends z.ZodTypeAny = z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Source",
+      "kind": "TypeParameter",
+      "text": "const Source extends QueryViewDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Source",
+      "kind": "TypeParameter",
+      "text": "const Source extends QueryViewDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Source",
+      "kind": "TypeParameter",
+      "text": "Source extends QueryViewDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Source",
+      "kind": "TypeParameter",
+      "text": "Source extends QueryViewDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Source",
+      "kind": "TypeParameter",
+      "text": "Source extends QueryViewDefinition = QueryViewDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Source",
+      "kind": "TypeParameter",
+      "text": "Source extends QueryViewDefinition = QueryViewDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Version",
+      "kind": "TypeParameter",
+      "text": "const Version extends number"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Version",
+      "kind": "TypeParameter",
+      "text": "const Version extends number"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Version",
+      "kind": "TypeParameter",
+      "text": "const Version extends number"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Version",
+      "kind": "TypeParameter",
+      "text": "Version extends number"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Version",
+      "kind": "TypeParameter",
+      "text": "Version extends number"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Version",
+      "kind": "TypeParameter",
+      "text": "Version extends number"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Version",
+      "kind": "TypeParameter",
+      "text": "Version extends number = number"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Version",
+      "kind": "TypeParameter",
+      "text": "Version extends number = number"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/query.d.ts",
+      "name": "Version",
+      "kind": "TypeParameter",
+      "text": "Version extends number = number"
     },
     {
       "package": "@sekiban/dcb-domain",
@@ -22051,6 +23734,9 @@
       "command",
       "createWasmRestoreDecoder",
       "decider",
+      "defineListQuery",
+      "defineQuery",
+      "defineQueryView",
       "defineTag",
       "deliveryPolicyFromDomain",
       "deserializePortableSnapshot",
@@ -22117,5 +23803,5 @@
       "preflightCommit"
     ]
   },
-  "publicSurfaceHash": "309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db"
+  "publicSurfaceHash": "8126443944145fe2e9f8165173514024b14e6a1ad6188bbd41a818bf55fa15f1"
 }

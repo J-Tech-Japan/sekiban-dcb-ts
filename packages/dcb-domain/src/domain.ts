@@ -4,6 +4,7 @@ import {
 import type { EventDefinition, EventUnion } from "./event";
 import type { CommandDefinition } from "./command";
 import type { ProjectorDefinition } from "./state";
+import type { ListQueryDefinition, QueryDefinition } from "./query";
 
 export type DomainEventInput = EventDefinition | EventUnion;
 
@@ -47,11 +48,13 @@ export interface AuthoringDomain<
   Events extends readonly EventDefinition[] = readonly EventDefinition[],
   Projectors extends readonly unknown[] = readonly ProjectorDefinition[],
   Commands extends readonly unknown[] = readonly CommandDefinition[],
+  Queries extends readonly (QueryDefinition | ListQueryDefinition)[] = readonly (QueryDefinition | ListQueryDefinition)[],
 > {
   readonly events: Events;
   readonly projectors: Projectors;
   readonly commands: Commands;
   readonly views: readonly DomainViewDefinition[];
+  readonly queries: Queries;
   readonly eventByType: ReadonlyMap<string, EventDefinition>;
   readonly eventByName: ReadonlyMap<string, EventDefinition>;
 }
@@ -60,12 +63,14 @@ export interface DomainOptions<
   Events extends readonly DomainEventInput[] = readonly DomainEventInput[],
   Projectors extends readonly unknown[] = readonly ProjectorDefinition[],
   Commands extends readonly unknown[] = readonly CommandDefinition[],
+  Queries extends readonly (QueryDefinition | ListQueryDefinition)[] = readonly (QueryDefinition | ListQueryDefinition)[],
 > {
   readonly events?: Events;
   readonly eventUnions?: readonly EventUnion[];
   readonly projectors?: Projectors;
   readonly commands?: Commands;
   readonly views?: readonly DomainViewDefinition[];
+  readonly queries?: Queries;
 }
 
 function flattenEvents(values: readonly DomainEventInput[]): readonly EventDefinition[] {
@@ -81,14 +86,16 @@ export function domain<
   const Events extends readonly DomainEventInput[],
   const Projectors extends readonly unknown[],
   const Commands extends readonly unknown[],
+  const Queries extends readonly (QueryDefinition | ListQueryDefinition)[] = readonly [],
 >(
-  options: DomainOptions<Events, Projectors, Commands>,
+  options: DomainOptions<Events, Projectors, Commands, Queries>,
 ): AuthoringDomain<
   Extract<Events[number], EventDefinition> extends never
     ? readonly EventDefinition[]
     : readonly EventDefinition[],
   Projectors,
-  Commands
+  Commands,
+  Queries
 > {
   const eventInputs: readonly DomainEventInput[] = [
     ...(options.events ?? []),
@@ -98,6 +105,7 @@ export function domain<
   const projectors = [...(options.projectors ?? [])];
   const commands = [...(options.commands ?? [])];
   const views = [...(options.views ?? [])];
+  const queries = [...(options.queries ?? [])];
   const collisions: string[] = [];
   const identityOwners = new Map<string, string>();
   const register = (identity: string, owner: string): void => {
@@ -115,6 +123,7 @@ export function domain<
     register(`projector:${definition.id}`, definition.id);
   }
   for (const view of views) register(`view:${view.id}`, view.id);
+  for (const definition of queries) register(`query:${definition.id}`, definition.id);
   if (collisions.length > 0) throw new DomainRegistrationError("Domain contains duplicate definition identities", collisions);
   const eventByType = new Map<string, EventDefinition>();
   const eventByName = new Map<string, EventDefinition>();
@@ -142,11 +151,18 @@ export function domain<
     }
     effectiveDeliveryClass(view);
   }
+  for (const definition of queries) {
+    const sourceId = definition.source.id;
+    if (!views.some((view) => view.id === sourceId)) {
+      throw new DomainRegistrationError(`Query source view ${sourceId} is not registered`, [sourceId]);
+    }
+  }
   return Object.freeze({
     events: Object.freeze(events),
     projectors: Object.freeze(projectors),
     commands: Object.freeze(commands),
     views: Object.freeze(views),
+    queries: Object.freeze(queries),
     eventByType,
     eventByName,
   }) as unknown as AuthoringDomain<
@@ -154,6 +170,7 @@ export function domain<
       ? readonly EventDefinition[]
       : readonly EventDefinition[],
     Projectors,
-    Commands
+    Commands,
+    Queries
   >;
 }

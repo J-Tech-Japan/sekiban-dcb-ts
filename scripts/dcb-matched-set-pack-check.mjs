@@ -64,8 +64,9 @@ for (const name of packageNames) {
 }
 
 const domain = manifests["dcb-domain"];
-exact(Object.keys(domain.dependencies ?? {}).sort(), ["zod"], "domain runtime dependency allowlist");
+exact(Object.keys(domain.dependencies ?? {}).sort(), ["@sekiban/dcb-core", "zod"], "domain runtime dependency allowlist");
 expect(domain.dependencies.zod === "4.4.3", "domain zod dependency must remain pinned at 4.4.3");
+expect(domain.dependencies["@sekiban/dcb-core"] === version, "domain core dependency must match the set version");
 exact(manifests["dcb-core"].dependencies ?? {}, {}, "core runtime dependency allowlist");
 exact(manifests["dcb-core"].devDependencies ?? {}, {}, "core dev dependency allowlist");
 exact(manifests["dcb-client"].dependencies, {

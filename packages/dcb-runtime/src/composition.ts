@@ -359,6 +359,61 @@ export function createRuntimeCommitPort(
   });
 }
 
+class TypedQueryExecutionUnavailableError extends Error {
+  readonly code = "QUERY_EXECUTION_UNAVAILABLE";
+
+  constructor() {
+    super("Typed query execution is not available in runtime composition.");
+    this.name = "TypedQueryExecutionUnavailableError";
+  }
+}
+
+function hasQueryCodec(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const codec = value as { readonly encode?: unknown; readonly decode?: unknown };
+  return typeof codec.encode === "function" && typeof codec.decode === "function";
+}
+
+function isTypedQueryDefinition(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const definition = value as {
+    readonly kind?: unknown;
+    readonly id?: unknown;
+    readonly version?: unknown;
+    readonly contract?: unknown;
+    readonly handleQuery?: unknown;
+    readonly handleFilter?: unknown;
+    readonly handleSort?: unknown;
+  };
+  if (typeof definition.contract !== "object" || definition.contract === null) return false;
+  const contract = definition.contract as {
+    readonly kind?: unknown;
+    readonly id?: unknown;
+    readonly version?: unknown;
+    readonly params?: unknown;
+    readonly result?: unknown;
+    readonly item?: unknown;
+  };
+  if (contract.kind !== definition.kind || contract.id !== definition.id || contract.version !== definition.version) return false;
+  if (!hasQueryCodec(contract.params)) return false;
+  if (definition.kind === "query") {
+    return hasQueryCodec(contract.result) && typeof definition.handleQuery === "function";
+  }
+  if (definition.kind === "list-query") {
+    return hasQueryCodec(contract.item)
+      && typeof definition.handleFilter === "function"
+      && typeof definition.handleSort === "function";
+  }
+  return false;
+}
+
+function rejectTypedQueryDefinitions(values: readonly unknown[] | undefined): void {
+  if (values === undefined) return;
+  for (const value of values) {
+    if (isTypedQueryDefinition(value)) throw new TypedQueryExecutionUnavailableError();
+  }
+}
+
 /**
  * Build the two private registries used by the HTTP runtime. The registries
  * intentionally never cross the package entrypoint; consumers provide only
@@ -368,6 +423,9 @@ export function composeRuntime(
   domain: DomainDefinition | RuntimeDomainLike | undefined,
   config: RuntimeWorkerConfig = {},
 ): RuntimeComposition {
+  rejectTypedQueryDefinitions(domain?.queries);
+  rejectTypedQueryDefinitions(config.queries);
+  rejectTypedQueryDefinitions(config.queryDefinitions);
   if (domain === undefined && config.queries === undefined && config.queryDefinitions === undefined) {
     return { projectors: DEPLOYED_PROJECTOR_REGISTRY, queries: DEPLOYED_QUERY_REGISTRY, commands: new RuntimeCommandRegistry() };
   }

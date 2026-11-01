@@ -34,8 +34,14 @@ if (JSON.stringify(packageJson.files) !== JSON.stringify(["dist", "README.md", "
 if (packageJson.publishConfig?.access !== "public" || packageJson.publishConfig?.provenance !== true) {
   throw new Error("SDT-G71 pack guard: public provenance publishConfig is missing");
 }
-if (JSON.stringify(Object.keys(packageJson.dependencies ?? {}).sort()) !== JSON.stringify(["zod"])) {
-  throw new Error("SDT-G59 pack guard: runtime dependency allowlist must be exactly zod");
+if (JSON.stringify(Object.keys(packageJson.dependencies ?? {}).sort()) !== JSON.stringify(["@sekiban/dcb-core", "zod"])) {
+  throw new Error("SDT-G59 pack guard: runtime dependency allowlist must be exactly @sekiban/dcb-core and zod");
+}
+if (packageJson.dependencies["@sekiban/dcb-core"] !== "0.2.2") {
+  throw new Error("SDT-G59 pack guard: @sekiban/dcb-core must be pinned at 0.2.2");
+}
+if (packageJson.dependencies.zod !== "4.4.3") {
+  throw new Error("SDT-G59 pack guard: zod must remain pinned at 4.4.3");
 }
 
 const packed = spawnSync("npm", ["pack", "--dry-run", "--json"], { cwd: packageRoot, encoding: "utf8" });
@@ -51,9 +57,8 @@ for (const required of ["package.json", "README.md", "LICENSE", "dist/index.js",
 if (names.some((name) => name.startsWith("dist/") && name.endsWith(".map"))) {
   throw new Error("SDT-G59 pack guard: source maps are not allowed in the release tarball");
 }
-// The current neutral esbuild bundle includes the package's pinned zod runtime.
-// Keep a documented, deterministic upper bound while retaining the existing
-// build output and its public dependency contract.
+// Zod stays an external dependency so codec failures use the consumer's
+// pinned constructors. Keep a documented upper bound on the neutral bundle.
 const maxUnpackedBytes = 1_000_000;
 if (report.unpackedSize > maxUnpackedBytes) {
   throw new Error(`SDT-G59 pack guard: unpacked tarball is ${report.unpackedSize} bytes, limit is ${maxUnpackedBytes}`);

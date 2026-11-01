@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "build:packages": "npm run build --workspaces --if-present",
-    "build:dcb-domain": "npm run build --workspace @sekiban/dcb-domain",
+    "build:dcb-domain": "npm run build --workspace @sekiban/dcb-core && npm run build --workspace @sekiban/dcb-domain",
     "build": "npm run build:packages && wrangler deploy --dry-run",
     "deploy:sample": "bash scripts/deploy/sample-deploy.sh",
     "e2e:sample": "python3 scripts/deploy/sample-e2e.py",

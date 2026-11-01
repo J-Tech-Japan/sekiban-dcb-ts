@@ -570,4 +570,69 @@ export function defineDomain(options: DomainDefinitionOptions): DomainDefinition
   });
 }
 
+export type QueryJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly QueryJsonValue[]
+  | { readonly [key: string]: QueryJsonValue };
+
+export interface QueryCodec<Value> {
+  readonly encode: (value: Value) => QueryJsonValue;
+  readonly decode: (value: unknown) => Value;
+}
+
+export type QueryRow<Row> = Readonly<{
+  key: string;
+  value: Readonly<Row>;
+  sourceSuid: string;
+}>;
+
+export type QueryProjection<Row> = Readonly<{
+  rows: readonly QueryRow<Row>[];
+  readHead?: string;
+}>;
+
+export interface QueryHandlerContext {
+  readonly readHead?: string;
+}
+
+export interface QueryContract<Params, Result> {
+  readonly kind: "query";
+  readonly id: string;
+  readonly version: number;
+  readonly params: QueryCodec<Params>;
+  readonly result: QueryCodec<Result>;
+}
+
+export interface ListQueryContract<Params, Item> {
+  readonly kind: "list-query";
+  readonly id: string;
+  readonly version: number;
+  readonly params: QueryCodec<Params>;
+  readonly item: QueryCodec<Item>;
+}
+
+export interface ListQueryControls {
+  readonly pageNumber?: number;
+  readonly pageSize?: number;
+  readonly descending?: boolean;
+  readonly consistency?: "safe" | "unsafe";
+  readonly waitForSortableUniqueId?: string;
+  readonly signal?: AbortSignal;
+}
+
+export interface QueryPageMetadata {
+  readonly totalCount: number;
+  readonly totalPages: number;
+  readonly currentPage: number;
+  readonly pageSize: number;
+  readonly readHead?: string;
+}
+
+export interface QueryPage<Item> extends QueryPageMetadata {
+  readonly items: readonly Item[];
+}
+
 export * from "./materializedView.js";

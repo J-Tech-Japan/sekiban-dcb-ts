@@ -574,7 +574,7 @@ async function extractModel() {
     };
     const runtimeNamespaces = {};
     for (const entry of entries) {
-      const target = join(entry.packageInfo.extractedRoot, entry.entry.import);
+      const target = join(resolutionRoot, "node_modules", "@sekiban", entry.shortName, entry.entry.import);
       const namespace = await import(`${pathToFileURL(target).href}?g74=${entry.shortName}-${entry.entry.subpath}`);
       const key = `${entry.packageInfo.manifest.name}${entry.entry.subpath === "." ? "" : `/${entry.entry.subpath.slice(2)}`}`;
       runtimeNamespaces[key] = Object.keys(namespace).sort();

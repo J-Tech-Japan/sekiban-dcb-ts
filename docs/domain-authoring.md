@@ -271,3 +271,39 @@ There is no C#→TypeScript live tag-state rebuild path in this repository. Do
 not use the PostgreSQL command, declared tags, bootstrap counts, or an
 events-only file to populate TypeScript tag state; use the application's
 supported import and projection procedures instead.
+
+## Typed query authoring preview
+
+`defineQueryView`, `defineQuery`, and `defineListQuery` are authoring-time
+helpers. A query view binds a row schema to an id and a version. A scalar query
+adds strict params, a result schema, and `handleQuery`. A list query adds
+strict params, an item schema, `handleFilter`, and `handleSort`. The returned
+contract is frozen and exposes only kind, id, version, and bidirectional
+`encode` / `decode` codecs. It does not carry the source view or the handlers.
+
+Params must be a strict Zod object and must not declare `PageNumber`,
+`PageSize`, `NewestFirst`, `consistency`, `pageNumber`, `pageSize`,
+`newestFirst`, `descending`, `waitForSortableUniqueId`, or `signal`. Handlers
+are synchronous. Projection rows, decoded params, handler context, and returned
+list items are readonly. A list handler returns `readonly Readonly<Item>[]`.
+
+Definition creation walks the Zod schema graph, including both sides of a
+`z.codec` and the cached target of `z.lazy`. It rejects one-way transforms
+(`QUERY_CODEC_UNIDIRECTIONAL`), unknown or malformed nodes
+(`QUERY_CODEC_SCHEMA_UNSUPPORTED`), and leaves ordinary Zod validation errors
+unchanged. `encode` and `decode` reject an asynchronous result
+(`QUERY_CODEC_ASYNC_UNSUPPORTED`) and a value that is not JSON
+(`QUERY_CODEC_NOT_JSON_SAFE`). A codec that type-checks and runs synchronously
+is accepted even when encode is not the inverse of decode. Conditional Promise
+callbacks and schemas modified after construction are the author's
+responsibility; invocation still fails closed for those cases.
+
+Register the source view on the same `domain()` call. The view id must equal
+the query source id. Duplicate query ids conflict across scalar and list
+definitions. This package does not call the handlers. `toRuntimeDomain()`
+refuses a domain that contains authored queries. Runtime composition refuses a
+typed definition on `domain.queries`, `config.queries`, and
+`config.queryDefinitions` before conversion, including a definition that would
+not have won precedence. Query-free domains and ordinary id/version metadata
+stay on the existing path. Server execution, provider reads, scan limits, and
+typed client calls are not available from these helpers.
