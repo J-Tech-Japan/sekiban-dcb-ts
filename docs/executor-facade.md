@@ -90,8 +90,7 @@ partial multi-tag result.
 An original assert-empty or expected-head condition protects only while its
 reservation remains active for 30 seconds
 (`packages/dcb-runtime/src/tag/types.ts:1`), or once a write advances the
-checked head. Reservation expiry is non-terminal, and recovery may follow
-(`test/g77-closed-prefix-producer.spec.ts:360-378`). The
+checked head. Reservation expiry is non-terminal, and recovery may follow. The
 condition cannot alone authorize a replacement after an unknown outcome.
 Require conclusive settlement of the original request, or a durable
 application or gateway single-flight claim acquired before the first dispatch
