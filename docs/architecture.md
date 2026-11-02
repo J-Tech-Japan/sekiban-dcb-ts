@@ -200,15 +200,47 @@ Non-guarantees:
 - Provider-adapter admission, telemetry, and downstream records do not replace
   Tag or allocator authority.
 
+## V1 commit resend boundary
+
+Serialized DCB V1 does not identify one commit across HTTP requests. With no
+consistency expectations, the commit is unconditional. When expectations are
+supplied, only listed tag heads are checked, and every supplied reservation
+must succeed before any Tag append. Omitted tags are not head-checked. A
+reservation conflict aborts the whole commit before an accepted Tag append.
+Sending the same JSON again starts a new operation; the runtime creates event
+ids and captures a write timestamp for each request. An empty
+`eventCandidates` array appends nothing and does not receive those ids or that
+timestamp. V1 has no server-side idempotency key for the serialized commit.
+Repeating the body does not return the first response.
+
+A timeout, HTTP 504, or network or transport failure after commit dispatch
+leaves the outcome unknown: the commit may or may not have been applied. Do
+not blindly resend it. Reconcile fresh authoritative state before deciding
+whether to issue a new operation. The normative request boundary is
+[V1 request identity and resend boundary](write-path.md#v1-request-identity-and-resend-boundary).
+Caller patterns and their limits are in
+[Commit reconciliation and safe retry](executor-facade.md#commit-reconciliation-and-safe-retry).
+
 ## Result and repair matrix
 
 `ExecuteResult` is the public union of nine kinds. “Before dispatch” means the
-executor has not sent the commit request; “after dispatch” means the request
-could have reached a Tag authority. Automatic retry is limited to `conflict`:
+executor has not sent the commit request. A timeout or network error before
+dispatch means no commit request was sent. “After dispatch” means the request
+could have reached a Tag authority. After dispatch, a timeout, HTTP 504,
+network, or transport failure cannot prove whether the commit applied: it may
+or may not have been applied. Public classification and outcome knowledge are
+different. Code `transport` may still accompany an unknown commit outcome
+after dispatch. Do not blindly resend that request. An original expected head
+is not a durable unknown-outcome fence. Its reservation lasts 30 seconds, and
+a replacement needs conclusive settlement of the original request or a durable
+single-flight claim acquired before the first dispatch and retained through
+settlement and reconciliation. Automatic retry is limited to `conflict`:
 `SekibanExecutor` defaults to one commit-conflict retry and does not cap an
 explicit value, `ClaimLedgerExecutor` defaults to zero and caps the value at
 one, and snapshot-only execution uses zero. `ClaimLedgerExecutor` also retries
 a `conflict` raised during a read. Other kinds are not automatically replayed.
+Timeout, `unknown_outcome`, unavailable, partial, and transport results are
+never automatically replayed.
 
 | Kind and important codes | Producer | May a write have happened? | Executor retry state | Caller action |
 | --- | --- | --- | --- | --- |

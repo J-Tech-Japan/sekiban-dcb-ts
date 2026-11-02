@@ -9,6 +9,69 @@ The `0.2.2` package depends on the matched `@sekiban/dcb-core` and
 
 It is not the earlier, unrelated `@sekiban/core` package line.
 
+## Commit retries and unknown outcomes
+
+`SekibanExecutor` defaults to one confirmed-conflict retry and does not cap an
+explicit value. `ClaimLedgerExecutor` defaults to zero and caps a conflict
+retry at one. Snapshot-only execution uses zero. Only a confirmed
+`consistency_conflict` is retried. Timeout, `unknown_outcome`, unavailable,
+partial, and transport results are never automatically replayed. After
+dispatch, a network exception can surface as `transport` while the commit
+outcome remains unknown.
+
+A timeout, HTTP 504, or network or transport failure after commit dispatch
+leaves the outcome unknown: the commit may or may not have been applied. Do
+not blindly resend it. Reconcile fresh authoritative state before deciding
+whether to issue a new operation. An original expected head does not make a
+replacement safe after that outcome. Its reservation lasts 30 seconds, and a
+replacement requires conclusive settlement of the original request or a
+durable application or gateway single-flight claim acquired before the first
+dispatch and retained through settlement and reconciliation.
+
+The four caller-side patterns below are limits, not general exactly-once
+execution. None of the four patterns provides general exactly-once execution
+for V1. None is a general receipt replay for V1.
+
+- Read fresh authoritative tag state and application facts before a new
+  operation. `readTagLatestSortable` returns only existence and head, so a
+  head alone cannot identify or verify the intended effect. A derived view may
+  lag. An authoritative absence observation can race the original in-flight
+  request or another writer. An expected head added only to a replacement
+  does not fence an already in-flight unconditional request. An original
+  expectation protects only while its 30-second reservation remains active,
+  or once a write advances the checked head. If that reservation expires
+  while the head is unchanged, the original may resume and append. For a
+  multi-tag commit, reconcile every affected authoritative tag.
+- Assert-empty (`lastSortableUniqueId: ""`) or an expected head is optimistic
+  concurrency. Once a write advances the checked head, a later attempt can
+  fail with HTTP 400 `consistency_conflict`. That conflict is not proof the
+  first request succeeded. The protection holds only while the original
+  reservation is active or once a write has advanced the checked head. It
+  cannot alone authorize a replacement after an unknown outcome, and it does
+  not by itself reconcile a partial multi-tag result.
+- Carry an application operation id in the event payload and check
+  authoritative application state for it. V1 does not enforce uniqueness of
+  that field. Concurrent attempts still need conclusive settlement before
+  replacement, or an application single-flight claim acquired before first
+  dispatch and retained through settlement and reconciliation. On a partial
+  multi-tag result, reconcile the subset present on every affected
+  authoritative tag before emitting again.
+- Deduplicate at a gateway with durable state scoped to the authenticated
+  caller and endpoint, and bind the key to a request fingerprint. A response
+  cache alone is not enough: the commit can be accepted before the response
+  is cached. Acquire the single-flight claim before first dispatch, retain it
+  through settlement and reconciliation, and do not expire or release it
+  while the result is pending or unknown. After expiry the gateway cannot
+  recognize a resend. Its policy must reject that request unless the prior
+  operation is conclusively settled, and must not treat an already-unknown
+  request as a new operation based solely on observed absence or an original
+  or fresh expected head. A later new operation requires conclusive
+  settlement or a new durable claim acquired before its own first dispatch
+  and retained through settlement and reconciliation. Reconcile every
+  affected authoritative tag after an unknown or partial multi-tag result.
+
+The full limits are in [Commit reconciliation and safe retry](../../docs/executor-facade.md#commit-reconciliation-and-safe-retry).
+
 `query_params_unsupported` is a known transport code. `query` and `listQuery`
 surface it as a `ClientError` whose message is "The selected query does not
 support these parameters." and whose `code` is `query_params_unsupported`.

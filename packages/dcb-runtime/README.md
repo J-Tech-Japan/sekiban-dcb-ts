@@ -12,6 +12,34 @@ The experimental Cosmos provider is never selected by environment values. A
 consumer must import `createCosmosStoreProvider` from `/cosmos` and pass it as
 `createRuntimeWorker({ storeProvider })`.
 
+## V1 commit resend semantics
+
+A V1 commit body carries `version`, `eventCandidates`, and `consistencyTags`.
+Serialized DCB V1 does not identify one commit across HTTP requests. With no
+consistency expectations, the commit is unconditional. When expectations are
+supplied, only listed tag heads are checked, and every supplied reservation
+must succeed before any Tag append. Omitted tags are not head-checked. A
+reservation conflict aborts the whole commit before an accepted Tag append.
+Sending the same JSON again starts a new operation; the runtime creates event
+ids and captures a write timestamp for each request. An empty
+`eventCandidates` array appends nothing and does not receive those ids or that
+timestamp. Two requests can share a millisecond, so the timestamp is captured
+per request rather than guaranteed to differ. V1 has no server-side
+idempotency key for the serialized commit.
+Repeating the body does not return the first response.
+
+A timeout, HTTP 504, or network or transport failure after commit dispatch
+leaves the outcome unknown: the commit may or may not have been applied. Do
+not blindly resend it. Reconcile fresh authoritative state before deciding
+whether to issue a new operation. An original assert-empty
+(`lastSortableUniqueId: ""`) or expected-head condition protects only while
+its reservation remains active for 30 seconds, or once a write advances the
+checked head. It is not a durable fence for an indefinitely in-flight request,
+and it cannot alone authorize a replacement after an unknown outcome.
+
+The request boundary is the [serialized write-path](../../docs/write-path.md#v1-request-identity-and-resend-boundary).
+Caller-visible results are the [result and repair matrix](../../docs/architecture.md#result-and-repair-matrix).
+
 ## Query parameters
 
 Metadata-only queries keep the existing parameter guard. A scalar query accepts
