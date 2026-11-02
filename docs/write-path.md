@@ -6,7 +6,70 @@ it does not change the V1 JSON envelope, the Tag event format, the Queue
 contract, or the global-completeness safe-lane fence.
 
 For caller-facing result meanings and repair actions, see the [result and
-repair matrix](architecture.md#result-and-repair-matrix).
+repair matrix](architecture.md#result-and-repair-matrix). Caller reconciliation
+patterns are in [Commit reconciliation and safe retry](executor-facade.md#commit-reconciliation-and-safe-retry).
+
+## V1 request identity and resend boundary
+
+Serialized DCB V1 does not identify one commit across HTTP requests. With no
+consistency expectations, the commit is unconditional. When expectations are
+supplied, only listed tag heads are checked, and every supplied reservation
+must succeed before any Tag append. Omitted tags are not head-checked. A
+reservation conflict aborts the whole commit before an accepted Tag append.
+Sending the same JSON again starts a new operation; the runtime creates event
+ids and captures a write timestamp for each request. V1 has no server-side
+idempotency key for the serialized commit.
+
+The validator accepts the public V1 members `version`, `eventCandidates`, and
+`consistencyTags` before any internal attempt identity is created. It keeps
+the current unknown-field behavior recorded in the rolling-update wire rule
+below: a member the validator does not read is not a commit identity. The V1
+adapter sends payload, event payload name, tags, and consistency expectations.
+It does not send an authoring event id. For a non-empty request, the runtime then
+creates the internal attempt identity, creates an event id for each candidate,
+and captures one write timestamp for that request. The timestamp is the
+request's millisecond spelling. Two request boundaries can share that
+millisecond. Sending the same JSON again creates new identities. It does not
+return the first response.
+
+The Tag authority can recognize an exact replay of the same internal append,
+including the same attempt, event id, sortable id, payload, event type,
+provenance, and timestamp. It returns the stored duplicate result for that
+append. The receipt row is stored for that attempt and epoch. A new HTTP
+request does not reuse the attempt or event id, so the receipt is not a
+caller-visible serialized-commit receipt, does not return the first HTTP
+response, and is not a server-side idempotency key for the serialized commit.
+
+Consistency reservations are acquired only for supplied `consistencyTags`
+entries. With no entries, the commit acquires no reservation and is
+unconditional. When entries are supplied, every reservation must succeed
+before allocation or any Tag append. A conflict on one listed tag aborts the
+whole request before an accepted Tag append, including an append to a tag
+omitted from `consistencyTags`. That refusal is HTTP 400 `consistency_conflict`.
+Omitted tags are not head-checked; they are also not appended when a supplied
+reservation fails. After dispatch, a timeout, HTTP 504, or network or
+transport failure, including loss of the response, is not proof that the
+commit succeeded or failed. The commit may or may not have been applied. Do
+not blindly resend it.
+
+The reservation window is 30 seconds (`packages/dcb-runtime/src/tag/types.ts:1`).
+An original assert-empty (`lastSortableUniqueId: ""`) or expected-head
+condition protects only while that reservation remains active, or once a write
+advances the checked head. If the request remains in flight, the checked head
+is still current, and the reservation expires, another request can reserve
+that head, append, and remove its reservation. The original can then resume
+with a later sortable id and append. The expected head is enforced only for a
+currently active matching reservation. The sortable id must be later than the
+current head. Epoch, fence, and event-identity checks still apply. An original
+expectation is not a durable fence for an indefinitely in-flight request, and
+it cannot alone authorize a replacement after an unknown outcome. Require
+conclusive settlement of the original request, or a durable application or
+gateway single-flight claim acquired before the first dispatch and retained
+through settlement and reconciliation.
+
+After every supplied reservation has succeeded, a multi-tag append is still
+best effort. Zero or more Tags can commit while others do not. Reconcile
+every affected authoritative tag after an unknown or partial result.
 
 ## Durable acceptance and derived work
 
@@ -195,7 +258,9 @@ coexist temporarily.
 
 ### Rolling-update wire rule
 
-The versioned input surfaces are the public commit request envelope and
+Request identity across separate HTTP calls is specified in [V1 request
+identity and resend boundary](#v1-request-identity-and-resend-boundary). The
+versioned input surfaces are the public commit request envelope and
 internal downstream Queue message, both currently version 1. Preserve their
 required members and current unknown-field behavior; an incompatible change
 requires a new envelope/message version. Current public responses are

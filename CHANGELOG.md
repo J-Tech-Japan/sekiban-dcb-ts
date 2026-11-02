@@ -54,6 +54,15 @@
   not decoded. Package versions stay `0.2.2`. This client change is not in
   the published `0.2.2` packages, and `0.3.0` is not released.
 
+### @sekiban/dcb-runtime
+
+- Document the existing V1 resend contract. An identical JSON body is a new
+  operation. Consistency expectations are optimistic concurrency, not
+  idempotency. A timeout, HTTP 504, or network or transport failure after
+  dispatch leaves the outcome unknown and must be reconciled rather than
+  blindly resent. Runtime, client, and wire semantics are unchanged. Package
+  versions are unchanged.
+
 ## @sekiban/dcb-domain 0.2.2 (matched release)
 
 ### @sekiban/dcb-core 0.2.2

@@ -21,6 +21,25 @@ These axes are intentionally orthogonal: a package release does not by itself
 change V1, event identities, or read-side identities, and a new read-side
 version does not require a new wire protocol.
 
+## V1 commit identity
+
+The current V1 request members `version`, `eventCandidates`, and
+`consistencyTags` do not establish one operation identity across HTTP
+requests. Serialized DCB V1 does not identify one commit across HTTP requests.
+With no consistency expectations, the commit is unconditional. When
+expectations are supplied, only listed tag heads are checked, and every
+supplied reservation must succeed before any Tag append. Omitted tags are not
+head-checked. A reservation conflict aborts the whole commit before an
+accepted Tag append. Sending the same JSON again starts a new operation; the
+runtime creates event ids and captures a write timestamp for each request. An
+empty `eventCandidates` array appends nothing and does not receive those ids
+or that timestamp. V1 has no server-side idempotency key for the serialized
+commit. Adding a key that V1 does not read would not create that guarantee.
+Changing this boundary requires a separately versioned surface. A separate,
+versioned API is planned.
+
+The request boundary is [V1 request identity and resend boundary](write-path.md#v1-request-identity-and-resend-boundary).
+
 Serialized query requests now reject parameters the selected query does not
 accept. A metadata-only scalar query accepts only `{}`. A metadata-only list
 query accepts only `PageNumber`, `PageSize`, `NewestFirst`, and `consistency`.
