@@ -132,7 +132,18 @@ npm run e2e:sample -- --base-url <deployed-url> --report <path>
 
 ## Runtime surface and operations
 
-The runtime exposes five public V1 HTTP endpoints: commit, query, list-query, tag-latest-sortable, and tag-state. It also exposes `POST /operator/repair`, an authenticated, operator-only repair surface.
+The runtime exposes five public V1 HTTP endpoints: commit, query, list-query, tag-latest-sortable, and tag-state. It also exposes conditional commit v1 at `POST /api/sekiban/serialized/conditional-commit`, and `POST /operator/repair`, an authenticated, operator-only repair surface.
+
+Conditional commit v1 admits one event and one tag. Fixed D1 and omitted-provider PostgreSQL support it. Cosmos and any custom provider return Unsupported. Call it only from a trusted service or gateway. The key scope is `(serviceId, tag, normalizedKey)`. The same key on another tag is an independent operation. HTTP 200 and 409 reveal whether that key already exists, so use a high-entropy operation key. Prepare once, hold that prepared value, and resend only that same value after a retryable in-doubt result. There is no automatic retry and no fallback to V1 commit. Bootstrap and import states return Unsupported. A detectable durable contradiction returns HTTP 500 and is corrected by an ordinary compensating event. V1 remains unsafe for a blind resend.
+
+| Result | Action |
+| --- | --- |
+| Appended 201 | Keep the receipt. Do not submit a replacement. |
+| AlreadyCommittedSameOperation 200 | Treat the original operation as complete. |
+| KeyReuseConflict 409 | Stop. Do not reuse that key with a different payload. |
+| Unsupported 501 | Stop, or select a supported deployment. Never fall back to V1. |
+| conditional_commit_in_doubt 503 | Resend only the same held prepared value. |
+| conditional_commit_committed_state_corrupt 500 | Stop writes, investigate, and append a new ordinary compensating event. |
 
 Its durable components provide:
 

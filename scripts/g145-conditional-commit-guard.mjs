@@ -10,8 +10,6 @@ const receipt = read("packages/dcb-runtime/src/tag/TagConditionalReceipt.ts");
 const tag = read("packages/dcb-runtime/src/tag/TagDurableObject.ts");
 const ordinary = read("packages/dcb-runtime/src/index.ts");
 const cloudflare = read("packages/dcb-runtime/src/cloudflare.ts");
-const client = read("packages/dcb-client/src/index.ts");
-const executor = read("packages/dcb-client/src/executor.ts");
 
 function between(source, start, end, label) {
   const from = source.indexOf(start);
@@ -85,11 +83,6 @@ check("provider-capability-before-tag", handle.indexOf("this.capabilityAuthorize
 check("uniqueness-escapes-transaction", receipt.includes("throw new ConditionalReceiptUniquenessFault()")
   && appendSql.indexOf("insertConditionalReceipt(") < appendSql.indexOf("instanceof ConditionalReceiptUniquenessFault")
   && !between(appendSql, "this.ctx.storage.transaction(", "return result;", "transaction callback").includes("instanceof ConditionalReceiptUniquenessFault"));
-check("no-public-conditional-route", !ordinary.includes("conditional-commit") && !cloudflare.includes("conditional-commit"));
-check("no-built-in-conditional-transport", !client.includes("conditional-commit")
-  && !executor.includes("conditional-commit")
-  && !client.includes("conditionalCommit:")
-  && !executor.includes("conditionalCommit:"));
 const revalidate = between(worker, "private async revalidateFacts(", "const COORDINATOR_KEYS", "stored parser");
 const bootstrapRead = between(worker, "private async readBootstrapState(", "private bootstrapStub(", "bootstrap read");
 const appendParser = between(receipt, "export function parseConditionalAppendBody(", "function countRows(", "append parser");

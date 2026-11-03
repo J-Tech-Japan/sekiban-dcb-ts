@@ -1,4 +1,5 @@
 import { assertJsonValue as assertCoreJsonValue } from "@sekiban/dcb-core";
+import type { ConditionalCommitResult, JsonValue } from "@sekiban/dcb-core";
 import type { ListQueryContract, ListQueryControls, QueryContract, QueryPage } from "@sekiban/dcb-core";
 import {
   executeCommand,
@@ -31,6 +32,17 @@ import {
   type TagLatestSortableResponse,
 } from "./index.js";
 import { classifyFailure, commitReplyError, failureKindForCode } from "./classification.js";
+import {
+  commitPreparedConditionallyThroughTransport,
+  mapBuiltInConditionalHttpResult,
+  prepareConditionalCommit,
+} from "./conditionalCommit.js";
+import type {
+  ConditionalCommitInput,
+  ConditionalCommitOptions,
+  PreparedConditionalCommit,
+  SerializedConditionalCommitRequest,
+} from "./conditionalCommit.js";
 import { awaitControlled, totalBudgetMsProblem } from "./control.js";
 import { localQueryClientError, sanitizeTransportError } from "./errors.js";
 import { v1Envelope } from "./wire.js";
@@ -122,6 +134,13 @@ export interface SekibanExecutor {
   query(request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>;
   listQuery<P, I>(contract: ListQueryContract<P, I> & QueryHandlerFree, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>;
   listQuery(request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>;
+  prepareConditionalCommit<T extends JsonValue>(
+    input: ConditionalCommitInput<T>,
+  ): PreparedConditionalCommit;
+  commitPreparedConditionally(
+    request: PreparedConditionalCommit,
+    options?: ConditionalCommitOptions,
+  ): Promise<ConditionalCommitResult>;
   readonly transport: SerializedDcbTransport;
 }
 
@@ -348,6 +367,8 @@ function makeHttpTransport(options: HttpTransportOptions): SerializedDcbTranspor
     readTagLatestSortable: (request: { readonly tag: string }, signal?: AbortSignal) =>
       read<TagLatestSortableResponse>("/api/sekiban/serialized/tag-latest-sortable", request, signal),
     commit: (request: CommitEnvelope, signal?: AbortSignal) => call("/api/sekiban/serialized/commit", v1Envelope(request), signal),
+    conditionalCommit: (request: SerializedConditionalCommitRequest, signal?: AbortSignal) =>
+      call("/api/sekiban/serialized/conditional-commit", request, signal).then(mapBuiltInConditionalHttpResult),
     query: (request: QueryRequest, signal?: AbortSignal) => read<QueryResponse>("/api/sekiban/serialized/query", request, signal),
     listQuery: (request: ListQueryRequest, signal?: AbortSignal) => read<ListQueryResponse>("/api/sekiban/serialized/list-query", request, signal),
   });
@@ -835,10 +856,19 @@ export function createSekibanExecutor(
     listQuery: SekibanExecutor["listQuery"];
     transport: SerializedDcbTransport;
     execute: SekibanExecutor["execute"];
+    prepareConditionalCommit: SekibanExecutor["prepareConditionalCommit"];
+    commitPreparedConditionally: SekibanExecutor["commitPreparedConditionally"];
   };
 
   const assertScope = (): void => {
     if (scopeMismatch) throw new ClientError("scope.mismatch", "Executor service scope does not match its transport");
+  };
+
+  const prepareConditionally: SekibanExecutor["prepareConditionalCommit"] = (input) => prepareConditionalCommit(input);
+
+  const commitPrepared: SekibanExecutor["commitPreparedConditionally"] = async (request, conditionalOptions) => {
+    assertScope();
+    return commitPreparedConditionallyThroughTransport(transport, request, conditionalOptions);
   };
 
   const readStateWith = async (projector: ProjectorLike, tag: Tag, signal: AbortSignal | undefined, run: AdapterRunner): Promise<PortableSnapshot> => {
@@ -1100,5 +1130,7 @@ export function createSekibanExecutor(
   executor.listQuery = listQuery;
   executor.transport = transport;
   executor.execute = execute;
+  executor.prepareConditionalCommit = prepareConditionally;
+  executor.commitPreparedConditionally = commitPrepared;
   return Object.freeze(executor);
 }

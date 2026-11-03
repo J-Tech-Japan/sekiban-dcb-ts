@@ -71,6 +71,30 @@ After every supplied reservation has succeeded, a multi-tag append is still
 best effort. Zero or more Tags can commit while others do not. Reconcile
 every affected authoritative tag after an unknown or partial result.
 
+## Conditional commit v1 request identity
+
+Conditional commit v1 is `POST /api/sekiban/serialized/conditional-commit`. The body is one versioned request: `version`, `idempotencyKey`, and one `eventCandidate` with one tag. Prepare that request once and hold the prepared value. Dispatch sends that same object. A retryable in-doubt result is an explicit resend of the held value. There is no automatic retry and no fallback to V1 commit.
+
+The server writes the Tag event, membership, outbox obligation, and receipt before it returns a winner. Downstream delivery reuses the ordinary outbox, direct doorbell, and Queue paths. Fixed D1 and omitted-provider PostgreSQL accept the route. Cosmos, a custom provider, and bootstrap or import states return Unsupported. The key scope is `(serviceId, tag, normalizedKey)`. The same key on another tag is independent. HTTP 200 and 409 reveal key existence, so use a high-entropy key. External side effects and multi-tag atomicity are not promised.
+
+| Result | Action |
+| --- | --- |
+| Appended 201 | Keep the receipt. Do not submit a replacement. |
+| AlreadyCommittedSameOperation 200 | Treat the original operation as complete. |
+| KeyReuseConflict 409 | Stop. Do not reuse that key with a different payload. |
+| Unsupported 501 | Stop, or select a supported deployment. Never fall back to V1. |
+| conditional_commit_in_doubt 503 | Resend only the same held prepared value. |
+| conditional_commit_committed_state_corrupt 500 | Stop writes, investigate, and append a new ordinary compensating event. |
+
+A detectable durable contradiction returns HTTP 500 `conditional_commit_committed_state_corrupt`. Correct it with an ordinary compensating event:
+
+1. Stop replaying the conditional request.
+2. Capture the receipt, event, membership, outbox, and downstream discrepancy without exposing the key or payload.
+3. Determine the intended business state.
+4. Append a new ordinary compensating event with an explicit causal link.
+5. Allow the normal outbox and projection paths to converge.
+6. Verify both Tag and global views before closing the incident.
+
 ## Durable acceptance and derived work
 
 For an accepted append, the Tag Durable Object commits the event, its outbox

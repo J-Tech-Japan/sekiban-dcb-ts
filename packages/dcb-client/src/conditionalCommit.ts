@@ -482,6 +482,22 @@ function throwCorrupt(body: unknown, status: number): never {
   throw new ClientError("conditional_commit_committed_state_corrupt", CORRUPT_MESSAGE, { status: 500 });
 }
 
+const OLD_RUNTIME_UNSUPPORTED: CommitHttpResult = {
+  status: 501,
+  body: {
+    version: 1,
+    outcome: "Unsupported",
+    code: "conditional_commit_unsupported",
+    error: "Conditional commit is not supported by this deployment.",
+    retryable: false,
+  },
+};
+
+export function mapBuiltInConditionalHttpResult(result: CommitHttpResult): CommitHttpResult {
+  if (result.status !== 404) return result;
+  return OLD_RUNTIME_UNSUPPORTED;
+}
+
 export function parseConditionalCommitHttpResult(result: CommitHttpResult): ConditionalCommitResult {
   const status = result.status;
   if (status === 201) return readAppended(result.body, status);

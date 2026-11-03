@@ -427,6 +427,12 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
           serviceIdentityProvider: serviceIdentity,
         });
       }
+      if (url.pathname === "/api/sekiban/serialized/conditional-commit") {
+        return conditionalExecutor.handleConditionalCommit(request, env, {
+          registeredEventParsers: registeredEventParsers(options.domain),
+          serviceIdentityProvider: serviceIdentity,
+        });
+      }
       if (
         url.pathname === "/api/sekiban/serialized/query" ||
         url.pathname === "/api/sekiban/serialized/list-query"

@@ -35,8 +35,11 @@ runtime creates event ids and captures a write timestamp for each request. An
 empty `eventCandidates` array appends nothing and does not receive those ids
 or that timestamp. V1 has no server-side idempotency key for the serialized
 commit. Adding a key that V1 does not read would not create that guarantee.
-Changing this boundary requires a separately versioned surface. A separate,
-versioned API is planned.
+Changing this boundary requires a separately versioned surface. Conditional
+commit v1 is available on `POST /api/sekiban/serialized/conditional-commit`.
+Its request identity and caller facade are
+[Conditional commit v1 request identity](write-path.md#conditional-commit-v1-request-identity)
+and [Conditional commit v1](executor-facade.md#conditional-commit-v1).
 
 The request boundary is [V1 request identity and resend boundary](write-path.md#v1-request-identity-and-resend-boundary).
 

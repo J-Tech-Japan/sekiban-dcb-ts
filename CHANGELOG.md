@@ -4,10 +4,10 @@
 
 ### @sekiban/dcb-core
 
-- Add dormant conditional-commit protocol values: versioned request and result
-  DTOs, key normalization, plain-object canonicalization, fingerprint helpers,
-  and closed request parsers. Built-in transports do not send a conditional
-  route. Package versions remain unchanged.
+- Use the conditional-commit protocol values on the active versioned route.
+  Request and result DTOs, key normalization, canonicalization, fingerprint
+  helpers, and closed parsers are unchanged. There is no type-contract change
+  and no package version change.
 
 - Export structural query contracts: `QueryJsonValue`, `QueryCodec`,
   `QueryRow`, `QueryProjection`, `QueryHandlerContext`, `QueryContract`,
@@ -47,12 +47,11 @@
 
 ### @sekiban/dcb-client
 
-- Add a dormant prepared conditional commit. `prepareConditionalCommit` returns
-  a frozen branded request, and `SerializedDcbTransport` may supply an optional
-  `conditionalCommit` member. Built-in transports do not send a conditional
-  route. A missing member returns Unsupported, with no V1 fallback. Failures
-  use closed safe messages. V1 behavior is unchanged, and package versions
-  remain unchanged.
+- Activate built-in conditional commit on `SerializedDcbClient`,
+  `createHttpTransport`, `createInProcessTransport`, and the `SekibanExecutor`
+  facade. An explicit resend must send the same prepared value. There is no
+  V1 fallback. A missing custom member still returns Unsupported. Package
+  versions remain unchanged.
 
 - Add typed `SekibanExecutor.query` and `listQuery` overloads beside the raw
   V1 overloads. `QueryCallOptions` is `waitForSortableUniqueId` and `signal`.
@@ -68,10 +67,10 @@
 
 ### @sekiban/dcb-runtime
 
-- Add dormant Tag-local conditional-commit authority and runtime internals.
-  The first-use receipt shares the existing event/outbox transaction. No public
-  route or built-in client transport can use it yet. V1, downstream behavior,
-  and package versions are unchanged.
+- Activate `POST /api/sekiban/serialized/conditional-commit` for fixed D1 and
+  omitted-provider PostgreSQL. Cosmos and custom providers remain Unsupported.
+  Downstream formats and versions are unchanged. Package versions remain
+  unchanged.
 
 - Document the existing V1 resend contract. An identical JSON body is a new
   operation. Consistency expectations are optimistic concurrency, not

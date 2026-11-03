@@ -1,6 +1,6 @@
 /**
- * Dormant conditional-commit wire values and deterministic helpers.
- * Built-in transports do not send this protocol.
+ * Conditional-commit wire values and deterministic helpers for the public
+ * versioned conditional-commit route.
  */
 
 export const CONDITIONAL_COMMIT_VERSION = 1 as const;

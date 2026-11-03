@@ -46,6 +46,7 @@
     { "id": "@sekiban/dcb-client::SekibanCloudTransportOptions", "kind": "changed" },
     { "id": "@sekiban/dcb-client::SekibanExecutor", "kind": "changed" },
     { "id": "@sekiban/dcb-client::SerializedDcbClient", "kind": "changed" },
+    { "id": "@sekiban/dcb-client::SerializedDcbTransport", "kind": "changed" },
     { "id": "@sekiban/dcb-client::TagWriteResult", "kind": "changed" },
     { "id": "@sekiban/dcb-client::WrittenEvent", "kind": "changed" },
     { "id": "@sekiban/dcb-core::CommandCommitted", "kind": "changed" },
