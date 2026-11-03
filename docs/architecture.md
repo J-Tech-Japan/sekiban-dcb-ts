@@ -221,6 +221,30 @@ whether to issue a new operation. The normative request boundary is
 Caller patterns and their limits are in
 [Commit reconciliation and safe retry](executor-facade.md#commit-reconciliation-and-safe-retry).
 
+## Conditional commit v1
+
+Conditional commit v1 is `POST /api/sekiban/serialized/conditional-commit`. It admits one event and one tag. The key scope is `(serviceId, tag, normalizedKey)`. The same key on another tag is an independent operation. Call it only from a trusted service or gateway. HTTP 200 and 409 are a key-existence oracle, so operation keys must be high entropy. Fixed D1 and omitted-provider PostgreSQL support the route. Cosmos and a custom provider return Unsupported. An existing receipt for the key is resolved first: the same operation returns 200 with the stored result; a different operation returns 409; a receipt contradiction returns 500 and is fixed with compensating events. A Tag with an import marker and no receipt returns 501 Unsupported. Only when there is no receipt and no import marker is the bootstrap coordinator consulted: `PLANNED`, `IMPORTING`, and `VERIFYING` return retryable 503 (resend the same held prepared value); `READY`, `FAILED`, or other unsupported states return 501. External side effects and multi-tag atomicity are not promised.
+
+Prepare once and retain that prepared value. There is no automatic retry and no fallback to V1 commit.
+
+| Result | Action |
+| --- | --- |
+| Appended 201 | Keep the receipt. Do not submit a replacement. |
+| AlreadyCommittedSameOperation 200 | Treat the original operation as complete. |
+| KeyReuseConflict 409 | Stop. Do not reuse that key with a different payload. |
+| Unsupported 501 | Stop, or select a supported deployment. Never fall back to V1. |
+| conditional_commit_in_doubt 503 | Resend only the same held prepared value. |
+| conditional_commit_committed_state_corrupt 500 | Stop writes, investigate, and append a new ordinary compensating event. |
+
+A detectable durable contradiction returns HTTP 500 `conditional_commit_committed_state_corrupt`. Correct it with an ordinary compensating event:
+
+1. Stop replaying the conditional request.
+2. Capture the receipt, event, membership, outbox, and downstream discrepancy without exposing the key or payload.
+3. Determine the intended business state.
+4. Append a new ordinary compensating event with an explicit causal link.
+5. Allow the normal outbox and projection paths to converge.
+6. Verify both Tag and global views before closing the incident.
+
 ## Result and repair matrix
 
 `ExecuteResult` is the public union of nine kinds. “Before dispatch” means the

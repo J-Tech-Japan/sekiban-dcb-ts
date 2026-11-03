@@ -211,7 +211,7 @@ describe("conditional commit runtime", () => {
     expect(creates).toBe(0);
   });
 
-  it("keeps the public route and every internal prefix off the Tag stub", async () => {
+  it("serves the public conditional route and keeps every internal prefix off the Tag stub", async () => {
     const ctx = createExecutionContext();
     const service = serviceId();
     const counts = { get: 0, id: 0 };
@@ -223,7 +223,7 @@ describe("conditional commit runtime", () => {
         headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: service },
         body: "{}",
       }), scoped as never, ctx);
-      expect(direct.status).toBe(404);
+      expect(direct.status).toBe(400);
       for (const method of ["GET", "POST", "PUT", "DELETE"]) {
         const hidden = await fetchWorker(new Request(
           `https://app.test/tags/${encodeURIComponent(service)}/${encodeURIComponent("Order:1")}/__internal/conditional/resolve`,

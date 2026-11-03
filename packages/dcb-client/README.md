@@ -113,6 +113,36 @@ unchanged; fix the parameters the selected query accepts. The typed client is
 in this repository and is not part of the published `0.2.2` packages. The
 `0.3.0` release is later.
 
+## Conditional commit v1
+
+Prepare once, hold the prepared value, and dispatch that same object. Branch on the result. Resend only that held value after a retryable in-doubt result. There is no automatic retry and no fallback to V1 commit. The route is one event and one tag, scoped by `(serviceId, tag, normalizedKey)`. The same key on another tag is independent. Use a high-entropy key because HTTP 200 and 409 reveal whether the key exists. Call it only from a trusted service or gateway. Fixed D1 and omitted-provider PostgreSQL support it. Cosmos and a custom provider return Unsupported. An existing receipt for the key is resolved first: the same operation returns 200 with the stored result; a different operation returns 409; a receipt contradiction returns 500 and is fixed with compensating events. A Tag with an import marker and no receipt returns 501 Unsupported. Only when there is no receipt and no import marker is the bootstrap coordinator consulted: `PLANNED`, `IMPORTING`, and `VERIFYING` return retryable 503 (resend the same held prepared value); `READY`, `FAILED`, or other unsupported states return 501. A detectable durable contradiction returns HTTP 500 and is corrected by an ordinary compensating event. The V1 warning above remains in force for `execute`, `executeCommand`, and `transport.commit`.
+
+```ts
+const prepared = executor.prepareConditionalCommit({
+  idempotencyKey: operationKey,
+  event: roomOpened,
+  payload: { roomId: "room-1" },
+  tag: "room:room-1",
+});
+const result = await executor.commitPreparedConditionally(prepared, { signal });
+if (result.outcome === "Appended" || result.outcome === "AlreadyCommittedSameOperation") {
+  // keep result.receipt; do not submit a replacement
+} else if (result.outcome === "KeyReuseConflict") {
+  // stop; do not reuse this key with a different payload
+} else {
+  // Unsupported: select a supported deployment; never fall back to V1
+}
+```
+
+| Result | Action |
+| --- | --- |
+| Appended 201 | Keep the receipt. Do not submit a replacement. |
+| AlreadyCommittedSameOperation 200 | Treat the original operation as complete. |
+| KeyReuseConflict 409 | Stop. Do not reuse that key with a different payload. |
+| Unsupported 501 | Stop, or select a supported deployment. Never fall back to V1. |
+| conditional_commit_in_doubt 503 | Resend only the same held prepared value. |
+| conditional_commit_committed_state_corrupt 500 | Stop writes, investigate, and append a new ordinary compensating event. |
+
 ## License
 
 Elastic License 2.0. See [LICENSE](./LICENSE).

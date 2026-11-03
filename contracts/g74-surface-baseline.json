@@ -24092,7 +24092,7 @@
             {
               "file": "dist/executor.d.ts",
               "kind": "interface",
-              "text": "export interface SekibanExecutor { execute<C extends CommandDefinition>(command: C, input: CommandInput<C>, options?: ExecuteCommandOptions): Promise<ExecuteCommandResult>; readState<P extends ProjectorLike>(projector: P, tag: Tag, options?: ReadOptions): Promise<PortableSnapshot>; exists(tag: Tag, options?: ReadOptions): Promise<PortableSnapshot<undefined>>; query<P, R>(contract: QueryContract<P, R> & QueryHandlerFree, params: P, options?: QueryCallOptions): Promise<R>; query(request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>; listQuery<P, I>(contract: ListQueryContract<P, I> & QueryHandlerFree, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>; listQuery(request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>; readonly transport: SerializedDcbTransport; }",
+              "text": "export interface SekibanExecutor { execute<C extends CommandDefinition>(command: C, input: CommandInput<C>, options?: ExecuteCommandOptions): Promise<ExecuteCommandResult>; readState<P extends ProjectorLike>(projector: P, tag: Tag, options?: ReadOptions): Promise<PortableSnapshot>; exists(tag: Tag, options?: ReadOptions): Promise<PortableSnapshot<undefined>>; query<P, R>(contract: QueryContract<P, R> & QueryHandlerFree, params: P, options?: QueryCallOptions): Promise<R>; query(request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>; listQuery<P, I>(contract: ListQueryContract<P, I> & QueryHandlerFree, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>; listQuery(request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>; prepareConditionalCommit<T extends JsonValue>(input: ConditionalCommitInput<T>): PreparedConditionalCommit; commitPreparedConditionally(request: PreparedConditionalCommit, options?: ConditionalCommitOptions): Promise<ConditionalCommitResult>; readonly transport: SerializedDcbTransport; }",
               "typeParameters": []
             }
           ],
@@ -24133,6 +24133,18 @@
               "type": "{ <P, I>(contract: ListQueryContract<P, I> & QueryHandlerFree, params: P, controls?: ListQueryControls): Promise<QueryPage<I>>; (request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>; }"
             },
             {
+              "name": "prepareConditionalCommit",
+              "optional": false,
+              "readonly": false,
+              "type": "<T extends JsonValue>(input: ConditionalCommitInput<T>) => PreparedConditionalCommit"
+            },
+            {
+              "name": "commitPreparedConditionally",
+              "optional": false,
+              "readonly": false,
+              "type": "(request: PreparedConditionalCommit, options?: ConditionalCommitOptions) => Promise<ConditionalCommitResult>"
+            },
+            {
               "name": "transport",
               "optional": false,
               "readonly": true,
@@ -24164,7 +24176,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "class",
-              "text": "export declare class SerializedDcbClient implements SerializedDcbTransport { readonly baseUrl: string; private readonly fetchImpl; constructor(baseUrl: string, fetchImpl?: typeof fetch); readTagState(request: { readonly tagStateId: string; }, signal?: AbortSignal): Promise<ReadonlyTagStateResponse>; readTagLatestSortable(request: { readonly tag: string; }, signal?: AbortSignal): Promise<TagLatestSortableResponse>; query(request: QueryRequest, signal?: AbortSignal): Promise<QueryResponse>; listQuery(request: ListQueryRequest, signal?: AbortSignal): Promise<ListQueryResponse>; readonly tagLatestSortable: (request: { readonly tag: string; }, signal?: AbortSignal) => Promise<TagLatestSortableResponse>; readonly tagState: (request: { readonly tagStateId: string; }, signal?: AbortSignal) => Promise<ReadonlyTagStateResponse>; commit(request: CommitEnvelope, signal?: AbortSignal): Promise<CommitHttpResult>; private readResponse; private httpResult; }",
+              "text": "export declare class SerializedDcbClient implements SerializedDcbTransport { readonly baseUrl: string; private readonly fetchImpl; constructor(baseUrl: string, fetchImpl?: typeof fetch); readTagState(request: { readonly tagStateId: string; }, signal?: AbortSignal): Promise<ReadonlyTagStateResponse>; readTagLatestSortable(request: { readonly tag: string; }, signal?: AbortSignal): Promise<TagLatestSortableResponse>; query(request: QueryRequest, signal?: AbortSignal): Promise<QueryResponse>; listQuery(request: ListQueryRequest, signal?: AbortSignal): Promise<ListQueryResponse>; readonly tagLatestSortable: (request: { readonly tag: string; }, signal?: AbortSignal) => Promise<TagLatestSortableResponse>; readonly tagState: (request: { readonly tagStateId: string; }, signal?: AbortSignal) => Promise<ReadonlyTagStateResponse>; commit(request: CommitEnvelope, signal?: AbortSignal): Promise<CommitHttpResult>; conditionalCommit(request: SerializedConditionalCommitRequest, signal?: AbortSignal): Promise<CommitHttpResult>; private readResponse; private httpResult; }",
               "typeParameters": []
             }
           ],
@@ -24246,6 +24258,12 @@
               "optional": false,
               "readonly": false,
               "type": "(request: CommitEnvelope, signal?: AbortSignal) => Promise<CommitHttpResult>"
+            },
+            {
+              "name": "conditionalCommit",
+              "optional": false,
+              "readonly": false,
+              "type": "(request: SerializedConditionalCommitRequest, signal?: AbortSignal) => Promise<CommitHttpResult>"
             },
             {
               "name": "readResponse",
@@ -84541,6 +84559,13 @@
     },
     {
       "package": "@sekiban/dcb-client",
+      "file": "dist/executor.d.ts",
+      "name": "T",
+      "kind": "TypeParameter",
+      "text": "T extends JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-client",
       "file": "dist/index.d.ts",
       "name": "ClientCommand",
       "kind": "type",
@@ -87458,5 +87483,5 @@
       "materializedViewId"
     ]
   },
-  "publicSurfaceHash": "c29c56fc9a04375975942d6dc81de683aee0b1be7e81089a562138d4aefb2b44"
+  "publicSurfaceHash": "30c26ceee61151a44a798356aad0fc5d47b54ca0a655a99a1a82bf153d5ceed9"
 }

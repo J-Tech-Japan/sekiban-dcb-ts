@@ -1,7 +1,6 @@
 /**
- * Dormant conditional-commit write executor. The V1 serialized handler is
- * delegated here so provider capability is a composition fact. No public
- * route calls the conditional method.
+ * Conditional-commit write executor for the public versioned route.
+ * Provider capability remains a composition fact.
  */
 import {
   ConditionalCommitProtocolError,

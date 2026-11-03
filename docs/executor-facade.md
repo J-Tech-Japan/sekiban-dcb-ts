@@ -48,6 +48,53 @@ only the official V1 `version`, `eventCandidates`, `consistencyTags`, and
 base64 payload members. The runtime request boundary is
 [V1 request identity and resend boundary](write-path.md#v1-request-identity-and-resend-boundary).
 
+## Conditional commit v1
+
+`SekibanExecutor` exposes two methods:
+
+```ts
+prepareConditionalCommit<T extends JsonValue>(
+  input: ConditionalCommitInput<T>,
+): PreparedConditionalCommit;
+
+commitPreparedConditionally(
+  request: PreparedConditionalCommit,
+  options?: ConditionalCommitOptions,
+): Promise<ConditionalCommitResult>;
+```
+
+Prepare once, hold the returned value, and pass that same object to dispatch. `options.signal` is forwarded to the transport. A scope mismatch throws `ClientError` with code `scope.mismatch` and performs no call. There is no automatic retry and no fallback to V1 `transport.commit`.
+
+```ts
+const prepared = executor.prepareConditionalCommit({
+  idempotencyKey: operationKey,
+  event: roomOpened,
+  payload: { roomId: "room-1" },
+  tag: "room:room-1",
+});
+const result = await executor.commitPreparedConditionally(prepared, { signal });
+```
+
+Built-in `SerializedDcbClient`, `createHttpTransport`, and `createInProcessTransport` send one JSON POST to `POST /api/sekiban/serialized/conditional-commit`. An old runtime that answers 404 on that exact path becomes Unsupported. A custom transport's 404 stays a transport failure. The route admits one event and one tag. The key scope is `(serviceId, tag, normalizedKey)`. The same key on another tag is independent. Call it only from a trusted service or gateway. HTTP 200 and 409 are a key-existence oracle, so use a high-entropy key. Fixed D1 and omitted-provider PostgreSQL support it. Cosmos and a custom provider return Unsupported. An existing receipt for the key is resolved first: the same operation returns 200 with the stored result; a different operation returns 409; a receipt contradiction returns 500 and is fixed with compensating events. A Tag with an import marker and no receipt returns 501 Unsupported. Only when there is no receipt and no import marker is the bootstrap coordinator consulted: `PLANNED`, `IMPORTING`, and `VERIFYING` return retryable 503 (resend the same held prepared value); `READY`, `FAILED`, or other unsupported states return 501. External side effects and multi-tag atomicity are not promised.
+
+| Result | Action |
+| --- | --- |
+| Appended 201 | Keep the receipt. Do not submit a replacement. |
+| AlreadyCommittedSameOperation 200 | Treat the original operation as complete. |
+| KeyReuseConflict 409 | Stop. Do not reuse that key with a different payload. |
+| Unsupported 501 | Stop, or select a supported deployment. Never fall back to V1. |
+| conditional_commit_in_doubt 503 | Resend only the same held prepared value. |
+| conditional_commit_committed_state_corrupt 500 | Stop writes, investigate, and append a new ordinary compensating event. |
+
+A detectable durable contradiction returns HTTP 500 `conditional_commit_committed_state_corrupt`. Correct it with an ordinary compensating event:
+
+1. Stop replaying the conditional request.
+2. Capture the receipt, event, membership, outbox, and downstream discrepancy without exposing the key or payload.
+3. Determine the intended business state.
+4. Append a new ordinary compensating event with an explicit causal link.
+5. Allow the normal outbox and projection paths to converge.
+6. Verify both Tag and global views before closing the incident.
+
 ## Commit reconciliation and safe retry
 
 Serialized DCB V1 does not identify one commit across HTTP requests. Sending

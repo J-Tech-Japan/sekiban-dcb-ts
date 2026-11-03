@@ -1,4 +1,8 @@
+import { createExecutionContext, env } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
+import { defineEvent } from "../packages/dcb-core/src/index";
+import { CosmosEventStore } from "../packages/dcb-runtime/src/store/CosmosEventStore";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 
 import {
   CosmosConfigurationError,
@@ -310,5 +314,71 @@ describe("SDT-G122 experimental Cosmos selection and configuration", () => {
       for (const spy of spies) spy.mockRestore();
     }
     expect(JSON.stringify(capturedLogs)).not.toContain(canary);
+  });
+
+  it("returns exact Unsupported for an explicit Cosmos provider before Tag or Cosmos writes", async () => {
+    const creates: string[] = [];
+    const replaces: string[] = [];
+    const client = {
+      ...emptyClient(),
+      create: async <T extends Record<string, unknown>>(container: string, document: T) => {
+        creates.push(container);
+        return { document };
+      },
+      replace: async <T extends Record<string, unknown>>(container: string, document: T) => {
+        replaces.push(container);
+        void document;
+        return true;
+      },
+    };
+    const provider = createCosmosStoreProvider({ client });
+    const store = new CosmosEventStore({ client });
+    await store.initialize();
+    const service = `cosmos${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
+    expect(await store.readAllEvents(service, "")).toHaveLength(0);
+    let tagGets = 0;
+    const namespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
+    const worker = createRuntimeWorker({
+      domain: { events: [defineEvent<{ readonly sku: string }>("FixtureEvent")] },
+      storeProvider: provider,
+    });
+    const response = await workerFetch(worker)(new Request("https://app.test/api/sekiban/serialized/conditional-commit", {
+      method: "POST",
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: service },
+      body: JSON.stringify({
+        version: 1,
+        idempotencyKey: "cosmos-key",
+        eventCandidate: {
+          payload: btoa(JSON.stringify({ sku: "a" })),
+          eventPayloadName: "FixtureEvent",
+          tags: ["order:cosmos"],
+        },
+      }),
+    }), {
+      ...env,
+      SDT_SERVICE_ID: service,
+      TAG: {
+        get(id: DurableObjectId) {
+          tagGets += 1;
+          return namespace.get(id);
+        },
+        idFromName: (name: string) => namespace.idFromName(name),
+        idFromString: (id: string) => namespace.idFromString(id),
+        newUniqueId: (options?: DurableObjectNamespaceNewUniqueIdOptions) => namespace.newUniqueId(options),
+        jurisdiction: (jurisdiction: DurableObjectJurisdiction) => namespace.jurisdiction(jurisdiction),
+      },
+    }, createExecutionContext());
+    expect(response.status).toBe(501);
+    expect(await response.json()).toEqual({
+      version: 1,
+      outcome: "Unsupported",
+      code: "conditional_commit_unsupported",
+      error: "Conditional commit is not supported by this deployment.",
+      retryable: false,
+    });
+    expect(tagGets).toBe(0);
+    expect(creates).toEqual([]);
+    expect(replaces).toEqual([]);
+    expect(await store.readAllEvents(service, "")).toHaveLength(0);
   });
 });

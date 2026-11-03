@@ -473,6 +473,9 @@ async function assertInstalledConditionalDeclarations(cwd) {
   const clientIndex = await readFile(join(cwd, "node_modules", "@sekiban", "dcb-client", "dist", "index.d.ts"), "utf8");
   const client = await readFile(join(cwd, "node_modules", "@sekiban", "dcb-client", "dist", "conditionalCommit.d.ts"), "utf8");
   const signature = "export declare function prepareConditionalCommit<T extends JsonValue>(input: ConditionalCommitInput<T>): PreparedConditionalCommit;";
+  const executor = await readFile(join(cwd, "node_modules", "@sekiban", "dcb-client", "dist", "executor.d.ts"), "utf8");
+  if (!executor.includes("prepareConditionalCommit<T extends JsonValue>")) throw new Error("installed executor declaration is missing prepareConditionalCommit<T extends JsonValue>");
+  if (!executor.includes("commitPreparedConditionally(")) throw new Error("installed executor declaration is missing commitPreparedConditionally");
   if (!client.includes(signature)) throw new Error("installed client declaration is missing prepareConditionalCommit<T extends JsonValue>");
   if (client.includes("prepareConditionalCommit<T>(")) throw new Error("installed prepareConditionalCommit must stay constrained by JsonValue");
   for (const name of ["ConditionalCommitInput", "ConditionalCommitOptions", "PreparedConditionalCommit"]) {
@@ -583,7 +586,7 @@ const queryClientExpectations = new Map([
 if (/\bzod\b|@sekiban\/dcb-domain|handleQuery|handleFilter|handleSort/.test(queryClientFixture) || /\bzod\b|@sekiban\/dcb-domain/.test(queryClientNegative)) {
   throw new Error("query-client.ts must import only structural contracts from @sekiban/dcb-core");
 }
-const conditionalCommitFixture = `import { createSekibanExecutor, prepareConditionalCommit, type ConditionalCommitInput, type PreparedConditionalCommit, type SerializedDcbTransport } from "@sekiban/dcb-client";
+const conditionalCommitFixture = `import { createHttpTransport, createInProcessTransport, createSekibanExecutor, prepareConditionalCommit, type ConditionalCommitInput, type PreparedConditionalCommit, type SerializedDcbTransport } from "@sekiban/dcb-client";
 import { defineEvent, type JsonValue, type SerializedConditionalCommitRequest } from "@sekiban/dcb-core";
 
 type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
@@ -608,8 +611,40 @@ const withoutMember: SerializedDcbTransport = {
   query: async () => ({ resultJson: "{}" }),
   listQuery: async () => ({ itemsJson: "[]", totalCount: 0, totalPages: 0, currentPage: 1, pageSize: 20 }),
 };
-const executor = createSekibanExecutor(withoutMember);
-void [preparedSignature, prepared, withMember.conditionalCommit, withoutMember.conditionalCommit, executor];
+const missingMemberExecutor = createSekibanExecutor(withoutMember);
+void [preparedSignature, prepared, withMember.conditionalCommit, withoutMember.conditionalCommit, missingMemberExecutor];
+
+export async function runConditionalDispatch(): Promise<string> {
+  const seen: string[] = [];
+  const unsupported = {
+    version: 1,
+    outcome: "Unsupported" as const,
+    code: "conditional_commit_unsupported",
+    error: "Conditional commit is not supported by this deployment.",
+    retryable: false,
+  };
+  const fetchImpl: typeof fetch = async (input, init) => {
+    seen.push(new URL(String(input)).pathname + " " + (init?.method ?? ""));
+    return new Response(JSON.stringify(unsupported), { status: 501, headers: { "content-type": "application/json" } });
+  };
+  const http = createHttpTransport({ baseUrl: "https://example.test", fetch: fetchImpl });
+  const inProcess = createInProcessTransport({ fetch: fetchImpl });
+  const executor = createSekibanExecutor(http);
+  const held = executor.prepareConditionalCommit({
+    idempotencyKey: "dispatch",
+    event,
+    payload: { roomId: "room-1" },
+    tag: "room:room-1",
+  });
+  const result = await executor.commitPreparedConditionally(held);
+  if (result.outcome !== "Unsupported") throw new Error("facade outcome");
+  await http.conditionalCommit?.(held);
+  await inProcess.conditionalCommit?.(held);
+  if (seen.length !== 3 || seen.some((entry) => entry !== "/api/sekiban/serialized/conditional-commit POST")) {
+    throw new Error("conditional posts " + seen.join(","));
+  }
+  return "conditional-dispatch-ok";
+}
 `;
 const conditionalCommitNegative = `import { createSekibanExecutor, prepareConditionalCommit, type PreparedConditionalCommit, type SerializedDcbTransport } from "@sekiban/dcb-client";
 import { defineEvent, type SerializedConditionalCommitRequest } from "@sekiban/dcb-core";
@@ -643,11 +678,7 @@ const mismatched: SerializedDcbTransport = {
   // @ts-expect-error [conditional-member-request-type]
   conditionalCommit: async (_request: { readonly version: 2 }) => ({ status: 501 }),
 };
-// @ts-expect-error [conditional-executor-prepare-absent]
-void executor.prepareConditionalCommit;
-// @ts-expect-error [conditional-executor-commit-absent]
-void executor.commitPreparedConditionally;
-void [version2, twoTags, plainPrepared, mismatched];
+void [version2, twoTags, plainPrepared, mismatched, executor];
 `;
 const conditionalCommitExpectations = new Map([
   ["conditional-version-2", /TS2322:[\s\S]*Type '2' is not assignable to type '1'/],
@@ -655,8 +686,6 @@ const conditionalCommitExpectations = new Map([
   ["conditional-plain-not-prepared", /TS2322:[\s\S]*preparedConditionalCommitBrand/],
   ["conditional-prepared-readonly", /TS2540: Cannot assign to 'idempotencyKey' because it is a read-only property/],
   ["conditional-member-request-type", /TS2322:[\s\S]*SerializedConditionalCommitRequest/],
-  ["conditional-executor-prepare-absent", /TS2339: Property 'prepareConditionalCommit' does not exist/],
-  ["conditional-executor-commit-absent", /TS2339: Property 'commitPreparedConditionally' does not exist/],
 ]);
 const deepImport = `import { createSekibanExecutor } from "@sekiban/dcb-client/dist/executor.js"; console.log(createSekibanExecutor);\n`;
 const runtimeScan = `
@@ -702,8 +731,8 @@ try {
   await mkdir(join(temp, "src"), { recursive: true });
   await mkdir(join(temp, "runtime-types"), { recursive: true });
   await mkdir(join(temp, "compile-negative"), { recursive: true });
-  await writeFile(join(temp, "tsconfig.node16.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "Node16", moduleResolution: "Node16", strict: true, skipLibCheck: true, outDir: "dist-node16" }, include: ["src/**/*.ts"] }, null, 2));
-  await writeFile(join(temp, "tsconfig.bundler.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", strict: true, skipLibCheck: true, outDir: "dist-bundler" }, include: ["src/**/*.ts"] }, null, 2));
+  await writeFile(join(temp, "tsconfig.node16.json"), JSON.stringify({ compilerOptions: { target: "ES2022", lib: ["ES2022", "DOM"], module: "Node16", moduleResolution: "Node16", strict: true, skipLibCheck: true, outDir: "dist-node16" }, include: ["src/**/*.ts"] }, null, 2));
+  await writeFile(join(temp, "tsconfig.bundler.json"), JSON.stringify({ compilerOptions: { target: "ES2022", lib: ["ES2022", "DOM"], module: "ESNext", moduleResolution: "Bundler", strict: true, skipLibCheck: true, outDir: "dist-bundler" }, include: ["src/**/*.ts"] }, null, 2));
   await writeFile(join(temp, "tsconfig.strict.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "Node16", moduleResolution: "Node16", strict: true, skipLibCheck: false, noEmit: true }, include: ["src/main.ts", "src/expected-errors.ts"] }, null, 2));
   await writeFile(join(temp, "runtime-types/runtime-scan.ts"), runtimeScan);
   await writeFile(join(temp, "postgres-stub.mjs"), "export default function postgres() { return {}; }\n");
@@ -750,6 +779,9 @@ export async function resolve(specifier, context, nextResolve) {
   const tsc = join(temp, "node_modules/.bin/tsc");
   const node16 = await run(tsc, ["-p", "tsconfig.node16.json"]);
   const bundler = await run(tsc, ["-p", "tsconfig.bundler.json"]);
+  for (const output of ["dist-node16/conditional-commit.js", "dist-bundler/conditional-commit.js"]) {
+    await run("node", ["--input-type=module", "-e", `import { runConditionalDispatch } from "./${output}"; if (await runConditionalDispatch() !== "conditional-dispatch-ok") throw new Error("conditional dispatch");`]);
+  }
   const queryRejections = await proveQueryFixture({
     tsc,
     cwd: temp,

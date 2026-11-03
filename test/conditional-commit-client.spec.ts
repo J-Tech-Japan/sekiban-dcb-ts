@@ -268,34 +268,48 @@ describe("conditional commit preparation", () => {
   });
 });
 
-describe("dormant conditional transport", () => {
-  it("returns one frozen Unsupported result without fetch or V1 commit", async () => {
-    const fetchImpl = vi.fn();
-    const client = new SerializedDcbClient("https://example.test", fetchImpl);
-    const http = createHttpTransport({ baseUrl: "https://example.test", fetch: fetchImpl });
-    const inProcess = createInProcessTransport({ fetch: fetchImpl });
-    const executor = createSekibanExecutor(http);
-    const clientTransport: SerializedDcbTransport = client;
-    expect(clientTransport.conditionalCommit).toBeUndefined();
-    expect(http.conditionalCommit).toBeUndefined();
-    expect(inProcess.conditionalCommit).toBeUndefined();
-    expect("prepareConditionalCommit" in executor).toBe(false);
-    expect("commitPreparedConditionally" in executor).toBe(false);
-    const target = transport();
-    const prepared = prepare();
-    const first = await commitPreparedConditionallyThroughTransport(target, prepared);
-    const second = await commitPreparedConditionallyThroughTransport(target, prepared);
-    expect(first).toBe(second);
-    expect(first).toEqual({
+describe("active conditional transport", () => {
+  it("sends the prepared request on built-in members and keeps a missing member Unsupported", async () => {
+    const unsupportedBody = {
       version: 1,
       outcome: "Unsupported",
       code: "conditional_commit_unsupported",
       error: "Conditional commit is not supported by this deployment.",
       retryable: false,
-    });
+    };
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(unsupportedBody), {
+      status: 501,
+      headers: { "content-type": "application/json" },
+    }));
+    const client = new SerializedDcbClient("https://example.test", fetchImpl);
+    const http = createHttpTransport({ baseUrl: "https://example.test", fetch: fetchImpl });
+    const inProcess = createInProcessTransport({ fetch: fetchImpl });
+    const executor = createSekibanExecutor(http);
+    const clientTransport: SerializedDcbTransport = client;
+    expect(typeof clientTransport.conditionalCommit).toBe("function");
+    expect(typeof http.conditionalCommit).toBe("function");
+    expect(typeof inProcess.conditionalCommit).toBe("function");
+    expect(typeof executor.prepareConditionalCommit).toBe("function");
+    expect(typeof executor.commitPreparedConditionally).toBe("function");
+    const prepared = prepare();
+    await clientTransport.conditionalCommit?.(prepared);
+    await http.conditionalCommit?.(prepared);
+    await inProcess.conditionalCommit?.(prepared);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    for (const [input, init] of fetchImpl.mock.calls as unknown as ReadonlyArray<readonly [RequestInfo | URL, RequestInit | undefined]>) {
+      const url = String(input);
+      expect(url.endsWith("/api/sekiban/serialized/conditional-commit")).toBe(true);
+      expect(url.endsWith("/api/sekiban/serialized/commit")).toBe(false);
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(JSON.stringify(prepared));
+    }
+    const target = transport();
+    const first = await commitPreparedConditionallyThroughTransport(target, prepared);
+    const second = await commitPreparedConditionallyThroughTransport(target, prepared);
+    expect(first).toBe(second);
+    expect(first).toEqual(unsupportedBody);
     expect(Object.isFrozen(first)).toBe(true);
     expect(target.commit).not.toHaveBeenCalled();
-    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("passes the same prepared object and signal once per explicit call", async () => {

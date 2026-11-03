@@ -7,6 +7,7 @@ import type {
 } from "@sekiban/dcb-core";
 import { assertJsonValue, defineTag } from "@sekiban/dcb-core";
 import type { JsonValue as DomainJsonValue } from "@sekiban/dcb-domain";
+import { mapBuiltInConditionalHttpResult } from "./conditionalCommit.js";
 import type { SerializedConditionalCommitRequest } from "./conditionalCommit.js";
 import { classifyFailure, commitReplyError } from "./classification.js";
 import { awaitControlled, totalBudgetMsProblem } from "./control.js";
@@ -232,6 +233,19 @@ export class SerializedDcbClient implements SerializedDcbTransport {
       signal,
     });
     return this.httpResult(response);
+  }
+
+  async conditionalCommit(
+    request: SerializedConditionalCommitRequest,
+    signal?: AbortSignal,
+  ): Promise<CommitHttpResult> {
+    const response = await this.fetchImpl(`${this.baseUrl}/api/sekiban/serialized/conditional-commit`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    });
+    return mapBuiltInConditionalHttpResult(await this.httpResult(response));
   }
 
   private async readResponse(response: Response, requestedTagStateId?: string): Promise<unknown> {

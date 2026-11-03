@@ -423,6 +423,7 @@ function isOperatorMount(value) {
 
 const serializedRoutePaths = [
   "/api/sekiban/serialized/commit",
+  "/api/sekiban/serialized/conditional-commit",
   "/api/sekiban/serialized/query",
   "/api/sekiban/serialized/list-query",
   "/api/sekiban/serialized/tag-latest-sortable",

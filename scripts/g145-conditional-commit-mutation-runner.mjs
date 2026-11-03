@@ -117,18 +117,6 @@ const mutants = [
     to: "return;",
   },
   {
-    name: "no-public-conditional-route",
-    file: "ordinary",
-    from: 'if (url.pathname === "/api/sekiban/serialized/commit") {',
-    to: 'if (url.pathname === "/api/sekiban/serialized/conditional-commit" || url.pathname === "/api/sekiban/serialized/commit") {',
-  },
-  {
-    name: "no-built-in-conditional-transport",
-    file: "executor",
-    from: 'commit: (request: CommitEnvelope, signal?: AbortSignal) => call("/api/sekiban/serialized/commit", v1Envelope(request), signal),',
-    to: 'commit: (request: CommitEnvelope, signal?: AbortSignal) => call("/api/sekiban/serialized/commit", v1Envelope(request), signal),\n    conditionalCommit: (request: CommitEnvelope, signal?: AbortSignal) => call("/api/sekiban/serialized/conditional-commit", request, signal),',
-  },
-  {
     name: "stored-event-parser",
     file: "worker",
     from: "const storedParser = prepared.parsers[storedName];",

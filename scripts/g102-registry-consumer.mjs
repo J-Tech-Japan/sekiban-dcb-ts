@@ -83,7 +83,7 @@ const forwardingMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPT
 async function falseForwardingProbes(lib) {
   const { composeFetch, composeHandlers } = lib;
   const paths = [...lib.SERIALIZED_PATHS];
-  if (paths.length !== 5) fail("serialized path list changed");
+  if (paths.length !== 6) fail("serialized path list changed");
   const probes = {};
   const application = async () => new Response("app");
   for (const path of paths) {

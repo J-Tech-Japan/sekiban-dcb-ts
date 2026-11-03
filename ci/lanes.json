@@ -144,7 +144,8 @@
         {"id": "query-activation", "command": "npm run test:query:activation"},
         {"id": "query-client", "command": "npm run test:query:client"},
         {"id": "conditional-commit-primitives", "command": "npm run test:conditional-commit:primitives"},
-        {"id": "conditional-commit-authority", "command": "npm run test:conditional-commit:authority"}
+        {"id": "conditional-commit-authority", "command": "npm run test:conditional-commit:authority"},
+        {"id": "conditional-commit-activation", "command": "npm run test:conditional-commit:activation"}
       ]
     },
     {
@@ -261,7 +262,7 @@
       "name": "local-e2e",
       "tier": "local",
       "services": ["postgres"],
-      "affectedPaths": ["test/d1-*.ts", "test/g19-*.ts", "test/g16-*.ts", "test/meeting-room.spec.ts", "scripts/g13-*.mjs", "scripts/deploy/sample-e2e.py", "scripts/deploy/sample-local-e2e.sh", "samples/meeting-room/**", "scripts/g16-ui-check.mjs", "scripts/store-contract.mjs"],
+      "affectedPaths": ["test/d1-*.ts", "test/g19-*.ts", "test/g16-*.ts", "test/meeting-room.spec.ts", "scripts/g13-*.mjs", "scripts/deploy/sample-e2e.py", "scripts/deploy/sample-local-e2e.sh", "samples/meeting-room/**", "scripts/g16-ui-check.mjs", "scripts/store-contract.mjs", "test/conditional-commit-e2e.spec.ts", "test/conditional-commit-postgres.spec.ts"],
       "commands": [
         {"id": "store-contract", "command": "npm run test:store-contract"},
         {"id": "d1", "command": "npm run test:d1"},
@@ -271,7 +272,8 @@
         {"id": "build", "command": "npm run build"},
         {"id": "g15-e2e", "command": "npm run e2e:sample:local", "env": {"G15_LOCAL_PORT": "8787", "G15_LOCAL_SERVICE_ID": "ci-g15-local", "G15_LOCAL_PERSIST_DIR": ".artifacts/ci-local/g15-wrangler-state"}},
         {"id": "g16-test", "command": "POSTGRES_URL=\"$G16_POSTGRES_URL\" npm run test:sample:query-ui"},
-        {"id": "g16-e2e", "command": "npm run e2e:sample:query:local", "env": {"G15_LOCAL_PORT": "8788", "G15_LOCAL_SERVICE_ID": "ci-g16-local", "G15_LOCAL_PERSIST_DIR": ".artifacts/ci-local/g16-wrangler-state"}}
+        {"id": "g16-e2e", "command": "npm run e2e:sample:query:local", "env": {"G15_LOCAL_PORT": "8788", "G15_LOCAL_SERVICE_ID": "ci-g16-local", "G15_LOCAL_PERSIST_DIR": ".artifacts/ci-local/g16-wrangler-state"}},
+        {"id": "conditional-commit-e2e", "command": "POSTGRES_URL=\"$POSTGRES_URL\" npm run test:conditional-commit:e2e"}
       ]
     },
     {

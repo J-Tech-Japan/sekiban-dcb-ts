@@ -420,6 +420,20 @@
       "routedItem": "ClaimLedgerExecutor.defaultRetries optionality",
       "kind": "member-optionality",
       "diffIds": []
+    },
+    {
+      "marker": "contract",
+      "key": "conditional-commit-activation-members",
+      "routedItem": "conditional commit built-in members and facade",
+      "kind": "added-member",
+      "diffIds": [
+        "@sekiban/dcb-client::SerializedDcbTransport",
+        "@sekiban/dcb-client::SerializedDcbClient",
+        "@sekiban/dcb-client::SekibanExecutor",
+        "@sekiban/dcb-client::createHttpTransport",
+        "@sekiban/dcb-client::createInProcessTransport",
+        "@sekiban/dcb-client::createSekibanExecutor"
+      ]
     }
   ],
   "receiptModelHash": "86beb8c78d357deabcd3df9b969adc895ff6665e779f1b918a3db371e22b2831",
