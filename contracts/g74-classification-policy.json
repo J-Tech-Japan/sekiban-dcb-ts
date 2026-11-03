@@ -17,7 +17,27 @@
     { "code": "query_row_invalid", "kind": "unavailable", "readPathAction": "repair or rebuild the projection data; no automatic retry", "commitPathAction": "not a commit outcome" },
     { "code": "query_result_decode_failed", "kind": "unavailable", "readPathAction": "do not trust the query response; no automatic retry", "commitPathAction": "not a commit outcome" },
     { "code": "query_result_invalid", "kind": "unavailable", "readPathAction": "fix the deployed query definition; no automatic retry", "commitPathAction": "not a commit outcome" },
-    { "code": "query_handler_failed", "kind": "unavailable", "readPathAction": "fix the deployed query definition; no automatic retry", "commitPathAction": "not a commit outcome" }
+    { "code": "query_handler_failed", "kind": "unavailable", "readPathAction": "fix the deployed query definition; no automatic retry", "commitPathAction": "not a commit outcome" },
+    { "code": "conditional_commit_invalid_json", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_unknown_member", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_invalid_version", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_invalid_envelope", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_invalid_key", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_invalid_candidate", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_invalid_base64", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_invalid_utf8", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_invalid_payload_json", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_payload_root_not_object", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_payload_not_canonicalizable", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_event_not_registered", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_invalid_tag_count", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_size_limit_exceeded", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "fix the request before another attempt" },
+    { "code": "conditional_commit_key_reuse_conflict", "kind": "conflict", "readPathAction": "not a read outcome", "commitPathAction": "do not change and blindly retry the key" },
+    { "code": "conditional_commit_unsupported", "kind": "invalid", "readPathAction": "not a read outcome", "commitPathAction": "do not fall back to V1" },
+    { "code": "conditional_commit_in_doubt", "kind": "unavailable", "readPathAction": "not a read outcome", "commitPathAction": "resend only the same held prepared value after caller policy says to retry" },
+    { "code": "conditional_commit_committed_state_corrupt", "kind": "unavailable", "readPathAction": "not a read outcome", "commitPathAction": "no automatic retry; repair or inspection is required" },
+    { "code": "conditional_commit_invalid_response", "kind": "transport", "readPathAction": "not a read outcome", "commitPathAction": "do not trust or retry automatically" },
+    { "code": "conditional_commit_invalid_error_response", "kind": "transport", "readPathAction": "not a read outcome", "commitPathAction": "do not trust or retry automatically" }
   ],
   "evidence": "test/g78-error-classification.spec.ts:304; test/g71-read-contract.spec.ts:432"
 }

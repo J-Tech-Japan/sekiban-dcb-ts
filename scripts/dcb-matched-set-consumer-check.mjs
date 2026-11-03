@@ -261,6 +261,25 @@ async function assertInstalledQueryContracts(cwd) {
     throw new Error("installed @sekiban/dcb-core is missing the local query contracts");
   }
 }
+
+async function assertInstalledConditionalDeclarations(cwd) {
+  const core = await readFile(join(cwd, "node_modules", "@sekiban", "dcb-core", "dist", "index.d.ts"), "utf8");
+  const clientIndex = await readFile(join(cwd, "node_modules", "@sekiban", "dcb-client", "dist", "index.d.ts"), "utf8");
+  const client = await readFile(join(cwd, "node_modules", "@sekiban", "dcb-client", "dist", "conditionalCommit.d.ts"), "utf8");
+  const signature = "export declare function prepareConditionalCommit<T extends JsonValue>(input: ConditionalCommitInput<T>): PreparedConditionalCommit;";
+  if (!client.includes(signature)) throw new Error("installed client declaration is missing prepareConditionalCommit<T extends JsonValue>");
+  if (client.includes("prepareConditionalCommit<T>(")) throw new Error("installed prepareConditionalCommit must stay constrained by JsonValue");
+  for (const name of ["ConditionalCommitInput", "ConditionalCommitOptions", "PreparedConditionalCommit"]) {
+    if (!client.includes(name)) throw new Error(`installed client declaration is missing ${name}`);
+  }
+  if (!clientIndex.includes("readonly conditionalCommit?: (request: SerializedConditionalCommitRequest, signal?: AbortSignal) => Promise<CommitHttpResult>;")) {
+    throw new Error("installed transport declaration is missing optional conditionalCommit");
+  }
+  if (!clientIndex.includes("prepareConditionalCommit")) throw new Error("installed client root does not re-export prepareConditionalCommit");
+  for (const name of ["CONDITIONAL_COMMIT_VERSION", "CONDITIONAL_COMMIT_DERIVATION_VERSION", "CONDITIONAL_COMMIT_CANONICALIZATION_VERSION", "CONDITIONAL_COMMIT_DOMAIN_SEPARATOR", "ConditionalCommitProtocolError", "canonicalizeConditionalCommitPayload", "computeConditionalCommitFingerprint", "conditionalCommitFingerprintPreimage", "normalizeConditionalCommitKey", "parseSerializedConditionalCommitRequest", "parseSerializedConditionalCommitRequestBody"]) {
+    if (!core.includes(name)) throw new Error(`installed core declaration is missing ${name}`);
+  }
+}
 const queryClientFixture = `import { createSekibanExecutor, type SerializedDcbTransport } from "@sekiban/dcb-client";
 import type { ListQueryContract, QueryContract, QueryPage } from "@sekiban/dcb-core";
 
@@ -357,6 +376,81 @@ const queryClientExpectations = new Map([
 if (/\bzod\b|@sekiban\/dcb-domain|handleQuery|handleFilter|handleSort/.test(queryClientFixture) || /\bzod\b|@sekiban\/dcb-domain/.test(queryClientNegative)) {
   throw new Error("query-client.ts must import only structural contracts from @sekiban/dcb-core");
 }
+const conditionalCommitFixture = `import { createSekibanExecutor, prepareConditionalCommit, type ConditionalCommitInput, type PreparedConditionalCommit, type SerializedDcbTransport } from "@sekiban/dcb-client";
+import { defineEvent, type JsonValue, type SerializedConditionalCommitRequest } from "@sekiban/dcb-core";
+
+type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+const preparedSignature: Equals<typeof prepareConditionalCommit, <T extends JsonValue>(input: ConditionalCommitInput<T>) => PreparedConditionalCommit> = true;
+const event = defineEvent<{ readonly roomId: string }>("RoomOpened");
+const prepared = prepareConditionalCommit({
+  idempotencyKey: "key",
+  event,
+  payload: { roomId: "room-1" },
+  tag: "room:room-1",
+});
+const withMember: SerializedDcbTransport = {
+  readTagState: async () => { throw new Error("unused"); },
+  commit: async () => { throw new Error("unused"); },
+  query: async () => ({ resultJson: "{}" }),
+  listQuery: async () => ({ itemsJson: "[]", totalCount: 0, totalPages: 0, currentPage: 1, pageSize: 20 }),
+  conditionalCommit: async (request: SerializedConditionalCommitRequest) => ({ status: 501, body: request.idempotencyKey }),
+};
+const withoutMember: SerializedDcbTransport = {
+  readTagState: async () => { throw new Error("unused"); },
+  commit: async () => { throw new Error("unused"); },
+  query: async () => ({ resultJson: "{}" }),
+  listQuery: async () => ({ itemsJson: "[]", totalCount: 0, totalPages: 0, currentPage: 1, pageSize: 20 }),
+};
+const executor = createSekibanExecutor(withoutMember);
+void [preparedSignature, prepared, withMember.conditionalCommit, withoutMember.conditionalCommit, executor];
+`;
+const conditionalCommitNegative = `import { createSekibanExecutor, prepareConditionalCommit, type PreparedConditionalCommit, type SerializedDcbTransport } from "@sekiban/dcb-client";
+import { defineEvent, type SerializedConditionalCommitRequest } from "@sekiban/dcb-core";
+
+const event = defineEvent<{ readonly ok: boolean }>("Evt");
+const prepared = prepareConditionalCommit({
+  idempotencyKey: "key",
+  event,
+  payload: { ok: true },
+  tag: "T:1",
+});
+const executor = createSekibanExecutor({
+  readTagState: async () => { throw new Error("unused"); },
+  commit: async () => { throw new Error("unused"); },
+  query: async () => ({ resultJson: "{}" }),
+  listQuery: async () => ({ itemsJson: "[]", totalCount: 0, totalPages: 0, currentPage: 1, pageSize: 20 }),
+});
+// @ts-expect-error [conditional-version-2]
+const version2: SerializedConditionalCommitRequest = { version: 2, idempotencyKey: "key", eventCandidate: prepared.eventCandidate };
+// @ts-expect-error [conditional-two-tags]
+const twoTags: SerializedConditionalCommitRequest = { version: 1, idempotencyKey: "key", eventCandidate: { payload: "e30=", eventPayloadName: "Evt", tags: ["A:1", "B:2"] } };
+// @ts-expect-error [conditional-plain-not-prepared]
+const plainPrepared: PreparedConditionalCommit = { version: 1, idempotencyKey: "key", eventCandidate: prepared.eventCandidate };
+// @ts-expect-error [conditional-prepared-readonly]
+prepared.idempotencyKey = "other";
+const mismatched: SerializedDcbTransport = {
+  readTagState: async () => { throw new Error("unused"); },
+  commit: async () => { throw new Error("unused"); },
+  query: async () => ({ resultJson: "{}" }),
+  listQuery: async () => ({ itemsJson: "[]", totalCount: 0, totalPages: 0, currentPage: 1, pageSize: 20 }),
+  // @ts-expect-error [conditional-member-request-type]
+  conditionalCommit: async (_request: { readonly version: 2 }) => ({ status: 501 }),
+};
+// @ts-expect-error [conditional-executor-prepare-absent]
+void executor.prepareConditionalCommit;
+// @ts-expect-error [conditional-executor-commit-absent]
+void executor.commitPreparedConditionally;
+void [version2, twoTags, plainPrepared, mismatched];
+`;
+const conditionalCommitExpectations = new Map([
+  ["conditional-version-2", /TS2322:[\s\S]*Type '2' is not assignable to type '1'/],
+  ["conditional-two-tags", /TS2322:[\s\S]*readonly \[string\]/],
+  ["conditional-plain-not-prepared", /TS2322:[\s\S]*preparedConditionalCommitBrand/],
+  ["conditional-prepared-readonly", /TS2540: Cannot assign to 'idempotencyKey' because it is a read-only property/],
+  ["conditional-member-request-type", /TS2322:[\s\S]*SerializedConditionalCommitRequest/],
+  ["conditional-executor-prepare-absent", /TS2339: Property 'prepareConditionalCommit' does not exist/],
+  ["conditional-executor-commit-absent", /TS2339: Property 'commitPreparedConditionally' does not exist/],
+]);
 const deepImports = [
   ["dcb-core", `import { assertJsonValue } from "@sekiban/dcb-core/dist/index.js"; console.log(assertJsonValue);`],
   ["dcb-domain", `import { command } from "@sekiban/dcb-domain/dist/index.js"; console.log(command);`],
@@ -397,6 +491,8 @@ try {
   await writeFile(join(temp, "src", "query-authoring.ts"), queryAuthoring);
   await writeFile(join(temp, "src", "query-client.ts"), queryClientFixture);
   await writeFile(join(temp, "src", "query-client-negative.ts"), queryClientNegative);
+  await writeFile(join(temp, "src", "conditional-commit.ts"), conditionalCommitFixture);
+  await writeFile(join(temp, "src", "conditional-commit-negative.ts"), conditionalCommitNegative);
   await writeFile(join(temp, "src", "unsupported-modes.ts"), `
 import type { ListQueryOptions, ListQueryRequest, SekibanExecutor } from "@sekiban/dcb-client";
 import type { ProjectorLike, Tag } from "@sekiban/dcb-domain";
@@ -418,6 +514,7 @@ void executor.query(request, { consistency: "safe" });
   await mkdir(join(temp, "compile-negative"), { recursive: true });
   await writeFile(join(temp, "compile-negative", "query-authoring-blanked.ts"), blankQueryDirectives(queryAuthoring));
   await writeFile(join(temp, "compile-negative", "query-client-negative-blanked.ts"), blankQueryDirectives(queryClientNegative));
+  await writeFile(join(temp, "compile-negative", "conditional-commit-negative-blanked.ts"), blankQueryDirectives(conditionalCommitNegative));
   await writeFile(join(temp, "compile-negative", "unsupported-modes-raw.ts"), `
 import type { ListQueryRequest, SekibanExecutor } from "@sekiban/dcb-client";
 import type { ProjectorLike, Tag } from "@sekiban/dcb-domain";
@@ -439,6 +536,7 @@ void executor.query(request, { consistency: "safe" });
   await run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", tarballs[0], tarballs[1], "typescript@5.9.3"], temp);
   await assertInstalledQueryContracts(temp);
   await run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", tarballs[2]], temp);
+  await assertInstalledConditionalDeclarations(temp);
   const tsc = join(temp, "node_modules", ".bin", "tsc");
   await run(tsc, ["-p", "tsconfig.node16.json"], temp);
   await run(tsc, ["-p", "tsconfig.bundler.json"], temp);
@@ -457,6 +555,14 @@ void executor.query(request, { consistency: "safe" });
     blankedPath: "compile-negative/query-client-negative-blanked.ts",
     fileName: "query-client-negative-blanked.ts",
     expectations: queryClientExpectations,
+  });
+  const conditionalCommitRejections = await proveQueryFixture({
+    tsc,
+    cwd: temp,
+    source: conditionalCommitNegative,
+    blankedPath: "compile-negative/conditional-commit-negative-blanked.ts",
+    fileName: "conditional-commit-negative-blanked.ts",
+    expectations: conditionalCommitExpectations,
   });
   for (const resolution of [["Node16", "Node16", "Node16"], ["Bundler", "ESNext", "Bundler"]]) {
     const [label, module, moduleResolution] = resolution;
@@ -485,6 +591,7 @@ void executor.query(request, { consistency: "safe" });
     greenReceipts: ["Node16 consumer compile/runtime", "Bundler consumer compile/runtime", "esbuild consumer bundle/runtime", "portable readState-to-snapshot-only workflow", "local core query contracts", "Node16 and Bundler query authoring positives and labelled negatives", "Node16 and Bundler typed query client overloads"],
     queryRejections,
     queryClientRejections,
+    conditionalCommitRejections,
     rawV1Receipts: [node16.stdout.trim(), bundler.stdout.trim(), bundled.stdout.trim()],
     redReceipts,
     compileNegativeReceipts,

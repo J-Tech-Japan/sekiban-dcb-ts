@@ -1,3 +1,5 @@
+import type { ConditionalCommitInDoubtReason } from "@sekiban/dcb-core";
+
 const SAFE_MESSAGES: Readonly<Record<string, string>> = Object.freeze({
   aborted: "The request was aborted",
   // G71's published authority wire shape predates this boundary sanitizer.
@@ -35,6 +37,26 @@ const SAFE_MESSAGES: Readonly<Record<string, string>> = Object.freeze({
   unsupported_capability: "The transport lacks a required capability",
   unsupported_consistency_mode: "Consistency is unsupported for this read",
   read_unavailable: "The read did not reach a coherent authority",
+  conditional_commit_invalid_json: "The request body is not valid JSON.",
+  conditional_commit_unknown_member: "The request contains an unknown member.",
+  conditional_commit_invalid_version: "The conditional commit version is not supported.",
+  conditional_commit_invalid_envelope: "The conditional commit envelope is invalid.",
+  conditional_commit_invalid_key: "The idempotency key is invalid.",
+  conditional_commit_invalid_candidate: "The event candidate is invalid.",
+  conditional_commit_invalid_base64: "The event payload is not valid base64.",
+  conditional_commit_invalid_utf8: "The event payload is not valid UTF-8.",
+  conditional_commit_invalid_payload_json: "The event payload is not valid JSON.",
+  conditional_commit_payload_root_not_object: "The event payload root must be a plain object.",
+  conditional_commit_payload_not_canonicalizable: "The event payload cannot be canonicalized.",
+  conditional_commit_event_not_registered: "The event payload name is not registered.",
+  conditional_commit_invalid_tag_count: "Conditional commit requires exactly one tag.",
+  conditional_commit_size_limit_exceeded: "The conditional commit request exceeds a size limit.",
+  conditional_commit_key_reuse_conflict: "The idempotency key is already bound to a different operation.",
+  conditional_commit_unsupported: "Conditional commit is not supported by this deployment.",
+  conditional_commit_in_doubt: "The conditional commit outcome is not yet verified; resend the same prepared request.",
+  conditional_commit_committed_state_corrupt: "The durable conditional commit state could not be verified.",
+  conditional_commit_invalid_response: "The conditional commit response is invalid.",
+  conditional_commit_invalid_error_response: "The conditional commit error response is invalid.",
 });
 
 const KNOWN_CODES = new Set(Object.keys(SAFE_MESSAGES));
@@ -43,13 +65,27 @@ export class ClientError extends Error {
   readonly code: string;
   readonly status?: number;
   readonly partial?: unknown;
+  readonly retryable?: boolean;
+  readonly reason?: ConditionalCommitInDoubtReason;
 
-  constructor(code: string, message: string, options?: { readonly status?: number; readonly partial?: unknown; readonly cause?: unknown }) {
+  constructor(
+    code: string,
+    message: string,
+    options?: {
+      readonly status?: number;
+      readonly partial?: unknown;
+      readonly cause?: unknown;
+      readonly retryable?: boolean;
+      readonly reason?: ConditionalCommitInDoubtReason;
+    },
+  ) {
     super(message, options?.cause === undefined ? undefined : { cause: options.cause });
     this.name = "ClientError";
     this.code = code;
     this.status = options?.status;
     this.partial = options?.partial;
+    if (options?.retryable !== undefined) this.retryable = options.retryable;
+    if (options?.reason !== undefined) this.reason = options.reason;
   }
 }
 

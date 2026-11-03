@@ -635,4 +635,32 @@ export interface QueryPage<Item> extends QueryPageMetadata {
   readonly items: readonly Item[];
 }
 
+export {
+  CONDITIONAL_COMMIT_CANONICALIZATION_VERSION,
+  CONDITIONAL_COMMIT_DERIVATION_VERSION,
+  CONDITIONAL_COMMIT_DOMAIN_SEPARATOR,
+  CONDITIONAL_COMMIT_MAX_PAYLOAD_BYTES,
+  CONDITIONAL_COMMIT_MAX_REQUEST_BYTES,
+  CONDITIONAL_COMMIT_MAX_UTF8_FIELD_BYTES,
+  CONDITIONAL_COMMIT_VERSION,
+  ConditionalCommitProtocolError,
+  canonicalizeConditionalCommitPayload,
+  computeConditionalCommitFingerprint,
+  conditionalCommitFingerprintPreimage,
+  normalizeConditionalCommitKey,
+  parseSerializedConditionalCommitRequest,
+  parseSerializedConditionalCommitRequestBody,
+} from "./conditionalCommit.js";
+export type {
+  ConditionalCommitErrorResponse,
+  ConditionalCommitFingerprintInput,
+  ConditionalCommitInDoubtReason,
+  ConditionalCommitReceipt,
+  ConditionalCommitResult,
+  ConditionalCommitValidationCode,
+  ConditionalWrittenEvent,
+  SerializedConditionalCommitRequest,
+  SerializedConditionalEventCandidate,
+} from "./conditionalCommit.js";
+
 export * from "./materializedView.js";
