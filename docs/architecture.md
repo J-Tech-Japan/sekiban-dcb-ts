@@ -223,7 +223,7 @@ Caller patterns and their limits are in
 
 ## Conditional commit v1
 
-Conditional commit v1 is `POST /api/sekiban/serialized/conditional-commit`. It admits one event and one tag. The key scope is `(serviceId, tag, normalizedKey)`. The same key on another tag is an independent operation. Call it only from a trusted service or gateway. HTTP 200 and 409 are a key-existence oracle, so operation keys must be high entropy. Fixed D1 and omitted-provider PostgreSQL support the route. Cosmos, a custom provider, and bootstrap or import states return Unsupported. External side effects and multi-tag atomicity are not promised.
+Conditional commit v1 is `POST /api/sekiban/serialized/conditional-commit`. It admits one event and one tag. The key scope is `(serviceId, tag, normalizedKey)`. The same key on another tag is an independent operation. Call it only from a trusted service or gateway. HTTP 200 and 409 are a key-existence oracle, so operation keys must be high entropy. Fixed D1 and omitted-provider PostgreSQL support the route. Cosmos and a custom provider return Unsupported. In-progress bootstrap and import states `PLANNED`, `IMPORTING`, and `VERIFYING` return retryable 503; resend the same held prepared value. Completed, imported (`READY`), failed (`FAILED`), or otherwise unsupported bootstrap states return 501 Unsupported. External side effects and multi-tag atomicity are not promised.
 
 Prepare once and retain that prepared value. There is no automatic retry and no fallback to V1 commit.
 

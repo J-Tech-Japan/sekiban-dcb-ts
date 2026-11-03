@@ -6,7 +6,7 @@ import type { CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitW
 import { handleDownstreamQueue, processDownstreamDoorbell } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import { drainTagOutbox } from "../packages/dcb-runtime/src/downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
-import { ProjectionRuntime } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
+import { projectionIdFor, ProjectionRuntime } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
 import { ProjectorRegistry, type ProjectionEvent, type TagStateProjector } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
 import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
@@ -170,33 +170,37 @@ describe("conditional commit postgres delivery", () => {
     const stored = await store.readAllEvents(opened.serviceId, "");
     expect(stored, "one postgres event").toHaveLength(1);
     expect(stored[0]?.eventId).toBe(committed.receipt.winnerEventId);
+    expect(stored[0]?.suid).toBe(committed.receipt.winnerSortableUniqueId);
     const runtime = new ProjectionRuntime(store, new ProjectorRegistry(witnessProjectors));
     const nowMs = Date.now() + 60_000;
     const [tagGroup, tagContent] = tag.split(":");
+    const unsafeViews = witnessProjectors.map((item) => item.apply(item.initialState(), {
+      eventId: stored[0]!.eventId,
+      suid: stored[0]!.suid,
+      payload: stored[0]!.payload,
+      eventTags: stored[0]!.eventTags,
+      eventType: stored[0]!.eventType,
+      provenance: "g32",
+    }) as string[]);
+    expect(unsafeViews).toEqual([
+      [committed.receipt.winnerEventId],
+      [committed.receipt.winnerEventId],
+    ]);
     for (const item of witnessProjectors) {
-      const applied = await runtime.catchUp(opened.serviceId, {
+      const identity = {
         tag,
         tagGroup: tagGroup ?? tag,
         tagContent: tagContent ?? tag,
         tagProjector: item.id,
-      }, nowMs);
+      };
+      const applied = await runtime.catchUp(opened.serviceId, identity, nowMs);
       expect(applied.appliedEvents).toBe(1);
-      const duplicate = await runtime.catchUp(opened.serviceId, {
-        tag,
-        tagGroup: tagGroup ?? tag,
-        tagContent: tagContent ?? tag,
-        tagProjector: item.id,
-      }, nowMs);
+      const duplicate = await runtime.catchUp(opened.serviceId, identity, nowMs);
       expect(duplicate.appliedEvents).toBe(0);
-      const folded = item.apply(item.initialState(), {
-        eventId: stored[0]!.eventId,
-        suid: stored[0]!.suid,
-        payload: stored[0]!.payload,
-        eventTags: stored[0]!.eventTags,
-        eventType: stored[0]!.eventType,
-        provenance: "g32",
-      }) as string[];
-      expect(folded).toEqual([committed.receipt.winnerEventId]);
+      const checkpoint = await store.readProjectionCheckpoint(opened.serviceId, projectionIdFor(identity));
+      if (checkpoint === undefined) throw new Error("safe checkpoint missing");
+      expect(item.deserializeState(checkpoint.stateJson)).toEqual([committed.receipt.winnerEventId]);
+      expect(checkpoint.lastSuid).toBe(committed.receipt.winnerSortableUniqueId);
     }
   });
 });

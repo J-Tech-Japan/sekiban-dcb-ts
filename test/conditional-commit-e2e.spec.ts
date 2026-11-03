@@ -12,7 +12,7 @@ import { isUuidV7 } from "../packages/dcb-runtime/src/eventRecord";
 import { createRuntimeWorker } from "../packages/dcb-runtime/src/index";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/mv/MaterializedViewStore";
 import { MaterializedViewCatchUpRuntime } from "../packages/dcb-runtime/src/mv/MaterializedViewCatchUp";
-import { catchUpDurableTagState, ProjectionRuntime } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
+import { catchUpDurableTagState, projectionIdFor, ProjectionRuntime } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
 import { ProjectorRegistry, type ProjectionEvent, type TagStateProjector } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
 import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 import { D1EventStore } from "../packages/dcb-runtime/src/store/D1EventStore";
@@ -310,22 +310,63 @@ if (!skipE2eEntry) {
       expect(stored?.suid).toBe(winnerSuid);
       const runtime = new ProjectionRuntime(store, new ProjectorRegistry(witnessProjectors));
       const nowMs = Date.now() + 60_000;
+      const views = new D1MaterializedViewStore(database("D1_MV"));
+      await views.initialize();
       for (const item of witnessProjectors) {
         const identity = tagIdentity(tag, item.id);
         const applied = await runtime.catchUp(opened.serviceId, identity, nowMs);
         expect(applied.appliedEvents).toBe(1);
         const duplicate = await runtime.catchUp(opened.serviceId, identity, nowMs);
         expect(duplicate.appliedEvents).toBe(0);
-        const folded = item.apply(item.initialState(), {
-          eventId: stored!.eventId,
-          suid: stored!.suid,
-          payload: stored!.payload,
-          eventTags: stored!.eventTags,
-          eventType: stored!.eventType,
-          provenance: "g32",
+        const checkpoint = await store.readProjectionCheckpoint(opened.serviceId, projectionIdFor(identity));
+        if (checkpoint === undefined) throw new Error("safe checkpoint missing");
+        const safeState = item.deserializeState(checkpoint.stateJson) as WitnessState;
+        expect(safeState.ids).toEqual([winnerId]);
+        expect(safeState.suid).toBe(winnerSuid);
+        expect(checkpoint.lastSuid).toBe(winnerSuid);
+        const materializer = defineRowMaterializer<StoredEvent>({
+          id: `${item.id}-${opened.serviceId}`,
+          version: 1,
+          materialize: (event) => ({
+            rowUpserts: [{ rowKey: event.eventId, value: { eventId: event.eventId, suid: event.suid }, sourceSuid: event.suid }],
+          }),
         });
-        expect((folded as WitnessState).ids).toEqual([winnerId]);
-        expect((folded as WitnessState).suid).toBe(winnerSuid);
+        await views.createActive({
+          serviceId: opened.serviceId,
+          viewId: materializer.id,
+          generation: 0,
+          definitionVersion: materializer.version,
+          updatedAt: nowMs,
+        });
+        const plan = materializer.plan(stored!);
+        const unsafe = views.unsafeWindow();
+        const unsafeInput = {
+          serviceId: opened.serviceId,
+          viewId: materializer.id,
+          generation: 0,
+          eventId: winnerId,
+          suid: winnerSuid,
+          safeHead: "",
+          updatedAt: nowMs,
+          mutations: plan,
+        };
+        expect((await unsafe.apply(unsafeInput)).outcome).toBe("applied");
+        expect((await unsafe.apply(unsafeInput)).duplicate).toBe(true);
+        const unsafePage = await unsafe.queryComposedPage(opened.serviceId, materializer.id, 0, 10, 0);
+        expect(unsafePage.rows).toHaveLength(1);
+        expect(unsafePage.rows[0]?.rowKey).toBe(winnerId);
+        expect(unsafePage.rows[0]?.sourceSuid).toBe(winnerSuid);
+        expect(unsafePage.rows[0]?.value).toEqual({ eventId: winnerId, suid: winnerSuid });
+        const catchUp = new MaterializedViewCatchUpRuntime(store, views);
+        const built = await catchUp.follow(opened.serviceId, materializer, nowMs);
+        expect(built.appliedEvents).toBe(1);
+        const followed = await catchUp.follow(opened.serviceId, materializer, nowMs);
+        expect(followed.appliedEvents).toBe(0);
+        const rows = await views.readRows(opened.serviceId, materializer.id);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]?.rowKey).toBe(winnerId);
+        expect(rows[0]?.sourceSuid).toBe(winnerSuid);
+        expect(rows[0]?.value).toEqual({ eventId: winnerId, suid: winnerSuid });
       }
       const stub = bindings().TAG.get(scopeIdFor(bindings().TAG, {
         serviceId: opened.serviceId,
@@ -341,45 +382,6 @@ if (!skipE2eEntry) {
         expect(rebuilt.stateJson).toContain(winnerId);
         expect(rebuilt.stateJson).toContain(winnerSuid);
       }
-      const views = new D1MaterializedViewStore(database("D1_MV"));
-      await views.initialize();
-      const materializer = defineRowMaterializer<StoredEvent>({
-        id: `conditional-${opened.serviceId}`,
-        version: 1,
-        materialize: (event) => ({
-          rowUpserts: [{ rowKey: event.eventId, value: { eventId: event.eventId }, sourceSuid: event.suid }],
-        }),
-      });
-      await views.createActive({
-        serviceId: opened.serviceId,
-        viewId: materializer.id,
-        generation: 0,
-        definitionVersion: materializer.version,
-        updatedAt: nowMs,
-      });
-      const plan = materializer.plan(stored!);
-      const unsafe = views.unsafeWindow();
-      const unsafeInput = {
-        serviceId: opened.serviceId,
-        viewId: materializer.id,
-        generation: 0,
-        eventId: winnerId,
-        suid: winnerSuid,
-        safeHead: "",
-        updatedAt: nowMs,
-        mutations: plan,
-      };
-      expect((await unsafe.apply(unsafeInput)).outcome).toBe("applied");
-      expect((await unsafe.apply(unsafeInput)).duplicate).toBe(true);
-      const catchUp = new MaterializedViewCatchUpRuntime(store, views);
-      const built = await catchUp.follow(opened.serviceId, materializer, nowMs);
-      expect(built.appliedEvents).toBe(1);
-      const followed = await catchUp.follow(opened.serviceId, materializer, nowMs);
-      expect(followed.appliedEvents).toBe(0);
-      const rows = await views.readRows(opened.serviceId, materializer.id);
-      expect(rows).toHaveLength(1);
-      expect(rows[0]?.rowKey).toBe(winnerId);
-      expect(JSON.stringify(rows[0]?.value)).toContain(winnerId);
     });
   });
 }
