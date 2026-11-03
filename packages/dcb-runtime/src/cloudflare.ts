@@ -19,7 +19,7 @@ import {
   handleAuthorizedOperatorRepair,
   nonPostOperatorRepairResponse,
 } from "./cli/OperatorRepairCli";
-import { handleSerializedCommit } from "./commit/CommitWorker";
+import { createFixedD1ConditionalExecutor } from "./commit/ConditionalCommitWorker";
 import {
   handleDownstreamQueue,
   stabilizeDownstream,
@@ -275,6 +275,7 @@ export function createCloudflareOnlyRuntimeWorker(
 ): ExportedHandler<CloudflareOnlyEnv> {
   const composition = composeRuntime(options.domain, options.config);
   configureTagStateProjectorRegistry(composition.projectors);
+  const conditionalExecutor = createFixedD1ConditionalExecutor();
   const storeProvider = createD1StoreProvider();
   return {
     async fetch(request, env, ctx): Promise<Response> {
@@ -304,7 +305,7 @@ export function createCloudflareOnlyRuntimeWorker(
       }
       const durableHopObserver = createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise));
       if (url.pathname === "/api/sekiban/serialized/commit") {
-        return handleSerializedCommit(request, env, {
+        return conditionalExecutor.handleSerializedCommit(request, env, {
           domainDeliveryClass: options.config?.deliveryClass,
           registeredEventParsers: registeredEventParsers(options.domain),
           // The meeting-room app reaches this handler through an in-isolate
@@ -418,7 +419,7 @@ export function createCloudflareOnlyRuntimeWorker(
       if (tagMatch !== null) {
         // Keep G46's source adapter private to the direct TagStateDO -> Tag
         // DO transport. Header spoofing must not make it a public tag route.
-        if (tagMatch[3]?.startsWith("/__internal/g46/")) {
+        if (tagMatch[3]?.startsWith("/__internal/g46/") || tagMatch[3]?.startsWith("/__internal/")) {
           return new Response("Tag internal route not found", { status: 404 });
         }
         let pathServiceId: string;

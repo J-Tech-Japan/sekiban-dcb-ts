@@ -10,7 +10,7 @@ import {
   handleAuthorizedOperatorRepair,
   nonPostOperatorRepairResponse,
 } from "./cli/OperatorRepairCli";
-import { handleSerializedCommit } from "./commit/CommitWorker";
+import { createOrdinaryConditionalExecutor } from "./commit/ConditionalCommitWorker";
 import { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
 import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
@@ -388,6 +388,7 @@ export interface RuntimeWorkerOptions {
 export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): ExportedHandler<Env> {
   const composition = composeRuntime(options.domain, options.config);
   configureTagStateProjectorRegistry(composition.projectors);
+  const conditionalExecutor = createOrdinaryConditionalExecutor({ storeProvider: options.storeProvider });
   const storeProvider = options.storeProvider ?? POSTGRES_STORE_PROVIDER;
   return {
     async fetch(request, env, ctx): Promise<Response> {
@@ -416,7 +417,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         return scopeIdentityMissingResponse();
       }
       if (url.pathname === "/api/sekiban/serialized/commit") {
-        return handleSerializedCommit(request, env, {
+        return conditionalExecutor.handleSerializedCommit(request, env, {
           domainDeliveryClass: options.config?.deliveryClass,
           registeredEventParsers: registeredEventParsers(options.domain),
           nativeTracing: nativeTracingFromContext(ctx),
@@ -499,7 +500,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         // G46's bounded TagState source adapter is a direct DO-to-DO seam,
         // never a role-facing `/tags/*` route.  Do not let an arbitrary
         // client replay its header through the generic tag forwarder.
-        if (tagMatch[3]?.startsWith("/__internal/g46/")) {
+        if (tagMatch[3]?.startsWith("/__internal/g46/") || tagMatch[3]?.startsWith("/__internal/")) {
           return new Response("Tag internal route not found", { status: 404 });
         }
         let pathServiceId: string;

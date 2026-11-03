@@ -68,6 +68,11 @@
 
 ### @sekiban/dcb-runtime
 
+- Add dormant Tag-local conditional-commit authority and runtime internals.
+  The first-use receipt shares the existing event/outbox transaction. No public
+  route or built-in client transport can use it yet. V1, downstream behavior,
+  and package versions are unchanged.
+
 - Document the existing V1 resend contract. An identical JSON body is a new
   operation. Consistency expectations are optimistic concurrency, not
   idempotency. A timeout, HTTP 504, or network or transport failure after

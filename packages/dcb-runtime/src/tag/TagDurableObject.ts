@@ -47,6 +47,22 @@ import {
 } from "../trace/ObservationStream";
 import { canonicalDeclaredTagSet, eventDigestBytes, eventDigestHex } from "./EventDigest";
 import {
+  candidateEventExists,
+  CONDITIONAL_APPEND_FAULTS,
+  ConditionalAppendCrash,
+  ConditionalReceiptUniquenessFault,
+  ConditionalReceiptUnsupported,
+  ensureConditionalReceiptSchema,
+  insertConditionalReceipt,
+  parseConditionalAppendBody,
+  parseConditionalResolveBody,
+  readConditionalTerminal,
+  type ConditionalAppendBody,
+  type ConditionalAppendFault,
+  type ConditionalTerminalRead,
+  type ConditionalWinnerFacts,
+} from "./TagConditionalReceipt";
+import {
   ensureTagCommitReceiptWrittenVersion,
   hasTagSqlStorage,
   initializeTagSqlSchema,
@@ -271,6 +287,31 @@ function withGlobalAdmission(response: Response, status: GlobalAdmissionStatus):
   // direct assertion over the same response returned by the Tag DO.
   response.headers.set(G65_GLOBAL_ADMISSION_HEADER, status);
   return response;
+}
+
+function conditionalAppendInput(parsed: ConditionalAppendBody): AppendInput {
+  const candidate = parsed.candidate;
+  return {
+    attemptId: candidate.attemptId,
+    epoch: candidate.epoch,
+    candidates: [{
+      eventId: candidate.eventId,
+      suid: candidate.suid,
+      payload: candidate.payload,
+      eventTags: [...candidate.eventTags],
+      allocatorLineageId: candidate.allocatorLineageId,
+      eventType: candidate.eventType,
+      provenance: candidate.provenance,
+      timestamp: candidate.timestamp,
+    }],
+  };
+}
+
+function conditionalWinnerBody(facts: ConditionalWinnerFacts, same: boolean): OperationResult {
+  return {
+    status: same ? 200 : 409,
+    body: { status: same ? "same" : "conflict", facts },
+  };
 }
 
 function rejected(reason: string, status = 409): OperationResult {
@@ -1114,6 +1155,177 @@ function overlappingFenceReason(record: TagRecord, reason: string): string | und
   return undefined;
 }
 
+const CONDITIONAL_APPEND_FAULT = Symbol.for("sekiban.dcb.conditional-append-fault");
+
+function takeConditionalAppendFault(target: object): ConditionalAppendFault | undefined {
+  const holder = target as Record<symbol, unknown>;
+  const value = holder[CONDITIONAL_APPEND_FAULT];
+  delete holder[CONDITIONAL_APPEND_FAULT];
+  if (typeof value !== "string" || !(CONDITIONAL_APPEND_FAULTS as readonly string[]).includes(value)) return undefined;
+  return value as ConditionalAppendFault;
+}
+
+interface ConditionalTagHost {
+  readonly storage: DurableObjectStorage;
+  sql(): SqlStorage | undefined;
+  doorbellPreflight(): ReturnType<typeof preflightDirectDoorbell>;
+  ensurePartition(tag: string, serviceId: string): Promise<"existing" | "newly-registered" | "unconfigured">;
+  append(
+    tag: string,
+    input: AppendInput,
+    serviceId: string,
+    track: boolean,
+    conditional: {
+      readonly serviceId: string;
+      readonly normalizedKey: string;
+      readonly operationFingerprint: string;
+    },
+  ): Promise<OperationResult>;
+}
+
+function conditionalTerminalResponse(terminal: ConditionalTerminalRead, operationFingerprint: string): Response {
+  if (terminal.kind === "absent") return new Response(null, { status: 204 });
+  if (terminal.kind === "unsupported") return json({ status: "unsupported" }, 501);
+  if (terminal.kind === "corrupt") return json({ status: "corrupt" }, 500);
+  const same = terminal.facts.operationFingerprint === operationFingerprint;
+  return json({ status: same ? "same" : "conflict", facts: terminal.facts }, same ? 200 : 409);
+}
+
+function prepareConditionalSchema(storage: DurableObjectStorage): Response | undefined {
+  try {
+    ensureConditionalReceiptSchema(storage);
+    return undefined;
+  } catch (failure) {
+    if (failure instanceof ConditionalReceiptUnsupported) return json({ status: "unsupported" }, 501);
+    throw failure;
+  }
+}
+
+async function resolveConditionalTag(
+  host: ConditionalTagHost,
+  tag: string,
+  serviceId: string | null,
+  body: unknown,
+): Promise<Response> {
+  const parsed = parseConditionalResolveBody(body);
+  if (parsed === undefined || serviceId !== parsed.serviceId || tag !== parsed.tag) {
+    return error(400, "conditional_body_invalid", "Conditional resolve body is invalid");
+  }
+  const prepared = prepareConditionalSchema(host.storage);
+  if (prepared !== undefined) return prepared;
+  const sql = host.sql();
+  if (sql === undefined) return json({ status: "unsupported" }, 501);
+  try {
+    return conditionalTerminalResponse(await readConditionalTerminal(sql, parsed), parsed.operationFingerprint);
+  } catch (failure) {
+    if (failure instanceof ConditionalReceiptUnsupported) return json({ status: "unsupported" }, 501);
+    return json({ status: "in_doubt", reason: "winner_unreadable" }, 503);
+  }
+}
+
+async function conditionalRouteTerminal(host: ConditionalTagHost, parsed: ConditionalAppendBody): Promise<Response | undefined> {
+  const sql = host.sql();
+  if (sql === undefined) return json({ status: "unsupported" }, 501);
+  try {
+    const terminal = await readConditionalTerminal(sql, {
+      serviceId: parsed.serviceId,
+      tag: parsed.tag,
+      normalizedKey: parsed.normalizedKey,
+    });
+    if (terminal.kind === "absent") return undefined;
+    return conditionalTerminalResponse(terminal, parsed.operationFingerprint);
+  } catch (failure) {
+    if (failure instanceof ConditionalReceiptUnsupported) return json({ status: "unsupported" }, 501);
+    return json({ status: "in_doubt", reason: "winner_unreadable" }, 503);
+  }
+}
+
+async function appendConditionalTag(
+  host: ConditionalTagHost,
+  tag: string,
+  serviceId: string | null,
+  body: unknown,
+): Promise<Response> {
+  const parsed = parseConditionalAppendBody(body);
+  if (parsed === undefined || serviceId !== parsed.serviceId || tag !== parsed.tag) {
+    return error(400, "conditional_body_invalid", "Conditional append body is invalid");
+  }
+  const prepared = prepareConditionalSchema(host.storage);
+  if (prepared !== undefined) return prepared;
+  const decided = await conditionalRouteTerminal(host, parsed);
+  if (decided !== undefined) return decided;
+  const doorbellPreflight = host.doorbellPreflight();
+  if (doorbellPreflight.status === "fail-fast") {
+    throw new Error(`direct_doorbell_preflight_failed:${doorbellPreflight.reason}`);
+  }
+  const scopedServiceId = parsed.serviceId;
+  let registration: "existing" | "newly-registered" | "unconfigured" = "unconfigured";
+  if (scopedServiceId.length > 0) {
+    try {
+      registration = await host.ensurePartition(tag, scopedServiceId);
+    } catch (failure) {
+      if (failure instanceof PartitionRegistrationUnavailableError) {
+        return json({ status: "in_doubt", reason: "live_precondition_blocked" }, 503);
+      }
+      throw failure;
+    }
+  }
+  try {
+    const result = await host.append(tag, conditionalAppendInput(parsed), scopedServiceId, registration !== "unconfigured", {
+      serviceId: parsed.serviceId,
+      normalizedKey: parsed.normalizedKey,
+      operationFingerprint: parsed.operationFingerprint,
+    });
+    return json(result.body, result.status);
+  } catch (failure) {
+    if (failure instanceof ConditionalAppendCrash) {
+      return json({ status: "in_doubt", reason: "live_precondition_blocked" }, 503);
+    }
+    if (failure instanceof ConditionalReceiptUnsupported) return json({ status: "unsupported" }, 501);
+    throw failure;
+  }
+}
+
+async function handleConditionalTagRoute(
+  host: ConditionalTagHost,
+  request: Request,
+  pathname: "/__internal/conditional/resolve" | "/__internal/conditional/append",
+  tag: string,
+  serviceId: string | null,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return error(400, "conditional_method_invalid", "Conditional tag route requires POST");
+  }
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return error(400, "conditional_body_invalid", "Conditional tag body must be JSON");
+  }
+  if (pathname === "/__internal/conditional/resolve") return resolveConditionalTag(host, tag, serviceId, body);
+  return appendConditionalTag(host, tag, serviceId, body);
+}
+
+async function recoverConditionalReceipt(
+  sql: SqlStorage | undefined,
+  tag: string,
+  conditional: { readonly serviceId: string; readonly normalizedKey: string; readonly operationFingerprint: string },
+): Promise<OperationResult> {
+  if (sql === undefined) return { status: 503, body: { status: "in_doubt", reason: "ambiguous_after_append" } };
+  try {
+    const terminal = await readConditionalTerminal(sql, { serviceId: conditional.serviceId, tag, normalizedKey: conditional.normalizedKey });
+    if (terminal.kind === "winner") {
+      const same = terminal.facts.operationFingerprint === conditional.operationFingerprint;
+      return { status: same ? 200 : 409, body: { status: same ? "same" : "conflict", facts: terminal.facts } };
+    }
+    if (terminal.kind === "corrupt") return { status: 500, body: { status: "corrupt" } };
+    if (terminal.kind === "unsupported") return { status: 501, body: { status: "unsupported" } };
+    return { status: 503, body: { status: "in_doubt", reason: "ambiguous_after_append" } };
+  } catch {
+    return { status: 503, body: { status: "in_doubt", reason: "ambiguous_after_append" } };
+  }
+}
+
 export class TagDurableObject implements DurableObject {
   /** Constructor-scoped observation only; never persisted or used for control. */
   private readonly activation = new DurableObjectActivation();
@@ -1149,6 +1361,15 @@ export class TagDurableObject implements DurableObject {
       return error(400, "tag_identity_required", "Tag identity is required");
     }
     const serviceId = url.searchParams.get("__serviceId");
+    if (url.pathname === "/__internal/conditional/resolve" || url.pathname === "/__internal/conditional/append") {
+      return handleConditionalTagRoute({
+        storage: this.ctx.storage,
+        sql: () => this.sqlStorage(),
+        doorbellPreflight: () => this.directDoorbellPreflight(),
+        ensurePartition: (partitionTag, partitionServiceId) => this.ensureSourcePartitionBeforeFirstAppend(partitionTag, partitionServiceId),
+        append: (appendTag, input, appendServiceId, track, conditional) => this.appendSql(appendTag, input, appendServiceId, track, conditional),
+      }, request, url.pathname, tag, serviceId);
+    }
     if (request.method === "GET" && url.pathname === "/head-facts") {
       return this.traceCommitReadActor(request, tag, serviceId, activation, observation, async () => {
         observation.markFirstStorageRead();
@@ -2230,7 +2451,13 @@ export class TagDurableObject implements DurableObject {
     input: AppendInput,
     suppliedServiceId: string | null,
     trackSourcePartitionRegistration: boolean,
+    conditional?: {
+      readonly serviceId: string;
+      readonly normalizedKey: string;
+      readonly operationFingerprint: string;
+    },
   ): Promise<OperationResult> {
+    const fault = conditional === undefined ? undefined : takeConditionalAppendFault(this);
     const serviceId = suppliedServiceId ?? "";
     const events: TagEvent[] = input.candidates.map((candidate) => ({
       attemptId: input.attemptId,
@@ -2244,13 +2471,34 @@ export class TagDurableObject implements DurableObject {
       timestamp: candidate.timestamp,
     }));
     const artifacts = await Promise.all(events.map((event) => this.obligationArtifact(event, serviceId, tag)));
+    try {
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       const sql = this.sqlStorage();
       if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
       this.ensureSqlTag(tag);
+      if (conditional !== undefined) {
+        const terminal = await readConditionalTerminal(sql, {
+          serviceId: conditional.serviceId,
+          tag,
+          normalizedKey: conditional.normalizedKey,
+        });
+        if (terminal.kind === "winner") {
+          return conditionalWinnerBody(terminal.facts, terminal.facts.operationFingerprint === conditional.operationFingerprint);
+        }
+        if (terminal.kind === "unsupported") return { status: 501, body: { status: "unsupported" } };
+        if (terminal.kind === "corrupt") return { status: 500, body: { status: "corrupt" } };
+        const candidate = input.candidates[0];
+        if (candidate !== undefined && candidateEventExists(sql, conditional.serviceId, candidate.eventId)) {
+          return { status: 500, body: { status: "corrupt" } };
+        }
+      }
       const control = sql.exec<SqlRow>("SELECT * FROM tag_control WHERE singleton = 1").one();
       let head = sqlString(control.head_suid, "tag_control.head_suid");
       let version = sqlNumber(control.version, "tag_control.version");
+      const blockConditional = (result: OperationResult): OperationResult =>
+        conditional === undefined || (result.status >= 200 && result.status < 300)
+          ? result
+          : { status: 503, body: { status: "in_doubt", reason: "live_precondition_blocked" } };
 
       const existingCandidates = input.candidates.map((candidate, index) => {
         const event = sql.exec<SqlRow>(`
@@ -2329,13 +2577,13 @@ export class TagDurableObject implements DurableObject {
             : undefined;
       if (epochError !== undefined) {
         await this.rearmScheduler(txn);
-        return { ...rejected(epochError), body: { ...rejected(epochError).body as JsonObject, version } };
+        return blockConditional({ ...rejected(epochError), body: { ...rejected(epochError).body as JsonObject, version } });
       }
 
       const fenceCount = sql.exec<SqlRow>("SELECT COUNT(*) AS count FROM tag_fence").one();
       if (sqlNumber(fenceCount.count, "tag_fence.count") > 0) {
         await this.rearmScheduler(txn);
-        return fenceGateRejected();
+        return blockConditional(fenceGateRejected());
       }
       const confirmsReservation = reservation !== undefined &&
         sqlString(reservation.attempt_id, "tag_reservation.attempt_id") === input.attemptId &&
@@ -2343,45 +2591,45 @@ export class TagDurableObject implements DurableObject {
         sqlString(reservation.reservation_token, "tag_reservation.reservation_token") === input.reservationToken;
       if (reservation !== undefined && !confirmsReservation) {
         await this.rearmScheduler(txn);
-        return {
+        return blockConditional({
           ...rejected("reservation_token_required"),
           body: { ...rejected("reservation_token_required").body as JsonObject, version },
-        };
+        });
       }
       if (
         confirmsReservation && reservation !== undefined &&
         sqlString(reservation.expected_head, "tag_reservation.expected_head") !== head
       ) {
         await this.rearmScheduler(txn);
-        return {
+        return blockConditional({
           ...rejected("consistency_head_mismatch"),
           body: { ...rejected("consistency_head_mismatch").body as JsonObject, version },
-        };
+        });
       }
       if (existingCandidates.some(({ event, obligation }, index) =>
         event !== undefined && obligation !== undefined &&
         sqlString(obligation.event_digest, "tag_outbox_obligation.event_digest") !== artifacts[index]!.eventDigest,
       )) {
         await this.rearmScheduler(txn);
-        return {
+        return blockConditional({
           ...rejected("event_digest_conflict"),
           body: { ...rejected("event_digest_conflict").body as JsonObject, version },
-        };
+        });
       }
       if (existingCandidates.some(({ event }) => event !== undefined)) {
         await this.rearmScheduler(txn);
-        return {
+        return blockConditional({
           ...rejected("event_conflict"),
           body: { ...rejected("event_conflict").body as JsonObject, version },
-        };
+        });
       }
       for (const candidate of input.candidates) {
         if (candidate.suid <= head) {
           await this.rearmScheduler(txn);
-          return {
+          return blockConditional({
             ...rejected("non_monotonic_suid"),
             body: { ...rejected("non_monotonic_suid").body as JsonObject, version },
-          };
+          });
         }
         head = candidate.suid;
       }
@@ -2398,9 +2646,12 @@ export class TagDurableObject implements DurableObject {
         const event = events[index]!;
         const artifact = artifacts[index]!;
         this.writeCommittedSqlEvent(sql, serviceId, event);
+        if (fault === "after-event") throw new ConditionalAppendCrash(fault);
         this.writeCommittedSqlMembership(sql, serviceId, event.eventId, tag, committedAt);
+        if (fault === "after-membership") throw new ConditionalAppendCrash(fault);
         const obligationWrittenAt = Date.now();
         this.writeCommittedSqlObligation(sql, serviceId, tag, event, artifact, trackSourcePartitionRegistration);
+        if (fault === "after-outbox") throw new ConditionalAppendCrash(fault);
         hopFacts.push({
           eventId: event.eventId,
           suid: event.suid,
@@ -2413,12 +2664,47 @@ export class TagDurableObject implements DurableObject {
         });
       }
       this.writeCommittedSqlHead(sql, serviceId, head, version + 1, committedAt);
+      if (fault === "after-head") throw new ConditionalAppendCrash(fault);
       if (input.faultInjection === "after-append-before-confirm") {
         throw new AppendTransactionFault("Simulated interruption before atomic commit receipt");
       }
+      if (conditional !== undefined) {
+        const winner = events[0]!;
+        const winnerArtifact = artifacts[0]!;
+        const receiptValues = {
+          serviceId: conditional.serviceId,
+          normalizedKey: conditional.normalizedKey,
+          operationFingerprint: conditional.operationFingerprint,
+          eventId: winner.eventId,
+          eventDigest: winnerArtifact.eventDigest,
+        };
+        insertConditionalReceipt(sql, receiptValues);
+        if (fault === "after-conditional-receipt") throw new ConditionalAppendCrash(fault);
+        if (fault === "duplicate-receipt") insertConditionalReceipt(sql, { ...receiptValues });
+      }
       this.writeCommittedSqlReceipt(sql, input, committedAt, events.length, head, confirmsReservation, version + 1);
+      if (fault === "after-commit-receipt") throw new ConditionalAppendCrash(fault);
       if (confirmsReservation) sql.exec("DELETE FROM tag_reservation WHERE singleton = 1");
       await this.rearmScheduler(txn);
+      if (conditional !== undefined) {
+        const winner = events[0]!;
+        const facts: ConditionalWinnerFacts = {
+          serviceId: conditional.serviceId,
+          tag,
+          normalizedKey: conditional.normalizedKey,
+          operationFingerprint: conditional.operationFingerprint,
+          eventId: winner.eventId,
+          suid: winner.suid,
+          payload: winner.payload,
+          eventType: winner.eventType,
+          attemptId: winner.attemptId,
+          timestamp: winner.timestamp,
+          provenance: "g32",
+          allocatorLineageId: winner.allocatorLineageId,
+          eventDigest: artifacts[0]!.eventDigest,
+        };
+        return { status: 201, body: { status: "appended", facts }, hopFacts };
+      }
       return {
         status: 201,
         body: {
@@ -2431,6 +2717,12 @@ export class TagDurableObject implements DurableObject {
       };
     });
     return result;
+    } catch (failure) {
+      if (failure instanceof ConditionalReceiptUniquenessFault && conditional !== undefined) {
+        return recoverConditionalReceipt(this.sqlStorage(), tag, conditional);
+      }
+      throw failure;
+    }
   }
 
   /**
