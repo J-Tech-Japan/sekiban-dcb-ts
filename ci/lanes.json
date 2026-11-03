@@ -143,7 +143,8 @@
         {"id": "query-portable", "command": "npm run test:query:portable"},
         {"id": "query-activation", "command": "npm run test:query:activation"},
         {"id": "query-client", "command": "npm run test:query:client"},
-        {"id": "conditional-commit-primitives", "command": "npm run test:conditional-commit:primitives"}
+        {"id": "conditional-commit-primitives", "command": "npm run test:conditional-commit:primitives"},
+        {"id": "conditional-commit-authority", "command": "npm run test:conditional-commit:authority"}
       ]
     },
     {
