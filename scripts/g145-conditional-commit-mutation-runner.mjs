@@ -146,6 +146,16 @@ const mutants = [
     from: "closedKeys(value, APPEND_KEYS)",
     to: "closedKeys(value, APPEND_KEYS, [\"fault\"])",
   },
+  {
+    name: "terminal-before-preflight",
+    file: "tag",
+    from: `  const decided = await conditionalRouteTerminal(host, parsed);
+  if (decided !== undefined) return decided;
+  const doorbellPreflight = host.doorbellPreflight();`,
+    to: `  const doorbellPreflight = host.doorbellPreflight();
+  const decided = await conditionalRouteTerminal(host, parsed);
+  if (decided !== undefined) return decided;`,
+  },
 ];
 
 function copyTree(target) {

@@ -60,6 +60,18 @@ function appendBody(service: string, tag: string, key: string, fingerprint: stri
   };
 }
 
+const PREFLIGHT_COUNTS = Symbol.for("sekiban.dcb.conditional-preflight-counts");
+
+interface PreflightProbe extends Record<symbol, { doorbell: number; registration: number }> {
+  directDoorbellPreflight(): unknown;
+  ensureSourcePartitionBeforeFirstAppend(tag: string, serviceId: string): Promise<unknown>;
+}
+
+interface MissingSqlProbe {
+  ctx: { storage: DurableObjectStorage & { sql: { exec(query: string): { toArray(): Array<{ count?: number | bigint }> } } } };
+  heldSql: { exec(query: string): { toArray(): Array<{ count?: number | bigint }> } };
+}
+
 async function plantFault(service: string, tag: string, fault: string): Promise<void> {
   await runInDurableObject(tagStub(service, tag), async (instance) => {
     (instance as unknown as Record<symbol, string>)[Symbol.for("sekiban.dcb.conditional-append-fault")] = fault;
@@ -153,7 +165,8 @@ describe("conditional receipt schema", () => {
     ensureConditionalReceiptSchema(syncStorage);
     ensureConditionalReceiptSchema(syncStorage);
     expect(ddlRuns).toBe(1);
-    expect(() => ensureConditionalReceiptSchema({ sql: storage.sql } as unknown as ConditionalSyncStorage)).toThrow(ConditionalReceiptUnsupported);
+    expect(() => ensureConditionalReceiptSchema({ sql: storage.sql } as unknown as ConditionalSyncStorage), "missing transactionSync").toThrow(ConditionalReceiptUnsupported);
+    expect(() => ensureConditionalReceiptSchema({} as unknown as ConditionalSyncStorage), "missing sql").toThrow(ConditionalReceiptUnsupported);
     const cases: Array<[string, (rows: Map<string, Record<string, unknown>[]>) => void]> = [
       ["extra column", (rows) => rows.get("table_info")?.push({ cid: 5, name: "extra", type: "TEXT", notnull: 1, dflt_value: null, pk: 0 })],
       ["absent column", (rows) => { rows.get("table_info")!.splice(1, 1); }],
@@ -426,6 +439,82 @@ describe("conditional tag authority", () => {
       return { events: eventCount, receipts: receiptCount };
     });
     expect(stored).toEqual({ events: 0, receipts: 0 });
+  });
+
+  it("resolves a stored winner before preflight and registration", async () => {
+    const service = serviceId();
+    const tag = "Order:terminal-preflight";
+    const first = await tagStub(service, tag).fetch(tagRequest(
+      service, tag, "/__internal/conditional/append", appendBody(service, tag, "winner", FINGERPRINT_A, "preflight-1", "40"),
+    ));
+    expect(first.status).toBe(201);
+    await runInDurableObject(tagStub(service, tag), async (instance) => {
+      const target = instance as unknown as PreflightProbe;
+      const counts = { doorbell: 0, registration: 0 };
+      target[PREFLIGHT_COUNTS] = counts;
+      const doorbell = target.directDoorbellPreflight.bind(instance);
+      const register = target.ensureSourcePartitionBeforeFirstAppend.bind(instance);
+      target.directDoorbellPreflight = () => {
+        counts.doorbell += 1;
+        return doorbell();
+      };
+      target.ensureSourcePartitionBeforeFirstAppend = async (partitionTag, partitionServiceId) => {
+        counts.registration += 1;
+        return register(partitionTag, partitionServiceId);
+      };
+    });
+    const replay = await tagStub(service, tag).fetch(tagRequest(
+      service, tag, "/__internal/conditional/append", appendBody(service, tag, "winner", FINGERPRINT_A, "preflight-2", "41"),
+    ));
+    expect(replay.status).toBe(200);
+    const counts = await runInDurableObject(tagStub(service, tag), async (instance) => (
+      instance as unknown as PreflightProbe
+    )[PREFLIGHT_COUNTS]);
+    expect(counts).toEqual({ doorbell: 0, registration: 0 });
+  });
+
+  it("does not record source registration when the composition is unconfigured", async () => {
+    const service = serviceId();
+    const tag = "Order:unconfigured";
+    await runInDurableObject(tagStub(service, tag), async (instance) => {
+      (instance as unknown as { env: { D1?: unknown } }).env.D1 = undefined;
+    });
+    const appended = await tagStub(service, tag).fetch(tagRequest(
+      service, tag, "/__internal/conditional/append", appendBody(service, tag, "plain", FINGERPRINT_A, "plain-1", "30"),
+    ));
+    expect(appended.status).toBe(201);
+    const registered = await runInDurableObject(tagStub(service, tag), async (_instance, state) => {
+      const row = state.storage.sql.exec("SELECT COUNT(*) AS count FROM tag_source_partition_registration").toArray()[0] as { count?: number | bigint } | undefined;
+      return Number(row?.count ?? 0);
+    });
+    expect(registered).toBe(0);
+  });
+
+  it("maps storage without SQL to unsupported without a mutation", async () => {
+    const service = serviceId();
+    const tag = "Order:missing-sql";
+    await runInDurableObject(tagStub(service, tag), async (instance) => {
+      const target = instance as unknown as MissingSqlProbe;
+      const storage = target.ctx.storage;
+      target.heldSql = storage.sql;
+      const proxied = new Proxy(storage, {
+        get(inner, property, receiver) {
+          if (property === "sql") return undefined;
+          const value = Reflect.get(inner, property, receiver);
+          return typeof value === "function" ? value.bind(inner) : value;
+        },
+      });
+      Object.defineProperty(target.ctx, "storage", { configurable: true, value: proxied });
+    });
+    const response = await tagStub(service, tag).fetch(tagRequest(
+      service, tag, "/__internal/conditional/append", appendBody(service, tag, "missing", FINGERPRINT_A, "missing-1", "20"),
+    ));
+    expect(response.status).toBe(501);
+    const events = await runInDurableObject(tagStub(service, tag), async (instance) => {
+      const row = (instance as unknown as MissingSqlProbe).heldSql.exec("SELECT COUNT(*) AS count FROM tag_event").toArray()[0];
+      return Number(row?.count ?? 0);
+    });
+    expect(events).toBe(0);
   });
 
   it("rejects one overtaken sortable id without a second event", async () => {

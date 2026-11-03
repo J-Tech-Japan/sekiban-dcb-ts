@@ -1168,7 +1168,8 @@ function takeConditionalAppendFault(target: object): ConditionalAppendFault | un
 interface ConditionalTagHost {
   readonly storage: DurableObjectStorage;
   sql(): SqlStorage | undefined;
-  ensurePartition(tag: string, serviceId: string): Promise<unknown>;
+  doorbellPreflight(): ReturnType<typeof preflightDirectDoorbell>;
+  ensurePartition(tag: string, serviceId: string): Promise<"existing" | "newly-registered" | "unconfigured">;
   append(
     tag: string,
     input: AppendInput,
@@ -1222,6 +1223,23 @@ async function resolveConditionalTag(
   }
 }
 
+async function conditionalRouteTerminal(host: ConditionalTagHost, parsed: ConditionalAppendBody): Promise<Response | undefined> {
+  const sql = host.sql();
+  if (sql === undefined) return json({ status: "unsupported" }, 501);
+  try {
+    const terminal = await readConditionalTerminal(sql, {
+      serviceId: parsed.serviceId,
+      tag: parsed.tag,
+      normalizedKey: parsed.normalizedKey,
+    });
+    if (terminal.kind === "absent") return undefined;
+    return conditionalTerminalResponse(terminal, parsed.operationFingerprint);
+  } catch (failure) {
+    if (failure instanceof ConditionalReceiptUnsupported) return json({ status: "unsupported" }, 501);
+    return json({ status: "in_doubt", reason: "winner_unreadable" }, 503);
+  }
+}
+
 async function appendConditionalTag(
   host: ConditionalTagHost,
   tag: string,
@@ -1234,10 +1252,17 @@ async function appendConditionalTag(
   }
   const prepared = prepareConditionalSchema(host.storage);
   if (prepared !== undefined) return prepared;
+  const decided = await conditionalRouteTerminal(host, parsed);
+  if (decided !== undefined) return decided;
+  const doorbellPreflight = host.doorbellPreflight();
+  if (doorbellPreflight.status === "fail-fast") {
+    throw new Error(`direct_doorbell_preflight_failed:${doorbellPreflight.reason}`);
+  }
   const scopedServiceId = parsed.serviceId;
+  let registration: "existing" | "newly-registered" | "unconfigured" = "unconfigured";
   if (scopedServiceId.length > 0) {
     try {
-      await host.ensurePartition(tag, scopedServiceId);
+      registration = await host.ensurePartition(tag, scopedServiceId);
     } catch (failure) {
       if (failure instanceof PartitionRegistrationUnavailableError) {
         return json({ status: "in_doubt", reason: "live_precondition_blocked" }, 503);
@@ -1246,7 +1271,7 @@ async function appendConditionalTag(
     }
   }
   try {
-    const result = await host.append(tag, conditionalAppendInput(parsed), scopedServiceId, true, {
+    const result = await host.append(tag, conditionalAppendInput(parsed), scopedServiceId, registration !== "unconfigured", {
       serviceId: parsed.serviceId,
       normalizedKey: parsed.normalizedKey,
       operationFingerprint: parsed.operationFingerprint,
@@ -1340,6 +1365,7 @@ export class TagDurableObject implements DurableObject {
       return handleConditionalTagRoute({
         storage: this.ctx.storage,
         sql: () => this.sqlStorage(),
+        doorbellPreflight: () => this.directDoorbellPreflight(),
         ensurePartition: (partitionTag, partitionServiceId) => this.ensureSourcePartitionBeforeFirstAppend(partitionTag, partitionServiceId),
         append: (appendTag, input, appendServiceId, track, conditional) => this.appendSql(appendTag, input, appendServiceId, track, conditional),
       }, request, url.pathname, tag, serviceId);

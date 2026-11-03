@@ -98,6 +98,14 @@ check("bootstrap-state-fail-closed", bootstrapRead.includes("response.status >= 
   && worker.includes("Object.keys(value).length !== COORDINATOR_KEYS.length")
   && worker.includes('record.status === "EMPTY" && !emptyFacts(record)'));
 check("append-body-closed", !appendParser.includes("fault"));
+const conditionalAppend = between(tag, "async function appendConditionalTag(", "async function handleConditionalTagRoute(", "conditional append route");
+check("terminal-before-preflight", order(conditionalAppend, [
+  "prepareConditionalSchema(host.storage)",
+  "conditionalRouteTerminal(",
+  "host.doorbellPreflight(",
+  "host.ensurePartition(",
+  "host.append(",
+]));
 
 if (failures.length > 0) {
   for (const failure of failures) console.error(`FAIL ${failure}`);
