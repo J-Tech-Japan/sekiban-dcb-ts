@@ -128,6 +128,24 @@ const mutants = [
     from: 'commit: (request: CommitEnvelope, signal?: AbortSignal) => call("/api/sekiban/serialized/commit", v1Envelope(request), signal),',
     to: 'commit: (request: CommitEnvelope, signal?: AbortSignal) => call("/api/sekiban/serialized/commit", v1Envelope(request), signal),\n    conditionalCommit: (request: CommitEnvelope, signal?: AbortSignal) => call("/api/sekiban/serialized/conditional-commit", request, signal),',
   },
+  {
+    name: "stored-event-parser",
+    file: "worker",
+    from: "const storedParser = prepared.parsers[storedName];",
+    to: "const storedParser = prepared.parser(JSON.parse(facts.payload));",
+  },
+  {
+    name: "bootstrap-state-fail-closed",
+    file: "worker",
+    from: "response.status >= 500",
+    to: "true",
+  },
+  {
+    name: "append-body-closed",
+    file: "receipt",
+    from: "closedKeys(value, APPEND_KEYS)",
+    to: "closedKeys(value, APPEND_KEYS, [\"fault\"])",
+  },
 ];
 
 function copyTree(target) {

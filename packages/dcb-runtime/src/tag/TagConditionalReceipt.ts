@@ -86,7 +86,6 @@ export interface ConditionalCandidateFacts {
 
 export interface ConditionalAppendBody extends ConditionalResolveBody {
   readonly candidate: ConditionalCandidateFacts;
-  readonly fault?: ConditionalAppendFault;
 }
 
 export interface ConditionalWinnerFacts {
@@ -335,7 +334,7 @@ export function parseConditionalResolveBody(value: unknown): ConditionalResolveB
 }
 
 export function parseConditionalAppendBody(value: unknown): ConditionalAppendBody | undefined {
-  if (!isPlainRecord(value) || !closedKeys(value, APPEND_KEYS, ["fault"])) return undefined;
+  if (!isPlainRecord(value) || !closedKeys(value, APPEND_KEYS)) return undefined;
   const identity = parseResolveFields(value);
   if (identity === undefined || !isPlainRecord(value.candidate) || !closedKeys(value.candidate, CANDIDATE_KEYS)) {
     return undefined;
@@ -376,13 +375,6 @@ export function parseConditionalAppendBody(value: unknown): ConditionalAppendBod
   } catch {
     return undefined;
   }
-  let fault: ConditionalAppendFault | undefined;
-  if (Object.prototype.hasOwnProperty.call(value, "fault")) {
-    if (typeof value.fault !== "string" || !(CONDITIONAL_APPEND_FAULTS as readonly string[]).includes(value.fault)) {
-      return undefined;
-    }
-    fault = value.fault as ConditionalAppendFault;
-  }
   return {
     ...identity,
     candidate: {
@@ -397,7 +389,6 @@ export function parseConditionalAppendBody(value: unknown): ConditionalAppendBod
       provenance: "g32",
       timestamp,
     },
-    ...(fault === undefined ? {} : { fault }),
   };
 }
 

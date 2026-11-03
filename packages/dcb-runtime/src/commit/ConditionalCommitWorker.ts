@@ -51,7 +51,7 @@ interface PreparedOperation {
   readonly payloadText: string;
   readonly canonicalPayload: Uint8Array;
   readonly operationFingerprint: string;
-  readonly parser: (payload: unknown) => unknown;
+  readonly parsers: Readonly<Record<string, (payload: unknown) => unknown>>;
 }
 
 interface WinnerFacts {
@@ -259,7 +259,11 @@ export class ConditionalWriteExecutor {
     }
     const drafted = this.prepareOperation(parsed, serviceId, hooks.registeredEventParsers ?? {});
     if (drafted instanceof Response) return drafted;
-    const prepared: PreparedOperation = { ...drafted, operationFingerprint: await this.fingerprint(drafted) };
+    const prepared: PreparedOperation = {
+      ...drafted,
+      operationFingerprint: await this.fingerprint(drafted),
+      parsers: hooks.registeredEventParsers ?? {},
+    };
     if (!this.capabilityAuthorizes()) return unsupportedResponse();
     const resolved = await this.resolveConditionalTag(env, prepared, hooks);
     if (resolved instanceof Response) return resolved;
@@ -321,7 +325,7 @@ export class ConditionalWriteExecutor {
     parsed: ReturnType<typeof parseSerializedConditionalCommitRequestBody>,
     serviceId: string,
     parsers: Readonly<Record<string, (payload: unknown) => unknown>>,
-  ): Omit<PreparedOperation, "operationFingerprint"> | Response {
+  ): Omit<PreparedOperation, "operationFingerprint" | "parsers"> | Response {
     const eventPayloadName = parsed.eventCandidate.eventPayloadName;
     const parser = parsers[eventPayloadName];
     if (parser === undefined) return validationResponse("conditional_commit_event_not_registered");
@@ -359,11 +363,10 @@ export class ConditionalWriteExecutor {
       payloadBase64: parsed.eventCandidate.payload,
       payloadText,
       canonicalPayload,
-      parser,
     };
   }
 
-  private async fingerprint(prepared: Omit<PreparedOperation, "operationFingerprint">): Promise<string> {
+  private async fingerprint(prepared: Omit<PreparedOperation, "operationFingerprint" | "parsers">): Promise<string> {
     return computeConditionalCommitFingerprint({
       serviceId: prepared.serviceId,
       idempotencyKey: prepared.normalizedKey,
@@ -433,23 +436,21 @@ export class ConditionalWriteExecutor {
     } catch {
       return { kind: "retry", reason: "committed_state_unverified" };
     }
-    if (!response.ok) return { kind: "retry", reason: "committed_state_unverified" };
+    if (!response.ok) {
+      return response.status >= 500
+        ? { kind: "retry", reason: "committed_state_unverified" }
+        : { kind: "unsupported" };
+    }
     let body: unknown;
     try {
       body = await response.json();
     } catch {
       return { kind: "unsupported" };
     }
-    if (!isRecord(body) || body.schemaVersion !== 1 || body.targetServiceId !== serviceId) return { kind: "unsupported" };
-    if (typeof body.leaseEpoch !== "number" || !Number.isSafeInteger(body.leaseEpoch) || body.leaseEpoch < 0) {
-      return { kind: "unsupported" };
-    }
-    if (!(body.leaseUntil === null || (typeof body.leaseUntil === "number" && Number.isSafeInteger(body.leaseUntil)))) {
-      return { kind: "unsupported" };
-    }
-    if (typeof body.normalInFlight !== "number" || !Number.isSafeInteger(body.normalInFlight)) return { kind: "unsupported" };
-    if (body.status === "EMPTY") return { kind: "empty" };
-    if (body.status === "PLANNED" || body.status === "IMPORTING" || body.status === "VERIFYING") {
+    const coordinator = parseCoordinatorState(body, serviceId);
+    if (coordinator === undefined) return { kind: "unsupported" };
+    if (coordinator.status === "EMPTY") return { kind: "empty" };
+    if (coordinator.status === "PLANNED" || coordinator.status === "IMPORTING" || coordinator.status === "VERIFYING") {
       return { kind: "retry", reason: "bootstrap_epoch_changed" };
     }
     return { kind: "unsupported" };
@@ -699,39 +700,19 @@ export class ConditionalWriteExecutor {
   }
 
   private async revalidateFacts(prepared: PreparedOperation, facts: WinnerFacts): Promise<"same" | "conflict" | "corrupt"> {
-    if (
-      facts.serviceId !== prepared.serviceId
-      || facts.tag !== prepared.tag
-      || facts.normalizedKey !== prepared.normalizedKey
-      || facts.payload !== prepared.payloadText
-      || facts.eventType !== canonicalEventType(prepared.eventPayloadName)
-    ) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(facts.payload);
-        const domain = prepared.parser(parsed);
-        const canonical = canonicalizeConditionalCommitPayload(domain);
-        const fingerprint = await computeConditionalCommitFingerprint({
-          serviceId: facts.serviceId,
-          idempotencyKey: facts.normalizedKey,
-          eventPayloadName: parseCanonicalEventKey(facts.eventType).eventPayloadName,
-          canonicalPayload: canonical,
-          tag: facts.tag,
-        });
-        if (fingerprint !== facts.operationFingerprint) return "corrupt";
-      } catch {
-        return "corrupt";
-      }
-      if (facts.operationFingerprint === prepared.operationFingerprint) return "same";
-      return "conflict";
+    if (facts.serviceId !== prepared.serviceId || facts.tag !== prepared.tag || facts.normalizedKey !== prepared.normalizedKey) {
+      return "corrupt";
     }
     try {
-      const domain = prepared.parser(JSON.parse(facts.payload));
+      const storedName = parseCanonicalEventKey(facts.eventType).eventPayloadName;
+      const storedParser = prepared.parsers[storedName];
+      if (storedParser === undefined) return "corrupt";
+      const domain = storedParser(JSON.parse(facts.payload));
       const canonical = canonicalizeConditionalCommitPayload(domain);
       const fingerprint = await computeConditionalCommitFingerprint({
         serviceId: facts.serviceId,
         idempotencyKey: facts.normalizedKey,
-        eventPayloadName: prepared.eventPayloadName,
+        eventPayloadName: storedName,
         canonicalPayload: canonical,
         tag: facts.tag,
       });
@@ -741,4 +722,109 @@ export class ConditionalWriteExecutor {
       return "corrupt";
     }
   }
+}
+
+const COORDINATOR_KEYS = [
+  "schemaVersion",
+  "status",
+  "importId",
+  "targetServiceId",
+  "allocatorLineageId",
+  "source",
+  "digest",
+  "manifest",
+  "progress",
+  "leaseEpoch",
+  "leaseUntil",
+  "failure",
+  "readyAt",
+  "normalInFlight",
+  "normalCommands",
+  "releasedCommands",
+  "writePermits",
+  "verifiedImportId",
+  "verifiedLeaseEpoch",
+  "storeCompletion",
+] as const;
+
+const COORDINATOR_STATUSES = ["EMPTY", "PLANNED", "IMPORTING", "VERIFYING", "READY", "FAILED"] as const;
+
+function nonNegative(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function nullableText(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function closedCoordinator(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value) || Object.keys(value).length !== COORDINATOR_KEYS.length) return undefined;
+  if (COORDINATOR_KEYS.some((key) => !Object.prototype.hasOwnProperty.call(value, key))) return undefined;
+  return value;
+}
+
+function stringMap(value: unknown, values: (item: unknown) => boolean): boolean {
+  return isRecord(value) && Object.values(value).every(values);
+}
+
+function manifestRecord(value: unknown): boolean {
+  if (value === null) return true;
+  if (!isRecord(value)) return false;
+  const keys = ["format", "version", "source", "target", "highWatermark", "eventCount", "tagCounts", "contentDigest", "canonicalization"];
+  if (Object.keys(value).length !== keys.length || keys.some((key) => !Object.prototype.hasOwnProperty.call(value, key))) return false;
+  const target = value.target;
+  return value.format === "sekiban-dcb-bootstrap"
+    && value.version === 1
+    && value.canonicalization === "utf8-json-sorted-keys-v1"
+    && sourceRecord(value.source)
+    && value.source !== null
+    && isRecord(target)
+    && Object.keys(target).length === 2
+    && typeof target.serviceId === "string"
+    && typeof target.allocatorLineageId === "string"
+    && nullableText(value.highWatermark)
+    && nonNegative(value.eventCount)
+    && stringMap(value.tagCounts, nonNegative)
+    && typeof value.contentDigest === "string";
+}
+
+function sourceRecord(value: unknown): boolean {
+  if (value === null) return true;
+  return isRecord(value)
+    && Object.keys(value).length === 2
+    && typeof value.serviceId === "string"
+    && typeof value.lineageId === "string";
+}
+
+function emptyFacts(record: Record<string, unknown>): boolean {
+  return record.importId === null
+    && record.allocatorLineageId === null
+    && record.source === null
+    && record.digest === null
+    && record.manifest === null
+    && record.failure === null
+    && record.readyAt === null
+    && record.verifiedImportId === null
+    && record.verifiedLeaseEpoch === null
+    && record.storeCompletion === null
+    && isRecord(record.progress)
+    && Object.keys(record.progress).length === 0;
+}
+
+function parseCoordinatorState(value: unknown, serviceId: string): { readonly status: typeof COORDINATOR_STATUSES[number] } | undefined {
+  const record = closedCoordinator(value);
+  if (record === undefined) return undefined;
+  if (record.schemaVersion !== 1 || record.targetServiceId !== serviceId) return undefined;
+  if (typeof record.status !== "string" || !(COORDINATOR_STATUSES as readonly string[]).includes(record.status)) return undefined;
+  if (!nullableText(record.importId) || !nullableText(record.allocatorLineageId) || !nullableText(record.digest)) return undefined;
+  if (!nullableText(record.failure) || !nullableText(record.readyAt) || !nullableText(record.verifiedImportId)) return undefined;
+  if (!sourceRecord(record.source) || !manifestRecord(record.manifest) || !stringMap(record.progress, nullableText)) return undefined;
+  if (!nonNegative(record.leaseEpoch) || !nonNegative(record.normalInFlight)) return undefined;
+  if (!(record.leaseUntil === null || nonNegative(record.leaseUntil))) return undefined;
+  if (!(record.verifiedLeaseEpoch === null || nonNegative(record.verifiedLeaseEpoch))) return undefined;
+  if (!stringMap(record.normalCommands, nonNegative) || !stringMap(record.releasedCommands, nonNegative)) return undefined;
+  if (!stringMap(record.writePermits, (item) => typeof item === "string")) return undefined;
+  if (!(record.storeCompletion === null || record.storeCompletion === "prepopulated-manifest")) return undefined;
+  if (record.status === "EMPTY" && !emptyFacts(record)) return undefined;
+  return { status: record.status as typeof COORDINATOR_STATUSES[number] };
 }

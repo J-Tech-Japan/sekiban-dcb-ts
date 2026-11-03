@@ -39,7 +39,7 @@ function tagRequest(service: string, tag: string, path: string, body: unknown): 
   });
 }
 
-function appendBody(service: string, tag: string, key: string, fingerprint: string, event: string, suid: string, payload = "{\"n\":1}", fault?: string) {
+function appendBody(service: string, tag: string, key: string, fingerprint: string, event: string, suid: string, payload = "{\"n\":1}") {
   return {
     serviceId: service,
     tag,
@@ -57,8 +57,13 @@ function appendBody(service: string, tag: string, key: string, fingerprint: stri
       provenance: "g32",
       timestamp: G32_FIXTURE_TIMESTAMP,
     },
-    ...(fault === undefined ? {} : { fault }),
   };
+}
+
+async function plantFault(service: string, tag: string, fault: string): Promise<void> {
+  await runInDurableObject(tagStub(service, tag), async (instance) => {
+    (instance as unknown as Record<symbol, string>)[Symbol.for("sekiban.dcb.conditional-append-fault")] = fault;
+  });
 }
 
 async function counts(service: string, tag: string): Promise<{ events: number; memberships: number; outbox: number; receipts: number; commits: number; head: string }> {
@@ -151,21 +156,23 @@ describe("conditional receipt schema", () => {
     expect(() => ensureConditionalReceiptSchema({ sql: storage.sql } as unknown as ConditionalSyncStorage)).toThrow(ConditionalReceiptUnsupported);
     const cases: Array<[string, (rows: Map<string, Record<string, unknown>[]>) => void]> = [
       ["extra column", (rows) => rows.get("table_info")?.push({ cid: 5, name: "extra", type: "TEXT", notnull: 1, dflt_value: null, pk: 0 })],
+      ["absent column", (rows) => { rows.get("table_info")!.splice(1, 1); }],
       ["renamed column", (rows) => { rows.get("table_info")![0]!.name = "service"; }],
       ["reordered column", (rows) => { const columns = rows.get("table_info")!; const [first] = columns.splice(0, 1); columns.push(first!); }],
-      ["typed column", (rows) => { rows.get("table_info")![0]!.type = "INTEGER"; }],
+      ["differently typed column", (rows) => { rows.get("table_info")![0]!.type = "INTEGER"; }],
       ["nullable column", (rows) => { rows.get("table_info")![0]!.notnull = 0; }],
       ["defaulted column", (rows) => { rows.get("table_info")![0]!.dflt_value = "x"; }],
-      ["primary key", (rows) => { rows.get("table_info")![0]!.pk = 0; }],
-      ["extra index", (rows) => rows.get("index_list")?.push({ seq: 2, name: "extra_idx", unique: 0, origin: "c", partial: 0 })],
-      ["unique key", (rows) => { rows.get("index_info(\"sqlite_autoindex_tag_conditional_receipt_2\")")![1]!.name = "normalized_key"; }],
-      ["foreign key", (rows) => { rows.get("foreign_key_list")![1]!.on_delete = "CASCADE"; }],
+      ["keyed primary key", (rows) => { rows.get("table_info")![0]!.pk = 0; }],
+      ["indexed extra index", (rows) => rows.get("index_list")?.push({ seq: 2, name: "extra_idx", unique: 0, origin: "c", partial: 0 })],
+      ["keyed unique columns", (rows) => { rows.get("index_info(\"sqlite_autoindex_tag_conditional_receipt_2\")")![1]!.name = "normalized_key"; }],
+      ["constrained foreign key", (rows) => { rows.get("foreign_key_list")![1]!.on_delete = "CASCADE"; }],
     ];
     for (const [label, mutate] of cases) {
       const rows = validRows();
       mutate(rows);
       expect(() => assertConditionalReceiptShape(fakeSql(rows)), label).toThrow(ConditionalReceiptUnsupported);
     }
+    expect(() => assertConditionalReceiptShape(fakeSql(new Map())), "missing receipt SQL").toThrow(ConditionalReceiptUnsupported);
   });
 });
 
@@ -251,11 +258,12 @@ describe("conditional tag authority", () => {
     expect(mixedStatuses.filter((status) => status === 409)).toHaveLength(2);
     expect(mixedStatuses.filter((status) => status === 200)).toHaveLength(1);
 
+    await plantFault(service, "Order:rollback", "duplicate-receipt");
     const fault = await tagStub(service, "Order:rollback").fetch(tagRequest(
       service,
       "Order:rollback",
       "/__internal/conditional/append",
-      appendBody(service, "Order:rollback", "roll", FINGERPRINT_A, "roll-1", "50", "{\"n\":1}", "duplicate-receipt"),
+      appendBody(service, "Order:rollback", "roll", FINGERPRINT_A, "roll-1", "50", "{\"n\":1}"),
     ));
     expect(fault.status).toBe(503);
     const rolled = await runInDurableObject(tagStub(service, "Order:rollback"), async (_instance, state) => {
@@ -287,9 +295,10 @@ describe("conditional tag authority", () => {
     for (const fault of faults) {
       const service = serviceId();
       const tag = `Order:${fault}`;
+      await plantFault(service, tag, fault);
       const crashed = await tagStub(service, tag).fetch(tagRequest(
         service, tag, "/__internal/conditional/append",
-        appendBody(service, tag, "key", FINGERPRINT_A, fault, "60", "{\"n\":1}", fault),
+        appendBody(service, tag, "key", FINGERPRINT_A, fault, "60", "{\"n\":1}"),
       ));
       expect(crashed.status).not.toBe(201);
       const after = await runInDurableObject(tagStub(service, tag), async (_instance, state) => {
@@ -371,6 +380,52 @@ describe("conditional tag authority", () => {
       service, tag, "/__internal/conditional/append", appendBody(service, tag, "winner", FINGERPRINT_A, "mixed-3", "92"),
     ));
     expect(hidden.status).toBe(200);
+  });
+
+  it("accepts a conditional append after V1 on the same tag", async () => {
+    const service = serviceId();
+    const tag = "Order:v1-first";
+    const seeded = await SELF.fetch(`https://tag.test/tags/${encodeURIComponent(service)}/${encodeURIComponent(tag)}/append`, {
+      method: "POST",
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: service },
+      body: JSON.stringify({
+        attemptId: "v1-first",
+        epoch: 0,
+        candidates: [{
+          eventId: g32EventId("v1-first"),
+          suid: g32Suid("70"),
+          payload: "{\"n\":1}",
+          eventTags: [tag],
+          eventType: "FixtureEvent",
+          provenance: "g32",
+          allocatorLineageId: "conditional-lineage",
+          timestamp: G32_FIXTURE_TIMESTAMP,
+        }],
+      }),
+    });
+    expect(seeded.status).toBe(201);
+    const conditional = await tagStub(service, tag).fetch(tagRequest(
+      service, tag, "/__internal/conditional/append", appendBody(service, tag, "after-v1", FINGERPRINT_A, "after-v1", "90"),
+    ));
+    expect(conditional.status).toBe(201);
+    expect((await counts(service, tag)).events).toBe(2);
+  });
+
+  it("rejects an append body that carries a fault member", async () => {
+    const service = serviceId();
+    const tag = "Order:closed";
+    const rejected = await tagStub(service, tag).fetch(tagRequest(
+      service, tag, "/__internal/conditional/append", { ...appendBody(service, tag, "closed", FINGERPRINT_A, "closed", "40"), fault: "after-event" },
+    ));
+    expect(rejected.status).toBe(400);
+    const stored = await runInDurableObject(tagStub(service, tag), async (_instance, state) => {
+      const events = state.storage.sql.exec("SELECT name FROM sqlite_master WHERE name = 'tag_event'").toArray();
+      const receipts = state.storage.sql.exec("SELECT name FROM sqlite_master WHERE name = 'tag_conditional_receipt'").toArray();
+      const eventCount = events.length === 0 ? 0 : Number(state.storage.sql.exec("SELECT COUNT(*) AS count FROM tag_event").toArray()[0]?.count ?? 0);
+      const receiptCount = receipts.length === 0 ? 0 : Number(state.storage.sql.exec("SELECT COUNT(*) AS count FROM tag_conditional_receipt").toArray()[0]?.count ?? 0);
+      return { events: eventCount, receipts: receiptCount };
+    });
+    expect(stored).toEqual({ events: 0, receipts: 0 });
   });
 
   it("rejects one overtaken sortable id without a second event", async () => {

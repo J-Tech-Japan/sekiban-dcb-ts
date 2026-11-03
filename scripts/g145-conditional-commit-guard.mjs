@@ -90,6 +90,14 @@ check("no-built-in-conditional-transport", !client.includes("conditional-commit"
   && !executor.includes("conditional-commit")
   && !client.includes("conditionalCommit:")
   && !executor.includes("conditionalCommit:"));
+const revalidate = between(worker, "private async revalidateFacts(", "const COORDINATOR_KEYS", "stored parser");
+const bootstrapRead = between(worker, "private async readBootstrapState(", "private bootstrapStub(", "bootstrap read");
+const appendParser = between(receipt, "export function parseConditionalAppendBody(", "function countRows(", "append parser");
+check("stored-event-parser", revalidate.includes("prepared.parsers[storedName]"));
+check("bootstrap-state-fail-closed", bootstrapRead.includes("response.status >= 500")
+  && worker.includes("Object.keys(value).length !== COORDINATOR_KEYS.length")
+  && worker.includes('record.status === "EMPTY" && !emptyFacts(record)'));
+check("append-body-closed", !appendParser.includes("fault"));
 
 if (failures.length > 0) {
   for (const failure of failures) console.error(`FAIL ${failure}`);

@@ -48,6 +48,7 @@ import {
 import { canonicalDeclaredTagSet, eventDigestBytes, eventDigestHex } from "./EventDigest";
 import {
   candidateEventExists,
+  CONDITIONAL_APPEND_FAULTS,
   ConditionalAppendCrash,
   ConditionalReceiptUniquenessFault,
   ConditionalReceiptUnsupported,
@@ -1154,6 +1155,16 @@ function overlappingFenceReason(record: TagRecord, reason: string): string | und
   return undefined;
 }
 
+const CONDITIONAL_APPEND_FAULT = Symbol.for("sekiban.dcb.conditional-append-fault");
+
+function takeConditionalAppendFault(target: object): ConditionalAppendFault | undefined {
+  const holder = target as Record<symbol, unknown>;
+  const value = holder[CONDITIONAL_APPEND_FAULT];
+  delete holder[CONDITIONAL_APPEND_FAULT];
+  if (typeof value !== "string" || !(CONDITIONAL_APPEND_FAULTS as readonly string[]).includes(value)) return undefined;
+  return value as ConditionalAppendFault;
+}
+
 interface ConditionalTagHost {
   readonly storage: DurableObjectStorage;
   sql(): SqlStorage | undefined;
@@ -1167,7 +1178,6 @@ interface ConditionalTagHost {
       readonly serviceId: string;
       readonly normalizedKey: string;
       readonly operationFingerprint: string;
-      readonly fault?: ConditionalAppendFault;
     },
   ): Promise<OperationResult>;
 }
@@ -1240,12 +1250,11 @@ async function appendConditionalTag(
       serviceId: parsed.serviceId,
       normalizedKey: parsed.normalizedKey,
       operationFingerprint: parsed.operationFingerprint,
-      fault: parsed.fault,
     });
     return json(result.body, result.status);
   } catch (failure) {
     if (failure instanceof ConditionalAppendCrash) {
-      return json({ status: "in_doubt", reason: "live_precondition_blocked", fault: failure.fault }, 503);
+      return json({ status: "in_doubt", reason: "live_precondition_blocked" }, 503);
     }
     if (failure instanceof ConditionalReceiptUnsupported) return json({ status: "unsupported" }, 501);
     throw failure;
@@ -2420,9 +2429,9 @@ export class TagDurableObject implements DurableObject {
       readonly serviceId: string;
       readonly normalizedKey: string;
       readonly operationFingerprint: string;
-      readonly fault?: ConditionalAppendFault;
     },
   ): Promise<OperationResult> {
+    const fault = conditional === undefined ? undefined : takeConditionalAppendFault(this);
     const serviceId = suppliedServiceId ?? "";
     const events: TagEvent[] = input.candidates.map((candidate) => ({
       attemptId: input.attemptId,
@@ -2611,12 +2620,12 @@ export class TagDurableObject implements DurableObject {
         const event = events[index]!;
         const artifact = artifacts[index]!;
         this.writeCommittedSqlEvent(sql, serviceId, event);
-        if (conditional?.fault === "after-event") throw new ConditionalAppendCrash(conditional.fault);
+        if (fault === "after-event") throw new ConditionalAppendCrash(fault);
         this.writeCommittedSqlMembership(sql, serviceId, event.eventId, tag, committedAt);
-        if (conditional?.fault === "after-membership") throw new ConditionalAppendCrash(conditional.fault);
+        if (fault === "after-membership") throw new ConditionalAppendCrash(fault);
         const obligationWrittenAt = Date.now();
         this.writeCommittedSqlObligation(sql, serviceId, tag, event, artifact, trackSourcePartitionRegistration);
-        if (conditional?.fault === "after-outbox") throw new ConditionalAppendCrash(conditional.fault);
+        if (fault === "after-outbox") throw new ConditionalAppendCrash(fault);
         hopFacts.push({
           eventId: event.eventId,
           suid: event.suid,
@@ -2629,7 +2638,7 @@ export class TagDurableObject implements DurableObject {
         });
       }
       this.writeCommittedSqlHead(sql, serviceId, head, version + 1, committedAt);
-      if (conditional?.fault === "after-head") throw new ConditionalAppendCrash(conditional.fault);
+      if (fault === "after-head") throw new ConditionalAppendCrash(fault);
       if (input.faultInjection === "after-append-before-confirm") {
         throw new AppendTransactionFault("Simulated interruption before atomic commit receipt");
       }
@@ -2644,11 +2653,11 @@ export class TagDurableObject implements DurableObject {
           eventDigest: winnerArtifact.eventDigest,
         };
         insertConditionalReceipt(sql, receiptValues);
-        if (conditional.fault === "after-conditional-receipt") throw new ConditionalAppendCrash(conditional.fault);
-        if (conditional.fault === "duplicate-receipt") insertConditionalReceipt(sql, { ...receiptValues });
+        if (fault === "after-conditional-receipt") throw new ConditionalAppendCrash(fault);
+        if (fault === "duplicate-receipt") insertConditionalReceipt(sql, { ...receiptValues });
       }
       this.writeCommittedSqlReceipt(sql, input, committedAt, events.length, head, confirmsReservation, version + 1);
-      if (conditional?.fault === "after-commit-receipt") throw new ConditionalAppendCrash(conditional.fault);
+      if (fault === "after-commit-receipt") throw new ConditionalAppendCrash(fault);
       if (confirmsReservation) sql.exec("DELETE FROM tag_reservation WHERE singleton = 1");
       await this.rearmScheduler(txn);
       if (conditional !== undefined) {

@@ -28,7 +28,7 @@ function serviceId(): string {
   return `rt${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`;
 }
 
-function requestFor(service: string, key: string, tag: string, payload: unknown = { n: 1 }): Request {
+function requestFor(service: string, key: string, tag: string, payload: unknown = { n: 1 }, eventPayloadName = "FixtureEvent"): Request {
   return new Request("https://conditional.test/conditional", {
     method: "POST",
     headers: {
@@ -40,11 +40,94 @@ function requestFor(service: string, key: string, tag: string, payload: unknown 
       idempotencyKey: key,
       eventCandidate: {
         payload: btoa(JSON.stringify(payload)),
-        eventPayloadName: "FixtureEvent",
+        eventPayloadName,
         tags: [tag],
       },
     }),
   });
+}
+
+function coordinatorRecord(service: string, status: string, patch: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    status,
+    importId: null,
+    targetServiceId: service,
+    allocatorLineageId: null,
+    source: null,
+    digest: null,
+    manifest: null,
+    progress: {},
+    leaseEpoch: 0,
+    leaseUntil: null,
+    failure: null,
+    readyAt: null,
+    normalInFlight: 0,
+    normalCommands: {},
+    releasedCommands: {},
+    writePermits: {},
+    verifiedImportId: null,
+    verifiedLeaseEpoch: null,
+    storeCompletion: null,
+    ...patch,
+  };
+}
+
+function isKind(payload: unknown, kind: string): boolean {
+  return typeof payload === "object" && payload !== null && (payload as { kind?: unknown }).kind === kind;
+}
+
+function without(record: Record<string, unknown>, key: string): Record<string, unknown> {
+  const copy = { ...record };
+  delete copy[key];
+  return copy;
+}
+
+function watchedEnv(counts: { append: number; allocate: number }, missingRoute = false): CommitWorkerEnv {
+  const tag = workerEnv().TAG;
+  const allocator = workerEnv().ALLOCATOR;
+  const bootstrap = bootstrapNamespace();
+  const namespaceMethods = (namespace: DurableObjectNamespace) => ({
+    idFromName: (name: string) => namespace.idFromName(name),
+    idFromString: (id: string) => namespace.idFromString(id),
+    newUniqueId: (options?: DurableObjectNamespaceNewUniqueIdOptions) => namespace.newUniqueId(options),
+    jurisdiction: (jurisdiction: DurableObjectJurisdiction) => namespace.jurisdiction(jurisdiction),
+  });
+  return {
+    ...workerEnv(),
+    TAG: {
+      get(id: DurableObjectId) {
+        const stub = tag.get(id);
+        return {
+          fetch: async (input: Request) => {
+            if (new URL(input.url).pathname.endsWith("/append")) counts.append += 1;
+            return stub.fetch(input);
+          },
+        };
+      },
+      ...namespaceMethods(tag),
+    } as unknown as DurableObjectNamespace,
+    ALLOCATOR: {
+      get(id: DurableObjectId) {
+        const stub = allocator.get(id);
+        return {
+          fetch: async (input: Request) => {
+            if (new URL(input.url).pathname === "/allocate") counts.allocate += 1;
+            return stub.fetch(input);
+          },
+        };
+      },
+      ...namespaceMethods(allocator),
+    } as unknown as DurableObjectNamespace,
+    ...(missingRoute
+      ? {
+          BOOTSTRAP: {
+            get: () => ({ fetch: async () => new Response("missing", { status: 404 }) }),
+            ...namespaceMethods(bootstrap),
+          } as unknown as DurableObjectNamespace,
+        }
+      : {}),
+  };
 }
 
 function workerEnv(): CommitWorkerEnv {
@@ -205,16 +288,7 @@ describe("conditional commit runtime", () => {
         serviceId: blockedService, doClass: "bootstrap", identity: "coordinator",
       }));
       await runInDurableObject(bootstrap, async (_instance, state) => {
-        await state.storage.put("bootstrap-control", {
-          schemaVersion: 1,
-          status,
-          importId: null,
-          targetServiceId: blockedService,
-          leaseEpoch: 0,
-          leaseUntil: null,
-          normalInFlight: 0,
-          writePermits: {},
-        });
+        await state.storage.put("bootstrap-control", coordinatorRecord(blockedService, status));
       });
       const blocked = await executor.handleConditionalCommit(
         requestFor(blockedService, "bootstrap", "Order:boot"),
@@ -230,16 +304,75 @@ describe("conditional commit runtime", () => {
       serviceId: readyService, doClass: "bootstrap", identity: "coordinator",
     }));
     await runInDurableObject(ready, async (_instance, state) => {
-      await state.storage.put("bootstrap-control", {
-        schemaVersion: 1, status: "READY", importId: null, targetServiceId: readyService,
-        leaseEpoch: 0, leaseUntil: null, normalInFlight: 0, writePermits: {},
-      });
+      await state.storage.put("bootstrap-control", coordinatorRecord(readyService, "READY", { readyAt: G32_FIXTURE_TIMESTAMP }));
     });
     expect((await executor.handleConditionalCommit(
       requestFor(readyService, "ready", "Order:ready"),
       workerEnv(),
       { registeredEventParsers: PARSERS },
     )).status).toBe(501);
+  });
+
+  it("returns key reuse when the stored event type differs", async () => {
+    const restrictive = {
+      TypeA: (payload: unknown) => {
+        if (!isKind(payload, "a")) throw new Error("type a");
+        return payload;
+      },
+      TypeB: (payload: unknown) => {
+        if (!isKind(payload, "b")) throw new Error("type b");
+        return payload;
+      },
+    };
+    const service = serviceId();
+    const executor = createOrdinaryConditionalExecutor();
+    const first = await executor.handleConditionalCommit(
+      requestFor(service, "shared", "Order:types", { kind: "a" }, "TypeA"),
+      workerEnv(),
+      { registeredEventParsers: restrictive },
+    );
+    expect(first.status).toBe(201);
+    const reuse = await executor.handleConditionalCommit(
+      requestFor(service, "shared", "Order:types", { kind: "b" }, "TypeB"),
+      workerEnv(),
+      { registeredEventParsers: restrictive },
+    );
+    expect(reuse.status).toBe(409);
+    expect((await parsed(reuse)).outcome).toBe("KeyReuseConflict");
+  });
+
+  it("rejects failed, old, and malformed coordinator state with zero allocation and zero append", async () => {
+    const cases: Array<{ readonly label: string; readonly record: Record<string, unknown> | "missing-route" }> = [
+      { label: "FAILED", record: coordinatorRecord("pending", "FAILED", { failure: "failed" }) },
+      { label: "old schema", record: coordinatorRecord("pending", "EMPTY", { schemaVersion: 0 }) },
+      { label: "extra field", record: coordinatorRecord("pending", "EMPTY", { extra: true }) },
+      { label: "missing writePermits", record: without(coordinatorRecord("pending", "EMPTY"), "writePermits") },
+      { label: "negative normalInFlight", record: coordinatorRecord("pending", "EMPTY", { normalInFlight: -1 }) },
+      { label: "contradictory EMPTY", record: coordinatorRecord("pending", "EMPTY", { importId: "import-1" }) },
+      { label: "old route", record: "missing-route" },
+    ];
+    for (const item of cases) {
+      const service = serviceId();
+      const record = item.record === "missing-route"
+        ? undefined
+        : { ...item.record, targetServiceId: service };
+      if (record !== undefined) {
+        const bootstrap = bootstrapNamespace().get(scopeIdFor(bootstrapNamespace(), {
+          serviceId: service, doClass: "bootstrap", identity: "coordinator",
+        }));
+        await runInDurableObject(bootstrap, async (_instance, state) => {
+          await state.storage.put("bootstrap-control", record);
+        });
+      }
+      const counts = { append: 0, allocate: 0 };
+      const response = await createOrdinaryConditionalExecutor().handleConditionalCommit(
+        requestFor(service, item.label, "Order:closed-state"),
+        watchedEnv(counts, item.record === "missing-route"),
+        { registeredEventParsers: PARSERS },
+      );
+      expect(response.status, item.label).toBe(501);
+      expect(counts, item.label).toEqual({ append: 0, allocate: 0 });
+    }
   });
 
   it("resolves before allocation and leaves an ambiguous permit held", async () => {
