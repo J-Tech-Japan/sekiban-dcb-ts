@@ -7,6 +7,7 @@ import type {
 } from "@sekiban/dcb-core";
 import { assertJsonValue, defineTag } from "@sekiban/dcb-core";
 import type { JsonValue as DomainJsonValue } from "@sekiban/dcb-domain";
+import type { SerializedConditionalCommitRequest } from "./conditionalCommit.js";
 import { classifyFailure, commitReplyError } from "./classification.js";
 import { awaitControlled, totalBudgetMsProblem } from "./control.js";
 import { ClientError, sanitizeTransportError } from "./errors.js";
@@ -105,6 +106,10 @@ export interface SerializedDcbTransport {
   readonly listQuery: (request: ListQueryRequest, signal?: AbortSignal) => Promise<ListQueryResponse | CommitHttpResult>;
   /** Optional identity supplied by a transport that is already scoped. */
   readonly serviceId?: string;
+  readonly conditionalCommit?: (
+    request: SerializedConditionalCommitRequest,
+    signal?: AbortSignal,
+  ) => Promise<CommitHttpResult>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -584,6 +589,14 @@ export const createSerializedDcbClient = (baseUrl: string, fetchImpl?: typeof fe
   new SerializedDcbClient(baseUrl, fetchImpl);
 
 export type { AppendedEvent, EventDefinition, JsonValue, TagDefinition, TagInput };
+export {
+  prepareConditionalCommit,
+} from "./conditionalCommit.js";
+export type {
+  ConditionalCommitInput,
+  ConditionalCommitOptions,
+  PreparedConditionalCommit,
+} from "./conditionalCommit.js";
 
 export type { SekibanCloudTransportOptions } from "./cloud-contract.js";
 export {

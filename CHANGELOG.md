@@ -4,6 +4,11 @@
 
 ### @sekiban/dcb-core
 
+- Add dormant conditional-commit protocol values: versioned request and result
+  DTOs, key normalization, plain-object canonicalization, fingerprint helpers,
+  and closed request parsers. Built-in transports do not send a conditional
+  route. Package versions remain unchanged.
+
 - Export structural query contracts: `QueryJsonValue`, `QueryCodec`,
   `QueryRow`, `QueryProjection`, `QueryHandlerContext`, `QueryContract`,
   `ListQueryContract`, `ListQueryControls`, `QueryPageMetadata`, and
@@ -41,6 +46,13 @@
   direction, consistency, waiting, or cancellation capability.
 
 ### @sekiban/dcb-client
+
+- Add a dormant prepared conditional commit. `prepareConditionalCommit` returns
+  a frozen branded request, and `SerializedDcbTransport` may supply an optional
+  `conditionalCommit` member. Built-in transports do not send a conditional
+  route. A missing member returns Unsupported, with no V1 fallback. Failures
+  use closed safe messages. V1 behavior is unchanged, and package versions
+  remain unchanged.
 
 - Add typed `SekibanExecutor.query` and `listQuery` overloads beside the raw
   V1 overloads. `QueryCallOptions` is `waitForSortableUniqueId` and `signal`.

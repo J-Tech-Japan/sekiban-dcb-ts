@@ -475,6 +475,54 @@
           }
         },
         {
+          "name": "canonicalizeConditionalCommitPayload",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "function",
+              "text": "export declare function canonicalizeConditionalCommitPayload(value: unknown): Uint8Array;",
+              "typeParameters": []
+            }
+          ],
+          "type": "(value: unknown) => Uint8Array",
+          "signatures": {
+            "call": [
+              {
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "name": "value",
+                    "optional": false,
+                    "rest": false,
+                    "type": "unknown"
+                  }
+                ],
+                "returnType": "Uint8Array<ArrayBufferLike>"
+              }
+            ],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": true,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "CommandCommitted",
           "namespace": {
             "value": false,
@@ -1017,7 +1065,7 @@
               "name": "events",
               "optional": false,
               "readonly": true,
-              "type": "readonly AppendedEvent[] | readonly []"
+              "type": "readonly [] | readonly AppendedEvent[]"
             }
           ],
           "syntax": {
@@ -1078,6 +1126,1404 @@
               "optional": false,
               "readonly": true,
               "type": "readonly []"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "computeConditionalCommitFingerprint",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "function",
+              "text": "export declare function computeConditionalCommitFingerprint(input: ConditionalCommitFingerprintInput): Promise<string>;",
+              "typeParameters": []
+            }
+          ],
+          "type": "(input: ConditionalCommitFingerprintInput) => Promise<string>",
+          "signatures": {
+            "call": [
+              {
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "name": "input",
+                    "optional": false,
+                    "rest": false,
+                    "type": "ConditionalCommitFingerprintInput"
+                  }
+                ],
+                "returnType": "Promise<string>"
+              }
+            ],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "CONDITIONAL_COMMIT_CANONICALIZATION_VERSION",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "variable",
+              "text": "CONDITIONAL_COMMIT_CANONICALIZATION_VERSION: 1",
+              "typeParameters": []
+            }
+          ],
+          "type": "1",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "CONDITIONAL_COMMIT_DERIVATION_VERSION",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "variable",
+              "text": "CONDITIONAL_COMMIT_DERIVATION_VERSION: 2",
+              "typeParameters": []
+            }
+          ],
+          "type": "2",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "CONDITIONAL_COMMIT_DOMAIN_SEPARATOR",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "variable",
+              "text": "CONDITIONAL_COMMIT_DOMAIN_SEPARATOR: \"sekiban.dcb.conditional-append.unique-key\"",
+              "typeParameters": []
+            }
+          ],
+          "type": "\"sekiban.dcb.conditional-append.unique-key\"",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "CONDITIONAL_COMMIT_MAX_PAYLOAD_BYTES",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "variable",
+              "text": "CONDITIONAL_COMMIT_MAX_PAYLOAD_BYTES: number",
+              "typeParameters": []
+            }
+          ],
+          "type": "number",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "CONDITIONAL_COMMIT_MAX_REQUEST_BYTES",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "variable",
+              "text": "CONDITIONAL_COMMIT_MAX_REQUEST_BYTES: number",
+              "typeParameters": []
+            }
+          ],
+          "type": "number",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "CONDITIONAL_COMMIT_MAX_UTF8_FIELD_BYTES",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "variable",
+              "text": "CONDITIONAL_COMMIT_MAX_UTF8_FIELD_BYTES: 512",
+              "typeParameters": []
+            }
+          ],
+          "type": "512",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "CONDITIONAL_COMMIT_VERSION",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "variable",
+              "text": "CONDITIONAL_COMMIT_VERSION: 1",
+              "typeParameters": []
+            }
+          ],
+          "type": "1",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "ConditionalCommitErrorResponse",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "type",
+              "text": "export type ConditionalCommitErrorResponse = { readonly version: 1; readonly code: ConditionalCommitValidationCode; readonly error: string; readonly retryable: false; } | { readonly version: 1; readonly code: \"conditional_commit_in_doubt\"; readonly error: \"The conditional commit outcome is not yet verified; resend the same prepared request.\"; readonly retryable: true; readonly reason: ConditionalCommitInDoubtReason; } | { readonly version: 1; readonly code: \"conditional_commit_committed_state_corrupt\"; readonly error: \"The durable conditional commit state could not be verified.\"; readonly retryable: false; };",
+              "typeParameters": []
+            }
+          ],
+          "type": "{ readonly version: 1; readonly code: ConditionalCommitValidationCode; readonly error: string; readonly retryable: false; } | { readonly version: 1; readonly code: \"conditional_commit_in_doubt\"; readonly error: \"The conditional commit outcome is not yet verified; resend the same prepared request.\"; readonly retryable: true; readonly reason: ConditionalCommitInDoubtReason; } | { readonly version: 1; readonly code: \"conditional_commit_committed_state_corrupt\"; readonly error: \"The durable conditional commit state could not be verified.\"; readonly retryable: false; }",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "version",
+              "optional": false,
+              "readonly": true,
+              "type": "1"
+            },
+            {
+              "name": "code",
+              "optional": false,
+              "readonly": true,
+              "type": "ConditionalCommitValidationCode | \"conditional_commit_in_doubt\" | \"conditional_commit_committed_state_corrupt\""
+            },
+            {
+              "name": "error",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "retryable",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            }
+          ],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "ConditionalCommitFingerprintInput",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "interface",
+              "text": "export interface ConditionalCommitFingerprintInput { readonly serviceId: string; readonly idempotencyKey: string; readonly eventPayloadName: string; readonly canonicalPayload: Uint8Array; readonly tag: string; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "serviceId",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "idempotencyKey",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "eventPayloadName",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "canonicalPayload",
+              "optional": false,
+              "readonly": true,
+              "type": "Uint8Array<ArrayBufferLike>"
+            },
+            {
+              "name": "tag",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "conditionalCommitFingerprintPreimage",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "function",
+              "text": "export declare function conditionalCommitFingerprintPreimage(input: ConditionalCommitFingerprintInput): Uint8Array;",
+              "typeParameters": []
+            }
+          ],
+          "type": "(input: ConditionalCommitFingerprintInput) => Uint8Array",
+          "signatures": {
+            "call": [
+              {
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "name": "input",
+                    "optional": false,
+                    "rest": false,
+                    "type": "ConditionalCommitFingerprintInput"
+                  }
+                ],
+                "returnType": "Uint8Array<ArrayBufferLike>"
+              }
+            ],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "ConditionalCommitInDoubtReason",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "type",
+              "text": "export type ConditionalCommitInDoubtReason = \"winner_unreadable\" | \"ambiguous_after_append\" | \"committed_state_unverified\" | \"live_precondition_blocked\" | \"bootstrap_epoch_changed\";",
+              "typeParameters": []
+            }
+          ],
+          "type": "\"winner_unreadable\" | \"ambiguous_after_append\" | \"committed_state_unverified\" | \"live_precondition_blocked\" | \"bootstrap_epoch_changed\"",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "toString",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "charAt",
+              "optional": false,
+              "readonly": false,
+              "type": "(pos: number) => string"
+            },
+            {
+              "name": "charCodeAt",
+              "optional": false,
+              "readonly": false,
+              "type": "(index: number) => number"
+            },
+            {
+              "name": "concat",
+              "optional": false,
+              "readonly": false,
+              "type": "(...strings: string[]) => string"
+            },
+            {
+              "name": "indexOf",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, position?: number) => number"
+            },
+            {
+              "name": "lastIndexOf",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, position?: number) => number"
+            },
+            {
+              "name": "localeCompare",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (that: string): number; (that: string, locales?: string | string[], options?: Intl.CollatorOptions): number; (that: string, locales?: Intl.LocalesArgument, options?: Intl.CollatorOptions): number; }"
+            },
+            {
+              "name": "match",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (regexp: string | RegExp): RegExpMatchArray | null; (matcher: { [Symbol.match](string: string): RegExpMatchArray | null; }): RegExpMatchArray | null; }"
+            },
+            {
+              "name": "replace",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; (searchValue: { [Symbol.replace](string: string, replaceValue: string): string; }, replaceValue: string): string; (searchValue: { [Symbol.replace](string: string, replacer: (substring: string, ...args: any[]) => string): string; }, replacer: (substring: string, ...args: any[]) => string): string; }"
+            },
+            {
+              "name": "search",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (regexp: string | RegExp): number; (searcher: { [Symbol.search](string: string): number; }): number; }"
+            },
+            {
+              "name": "slice",
+              "optional": false,
+              "readonly": false,
+              "type": "(start?: number, end?: number) => string"
+            },
+            {
+              "name": "split",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (separator: string | RegExp, limit?: number): string[]; (splitter: { [Symbol.split](string: string, limit?: number): string[]; }, limit?: number): string[]; }"
+            },
+            {
+              "name": "substring",
+              "optional": false,
+              "readonly": false,
+              "type": "(start: number, end?: number) => string"
+            },
+            {
+              "name": "toLowerCase",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "toLocaleLowerCase",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (locales?: string | string[]): string; (locales?: Intl.LocalesArgument): string; }"
+            },
+            {
+              "name": "toUpperCase",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "toLocaleUpperCase",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (locales?: string | string[]): string; (locales?: Intl.LocalesArgument): string; }"
+            },
+            {
+              "name": "trim",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "length",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "substr",
+              "optional": false,
+              "readonly": false,
+              "type": "(from: number, length?: number) => string"
+            },
+            {
+              "name": "valueOf",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "codePointAt",
+              "optional": false,
+              "readonly": false,
+              "type": "(pos: number) => number | undefined"
+            },
+            {
+              "name": "includes",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, position?: number) => boolean"
+            },
+            {
+              "name": "endsWith",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, endPosition?: number) => boolean"
+            },
+            {
+              "name": "normalize",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (form: \"NFC\" | \"NFD\" | \"NFKC\" | \"NFKD\"): string; (form?: string): string; }"
+            },
+            {
+              "name": "repeat",
+              "optional": false,
+              "readonly": false,
+              "type": "(count: number) => string"
+            },
+            {
+              "name": "startsWith",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, position?: number) => boolean"
+            },
+            {
+              "name": "anchor",
+              "optional": false,
+              "readonly": false,
+              "type": "(name: string) => string"
+            },
+            {
+              "name": "big",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "blink",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "bold",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "fixed",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "fontcolor",
+              "optional": false,
+              "readonly": false,
+              "type": "(color: string) => string"
+            },
+            {
+              "name": "fontsize",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (size: number): string; (size: string): string; }"
+            },
+            {
+              "name": "italics",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "link",
+              "optional": false,
+              "readonly": false,
+              "type": "(url: string) => string"
+            },
+            {
+              "name": "small",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "strike",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "sub",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "sup",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "padStart",
+              "optional": false,
+              "readonly": false,
+              "type": "(maxLength: number, fillString?: string) => string"
+            },
+            {
+              "name": "padEnd",
+              "optional": false,
+              "readonly": false,
+              "type": "(maxLength: number, fillString?: string) => string"
+            },
+            {
+              "name": "trimEnd",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "trimStart",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "trimLeft",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "trimRight",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "matchAll",
+              "optional": false,
+              "readonly": false,
+              "type": "(regexp: RegExp) => RegExpStringIterator<RegExpExecArray>"
+            },
+            {
+              "name": "replaceAll",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; }"
+            },
+            {
+              "name": "at",
+              "optional": false,
+              "readonly": false,
+              "type": "(index: number) => string | undefined"
+            },
+            {
+              "name": "__@iterator@83",
+              "optional": false,
+              "readonly": false,
+              "type": "() => StringIterator<string>"
+            }
+          ],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "ConditionalCommitProtocolError",
+          "namespace": {
+            "value": true,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "class",
+              "text": "export declare class ConditionalCommitProtocolError extends Error { readonly code: ConditionalCommitValidationCode; readonly retryable = false; constructor(code: ConditionalCommitValidationCode); }",
+              "typeParameters": []
+            }
+          ],
+          "type": "typeof ConditionalCommitProtocolError",
+          "signatures": {
+            "call": [],
+            "construct": [
+              {
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "name": "code",
+                    "optional": false,
+                    "rest": false,
+                    "type": "ConditionalCommitValidationCode"
+                  }
+                ],
+                "returnType": "ConditionalCommitProtocolError"
+              }
+            ]
+          },
+          "members": [
+            {
+              "name": "code",
+              "optional": false,
+              "readonly": true,
+              "type": "ConditionalCommitValidationCode"
+            },
+            {
+              "name": "retryable",
+              "optional": false,
+              "readonly": true,
+              "type": "false"
+            },
+            {
+              "name": "name",
+              "optional": false,
+              "readonly": false,
+              "type": "string"
+            },
+            {
+              "name": "message",
+              "optional": false,
+              "readonly": false,
+              "type": "string"
+            },
+            {
+              "name": "stack",
+              "optional": true,
+              "readonly": false,
+              "type": "string | undefined"
+            },
+            {
+              "name": "cause",
+              "optional": true,
+              "readonly": false,
+              "type": "unknown"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "ConditionalCommitReceipt",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "interface",
+              "text": "export interface ConditionalCommitReceipt { readonly winnerEventId: string; readonly winnerSortableUniqueId: string; readonly operationFingerprint: string; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "winnerEventId",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "winnerSortableUniqueId",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "operationFingerprint",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "ConditionalCommitResult",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "type",
+              "text": "export type ConditionalCommitResult = { readonly version: 1; readonly outcome: \"Appended\"; readonly receipt: ConditionalCommitReceipt; readonly writtenEvents: readonly [ConditionalWrittenEvent]; } | { readonly version: 1; readonly outcome: \"AlreadyCommittedSameOperation\"; readonly receipt: ConditionalCommitReceipt; readonly writtenEvents: readonly []; } | { readonly version: 1; readonly outcome: \"KeyReuseConflict\"; readonly code: \"conditional_commit_key_reuse_conflict\"; readonly error: \"The idempotency key is already bound to a different operation.\"; readonly retryable: false; } | { readonly version: 1; readonly outcome: \"Unsupported\"; readonly code: \"conditional_commit_unsupported\"; readonly error: \"Conditional commit is not supported by this deployment.\"; readonly retryable: false; };",
+              "typeParameters": []
+            }
+          ],
+          "type": "{ readonly version: 1; readonly outcome: \"Appended\"; readonly receipt: ConditionalCommitReceipt; readonly writtenEvents: readonly [ConditionalWrittenEvent]; } | { readonly version: 1; readonly outcome: \"AlreadyCommittedSameOperation\"; readonly receipt: ConditionalCommitReceipt; readonly writtenEvents: readonly []; } | { readonly version: 1; readonly outcome: \"KeyReuseConflict\"; readonly code: \"conditional_commit_key_reuse_conflict\"; readonly error: \"The idempotency key is already bound to a different operation.\"; readonly retryable: false; } | { readonly version: 1; readonly outcome: \"Unsupported\"; readonly code: \"conditional_commit_unsupported\"; readonly error: \"Conditional commit is not supported by this deployment.\"; readonly retryable: false; }",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "version",
+              "optional": false,
+              "readonly": true,
+              "type": "1"
+            },
+            {
+              "name": "outcome",
+              "optional": false,
+              "readonly": true,
+              "type": "\"Appended\" | \"AlreadyCommittedSameOperation\" | \"KeyReuseConflict\" | \"Unsupported\""
+            }
+          ],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "ConditionalCommitValidationCode",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "type",
+              "text": "export type ConditionalCommitValidationCode = \"conditional_commit_invalid_json\" | \"conditional_commit_unknown_member\" | \"conditional_commit_invalid_version\" | \"conditional_commit_invalid_envelope\" | \"conditional_commit_invalid_key\" | \"conditional_commit_invalid_candidate\" | \"conditional_commit_invalid_base64\" | \"conditional_commit_invalid_utf8\" | \"conditional_commit_invalid_payload_json\" | \"conditional_commit_payload_root_not_object\" | \"conditional_commit_payload_not_canonicalizable\" | \"conditional_commit_event_not_registered\" | \"conditional_commit_invalid_tag_count\" | \"conditional_commit_size_limit_exceeded\";",
+              "typeParameters": []
+            }
+          ],
+          "type": "\"conditional_commit_invalid_json\" | \"conditional_commit_unknown_member\" | \"conditional_commit_invalid_version\" | \"conditional_commit_invalid_envelope\" | \"conditional_commit_invalid_key\" | \"conditional_commit_invalid_candidate\" | \"conditional_commit_invalid_base64\" | \"conditional_commit_invalid_utf8\" | \"conditional_commit_invalid_payload_json\" | \"conditional_commit_payload_root_not_object\" | \"conditional_commit_payload_not_canonicalizable\" | \"conditional_commit_event_not_registered\" | \"conditional_commit_invalid_tag_count\" | \"conditional_commit_size_limit_exceeded\"",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "toString",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "charAt",
+              "optional": false,
+              "readonly": false,
+              "type": "(pos: number) => string"
+            },
+            {
+              "name": "charCodeAt",
+              "optional": false,
+              "readonly": false,
+              "type": "(index: number) => number"
+            },
+            {
+              "name": "concat",
+              "optional": false,
+              "readonly": false,
+              "type": "(...strings: string[]) => string"
+            },
+            {
+              "name": "indexOf",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, position?: number) => number"
+            },
+            {
+              "name": "lastIndexOf",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, position?: number) => number"
+            },
+            {
+              "name": "localeCompare",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (that: string): number; (that: string, locales?: string | string[], options?: Intl.CollatorOptions): number; (that: string, locales?: Intl.LocalesArgument, options?: Intl.CollatorOptions): number; }"
+            },
+            {
+              "name": "match",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (regexp: string | RegExp): RegExpMatchArray | null; (matcher: { [Symbol.match](string: string): RegExpMatchArray | null; }): RegExpMatchArray | null; }"
+            },
+            {
+              "name": "replace",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; (searchValue: { [Symbol.replace](string: string, replaceValue: string): string; }, replaceValue: string): string; (searchValue: { [Symbol.replace](string: string, replacer: (substring: string, ...args: any[]) => string): string; }, replacer: (substring: string, ...args: any[]) => string): string; }"
+            },
+            {
+              "name": "search",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (regexp: string | RegExp): number; (searcher: { [Symbol.search](string: string): number; }): number; }"
+            },
+            {
+              "name": "slice",
+              "optional": false,
+              "readonly": false,
+              "type": "(start?: number, end?: number) => string"
+            },
+            {
+              "name": "split",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (separator: string | RegExp, limit?: number): string[]; (splitter: { [Symbol.split](string: string, limit?: number): string[]; }, limit?: number): string[]; }"
+            },
+            {
+              "name": "substring",
+              "optional": false,
+              "readonly": false,
+              "type": "(start: number, end?: number) => string"
+            },
+            {
+              "name": "toLowerCase",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "toLocaleLowerCase",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (locales?: string | string[]): string; (locales?: Intl.LocalesArgument): string; }"
+            },
+            {
+              "name": "toUpperCase",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "toLocaleUpperCase",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (locales?: string | string[]): string; (locales?: Intl.LocalesArgument): string; }"
+            },
+            {
+              "name": "trim",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "length",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "substr",
+              "optional": false,
+              "readonly": false,
+              "type": "(from: number, length?: number) => string"
+            },
+            {
+              "name": "valueOf",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "codePointAt",
+              "optional": false,
+              "readonly": false,
+              "type": "(pos: number) => number | undefined"
+            },
+            {
+              "name": "includes",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, position?: number) => boolean"
+            },
+            {
+              "name": "endsWith",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, endPosition?: number) => boolean"
+            },
+            {
+              "name": "normalize",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (form: \"NFC\" | \"NFD\" | \"NFKC\" | \"NFKD\"): string; (form?: string): string; }"
+            },
+            {
+              "name": "repeat",
+              "optional": false,
+              "readonly": false,
+              "type": "(count: number) => string"
+            },
+            {
+              "name": "startsWith",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, position?: number) => boolean"
+            },
+            {
+              "name": "anchor",
+              "optional": false,
+              "readonly": false,
+              "type": "(name: string) => string"
+            },
+            {
+              "name": "big",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "blink",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "bold",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "fixed",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "fontcolor",
+              "optional": false,
+              "readonly": false,
+              "type": "(color: string) => string"
+            },
+            {
+              "name": "fontsize",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (size: number): string; (size: string): string; }"
+            },
+            {
+              "name": "italics",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "link",
+              "optional": false,
+              "readonly": false,
+              "type": "(url: string) => string"
+            },
+            {
+              "name": "small",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "strike",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "sub",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "sup",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "padStart",
+              "optional": false,
+              "readonly": false,
+              "type": "(maxLength: number, fillString?: string) => string"
+            },
+            {
+              "name": "padEnd",
+              "optional": false,
+              "readonly": false,
+              "type": "(maxLength: number, fillString?: string) => string"
+            },
+            {
+              "name": "trimEnd",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "trimStart",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "trimLeft",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "trimRight",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "matchAll",
+              "optional": false,
+              "readonly": false,
+              "type": "(regexp: RegExp) => RegExpStringIterator<RegExpExecArray>"
+            },
+            {
+              "name": "replaceAll",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; }"
+            },
+            {
+              "name": "at",
+              "optional": false,
+              "readonly": false,
+              "type": "(index: number) => string | undefined"
+            },
+            {
+              "name": "__@iterator@83",
+              "optional": false,
+              "readonly": false,
+              "type": "() => StringIterator<string>"
+            }
+          ],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "ConditionalWrittenEvent",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "interface",
+              "text": "export interface ConditionalWrittenEvent { readonly payload: string; readonly sortableUniqueIdValue: string; readonly id: string; readonly eventMetadata: { readonly causationId: string; readonly correlationId: \"SerializedCommit\"; readonly executedUser: \"SerializedSekibanExecutor\"; }; readonly tags: readonly [string]; readonly eventPayloadName: string; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "payload",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "sortableUniqueIdValue",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "id",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "eventMetadata",
+              "optional": false,
+              "readonly": true,
+              "type": "{ readonly causationId: string; readonly correlationId: \"SerializedCommit\"; readonly executedUser: \"SerializedSekibanExecutor\"; }"
+            },
+            {
+              "name": "tags",
+              "optional": false,
+              "readonly": true,
+              "type": "readonly [string]"
+            },
+            {
+              "name": "eventPayloadName",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
             }
           ],
           "syntax": {
@@ -4355,6 +5801,54 @@
           }
         },
         {
+          "name": "normalizeConditionalCommitKey",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "function",
+              "text": "export declare function normalizeConditionalCommitKey(value: string): string;",
+              "typeParameters": []
+            }
+          ],
+          "type": "(value: string) => string",
+          "signatures": {
+            "call": [
+              {
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "name": "value",
+                    "optional": false,
+                    "rest": false,
+                    "type": "string"
+                  }
+                ],
+                "returnType": "string"
+              }
+            ],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "parseCanonicalEventKey",
           "namespace": {
             "value": true,
@@ -4390,6 +5884,102 @@
           "members": [],
           "syntax": {
             "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "parseSerializedConditionalCommitRequest",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "function",
+              "text": "export declare function parseSerializedConditionalCommitRequest(value: unknown): SerializedConditionalCommitRequest;",
+              "typeParameters": []
+            }
+          ],
+          "type": "(value: unknown) => SerializedConditionalCommitRequest",
+          "signatures": {
+            "call": [
+              {
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "name": "value",
+                    "optional": false,
+                    "rest": false,
+                    "type": "unknown"
+                  }
+                ],
+                "returnType": "SerializedConditionalCommitRequest"
+              }
+            ],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": true,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "parseSerializedConditionalCommitRequestBody",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "function",
+              "text": "export declare function parseSerializedConditionalCommitRequestBody(body: string | Uint8Array): SerializedConditionalCommitRequest;",
+              "typeParameters": []
+            }
+          ],
+          "type": "(body: string | Uint8Array) => SerializedConditionalCommitRequest",
+          "signatures": {
+            "call": [
+              {
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "name": "body",
+                    "optional": false,
+                    "rest": false,
+                    "type": "string | Uint8Array<ArrayBufferLike>"
+                  }
+                ],
+                "returnType": "SerializedConditionalCommitRequest"
+              }
+            ],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": true,
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
@@ -5375,6 +6965,114 @@
           }
         },
         {
+          "name": "SerializedConditionalCommitRequest",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "interface",
+              "text": "export interface SerializedConditionalCommitRequest { readonly version: 1; readonly idempotencyKey: string; readonly eventCandidate: SerializedConditionalEventCandidate; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "version",
+              "optional": false,
+              "readonly": true,
+              "type": "1"
+            },
+            {
+              "name": "idempotencyKey",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "eventCandidate",
+              "optional": false,
+              "readonly": true,
+              "type": "SerializedConditionalEventCandidate"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "SerializedConditionalEventCandidate",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "interface",
+              "text": "export interface SerializedConditionalEventCandidate { readonly payload: string; readonly eventPayloadName: string; readonly tags: readonly [string]; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "payload",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "eventPayloadName",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "tags",
+              "optional": false,
+              "readonly": true,
+              "type": "readonly [string]"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "TagDefinition",
           "namespace": {
             "value": false,
@@ -5538,12 +7236,23 @@
         }
       ],
       "runtimeNames": [
+        "CONDITIONAL_COMMIT_CANONICALIZATION_VERSION",
+        "CONDITIONAL_COMMIT_DERIVATION_VERSION",
+        "CONDITIONAL_COMMIT_DOMAIN_SEPARATOR",
+        "CONDITIONAL_COMMIT_MAX_PAYLOAD_BYTES",
+        "CONDITIONAL_COMMIT_MAX_REQUEST_BYTES",
+        "CONDITIONAL_COMMIT_MAX_UTF8_FIELD_BYTES",
+        "CONDITIONAL_COMMIT_VERSION",
         "CanonicalEventIdentityError",
+        "ConditionalCommitProtocolError",
         "DcbDefinitionError",
         "DomainDefinitionError",
         "JsonValidationError",
         "assertJsonValue",
         "canonicalEventKey",
+        "canonicalizeConditionalCommitPayload",
+        "computeConditionalCommitFingerprint",
+        "conditionalCommitFingerprintPreimage",
         "defineCommand",
         "defineDomain",
         "defineEvent",
@@ -5554,7 +7263,10 @@
         "defineTag",
         "done",
         "noop",
+        "normalizeConditionalCommitKey",
         "parseCanonicalEventKey",
+        "parseSerializedConditionalCommitRequest",
+        "parseSerializedConditionalCommitRequestBody",
         "reject",
         "validateJsonValue"
       ]
@@ -6196,7 +7908,7 @@
               "type": "\"none\" | \"done\" | \"reject\""
             },
             {
-              "name": "__@terminalDecisionBrand@40950",
+              "name": "__@terminalDecisionBrand@41069",
               "optional": false,
               "readonly": true,
               "type": "\"none\" | \"done\" | \"reject\""
@@ -8259,7 +9971,7 @@
               "type": "Value | undefined"
             },
             {
-              "name": "__@terminalDecisionBrand@40950",
+              "name": "__@terminalDecisionBrand@41069",
               "optional": false,
               "readonly": true,
               "type": "\"done\""
@@ -8527,7 +10239,7 @@
           },
           "members": [
             {
-              "name": "__@eventPayloadBrand@40948",
+              "name": "__@eventPayloadBrand@41067",
               "optional": false,
               "readonly": true,
               "type": "Event"
@@ -8643,7 +10355,7 @@
           },
           "members": [
             {
-              "name": "__@eventPayloadBrand@40948",
+              "name": "__@eventPayloadBrand@41067",
               "optional": false,
               "readonly": true,
               "type": "Event"
@@ -9023,7 +10735,7 @@
           },
           "members": [
             {
-              "name": "__@eventPayloadBrand@40948",
+              "name": "__@eventPayloadBrand@41067",
               "optional": false,
               "readonly": true,
               "type": "Union[\"events\"][number]"
@@ -10019,7 +11731,7 @@
               "type": "string | undefined"
             },
             {
-              "name": "__@terminalDecisionBrand@40950",
+              "name": "__@terminalDecisionBrand@41069",
               "optional": false,
               "readonly": true,
               "type": "\"none\""
@@ -10331,7 +12043,7 @@
           },
           "members": [
             {
-              "name": "__@parsedBoundaryBrand@40949",
+              "name": "__@parsedBoundaryBrand@41068",
               "optional": false,
               "readonly": true,
               "type": "Boundary"
@@ -11116,7 +12828,7 @@
               "type": "(serialized: string) => State"
             },
             {
-              "name": "__@projectorFamilyInvariant@41207",
+              "name": "__@projectorFamilyInvariant@41326",
               "optional": false,
               "readonly": true,
               "type": "(value: Family) => Family"
@@ -12500,7 +14212,7 @@
               "type": "Details | undefined"
             },
             {
-              "name": "__@terminalDecisionBrand@40950",
+              "name": "__@terminalDecisionBrand@41069",
               "optional": false,
               "readonly": true,
               "type": "\"reject\""
@@ -16179,7 +17891,7 @@
               "type": "string"
             },
             {
-              "name": "__@tagFamilyBrand@40947",
+              "name": "__@tagFamilyBrand@41066",
               "optional": false,
               "readonly": true,
               "type": "Family"
@@ -16398,7 +18110,7 @@
               "type": "(value: string) => Tag<Family>"
             },
             {
-              "name": "__@tagFamilyBrand@40947",
+              "name": "__@tagFamilyBrand@41066",
               "optional": false,
               "readonly": true,
               "type": "Family"
@@ -17318,7 +19030,7 @@
               "type": "\"none\" | \"done\" | \"reject\""
             },
             {
-              "name": "__@terminalDecisionBrand@40950",
+              "name": "__@terminalDecisionBrand@41069",
               "optional": false,
               "readonly": true,
               "type": "\"none\" | \"done\" | \"reject\""
@@ -19256,7 +20968,7 @@
             {
               "file": "dist/errors.d.ts",
               "kind": "class",
-              "text": "export declare class ClientError extends Error { readonly code: string; readonly status?: number; readonly partial?: unknown; constructor(code: string, message: string, options?: { readonly status?: number; readonly partial?: unknown; readonly cause?: unknown; }); }",
+              "text": "export declare class ClientError extends Error { readonly code: string; readonly status?: number; readonly partial?: unknown; readonly retryable?: boolean; readonly reason?: ConditionalCommitInDoubtReason; constructor(code: string, message: string, options?: { readonly status?: number; readonly partial?: unknown; readonly cause?: unknown; readonly retryable?: boolean; readonly reason?: ConditionalCommitInDoubtReason; }); }",
               "typeParameters": []
             }
           ],
@@ -19283,7 +20995,7 @@
                     "name": "options",
                     "optional": true,
                     "rest": false,
-                    "type": "{ readonly status?: number; readonly partial?: unknown; readonly cause?: unknown; } | undefined"
+                    "type": "{ readonly status?: number; readonly partial?: unknown; readonly cause?: unknown; readonly retryable?: boolean; readonly reason?: ConditionalCommitInDoubtReason; } | undefined"
                   }
                 ],
                 "returnType": "ClientError"
@@ -19308,6 +21020,18 @@
               "optional": true,
               "readonly": true,
               "type": "unknown"
+            },
+            {
+              "name": "retryable",
+              "optional": true,
+              "readonly": true,
+              "type": "boolean | undefined"
+            },
+            {
+              "name": "reason",
+              "optional": true,
+              "readonly": true,
+              "type": "ConditionalCommitInDoubtReason | undefined"
             },
             {
               "name": "name",
@@ -19506,6 +21230,115 @@
             "unknown": true,
             "any": false,
             "never": true,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "ConditionalCommitInput",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "interface",
+              "text": "export interface ConditionalCommitInput<TPayload extends JsonValue = JsonValue> { readonly idempotencyKey: string; readonly event: EventDefinition<TPayload>; readonly payload: unknown; readonly tag: TagInput; }",
+              "typeParameters": [
+                {
+                  "name": "TPayload",
+                  "constraint": "JsonValue",
+                  "default": "JsonValue",
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "idempotencyKey",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "event",
+              "optional": false,
+              "readonly": true,
+              "type": "EventDefinition<TPayload>"
+            },
+            {
+              "name": "payload",
+              "optional": false,
+              "readonly": true,
+              "type": "unknown"
+            },
+            {
+              "name": "tag",
+              "optional": false,
+              "readonly": true,
+              "type": "TagInput"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": true,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "ConditionalCommitOptions",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "interface",
+              "text": "export interface ConditionalCommitOptions { readonly signal?: AbortSignal; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "signal",
+              "optional": true,
+              "readonly": true,
+              "type": "AbortSignal | undefined"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
             "uniqueSymbol": false,
             "brand": false
           }
@@ -21401,6 +23234,128 @@
           }
         },
         {
+          "name": "prepareConditionalCommit",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "function",
+              "text": "export declare function prepareConditionalCommit<T extends JsonValue>(input: ConditionalCommitInput<T>): PreparedConditionalCommit;",
+              "typeParameters": [
+                {
+                  "name": "T",
+                  "constraint": "JsonValue",
+                  "default": null,
+                  "const": false
+                }
+              ]
+            }
+          ],
+          "type": "<T extends JsonValue>(input: ConditionalCommitInput<T>) => PreparedConditionalCommit",
+          "signatures": {
+            "call": [
+              {
+                "typeParameters": [
+                  {
+                    "name": "T",
+                    "constraint": "JsonValue",
+                    "default": "{}",
+                    "const": false
+                  }
+                ],
+                "parameters": [
+                  {
+                    "name": "input",
+                    "optional": false,
+                    "rest": false,
+                    "type": "ConditionalCommitInput<T>"
+                  }
+                ],
+                "returnType": "PreparedConditionalCommit"
+              }
+            ],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "PreparedConditionalCommit",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/conditionalCommit.d.ts",
+              "kind": "type",
+              "text": "export type PreparedConditionalCommit = Readonly<SerializedConditionalCommitRequest> & { readonly [preparedConditionalCommitBrand]: true; };",
+              "typeParameters": []
+            }
+          ],
+          "type": "Readonly<SerializedConditionalCommitRequest> & { readonly [preparedConditionalCommitBrand]: true; }",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "version",
+              "optional": false,
+              "readonly": true,
+              "type": "1"
+            },
+            {
+              "name": "idempotencyKey",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "eventCandidate",
+              "optional": false,
+              "readonly": true,
+              "type": "SerializedConditionalEventCandidate"
+            },
+            {
+              "name": "__@preparedConditionalCommitBrand@42286",
+              "optional": false,
+              "readonly": true,
+              "type": "true"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": true,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": true
+          }
+        },
+        {
           "name": "QueryCallOptions",
           "namespace": {
             "value": false,
@@ -22330,7 +24285,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface SerializedDcbTransport { readonly readTagState: (request: { readonly tagStateId: string; }, signal?: AbortSignal) => Promise<ReadonlyTagStateResponse | CommitHttpResult>; readonly readTagLatestSortable?: (request: { readonly tag: string; }, signal?: AbortSignal) => Promise<TagLatestSortableResponse | CommitHttpResult>; readonly commit: (request: CommitEnvelope, signal?: AbortSignal) => Promise<unknown | CommitHttpResult>; readonly query: (request: QueryRequest, signal?: AbortSignal) => Promise<QueryResponse | CommitHttpResult>; readonly listQuery: (request: ListQueryRequest, signal?: AbortSignal) => Promise<ListQueryResponse | CommitHttpResult>; readonly serviceId?: string; }",
+              "text": "export interface SerializedDcbTransport { readonly readTagState: (request: { readonly tagStateId: string; }, signal?: AbortSignal) => Promise<ReadonlyTagStateResponse | CommitHttpResult>; readonly readTagLatestSortable?: (request: { readonly tag: string; }, signal?: AbortSignal) => Promise<TagLatestSortableResponse | CommitHttpResult>; readonly commit: (request: CommitEnvelope, signal?: AbortSignal) => Promise<unknown | CommitHttpResult>; readonly query: (request: QueryRequest, signal?: AbortSignal) => Promise<QueryResponse | CommitHttpResult>; readonly listQuery: (request: ListQueryRequest, signal?: AbortSignal) => Promise<ListQueryResponse | CommitHttpResult>; readonly serviceId?: string; readonly conditionalCommit?: (request: SerializedConditionalCommitRequest, signal?: AbortSignal) => Promise<CommitHttpResult>; }",
               "typeParameters": []
             }
           ],
@@ -22375,6 +24330,12 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
+            },
+            {
+              "name": "conditionalCommit",
+              "optional": true,
+              "readonly": true,
+              "type": "((request: SerializedConditionalCommitRequest, signal?: AbortSignal) => Promise<CommitHttpResult>) | undefined"
             }
           ],
           "syntax": {
@@ -22724,7 +24685,8 @@
         "createInProcessTransport",
         "createSekibanExecutor",
         "createSerializedDcbClient",
-        "preflightCommit"
+        "preflightCommit",
+        "prepareConditionalCommit"
       ]
     },
     {
@@ -82509,6 +84471,27 @@
   "reachableDeclarations": [
     {
       "package": "@sekiban/dcb-client",
+      "file": "dist/conditionalCommit.d.ts",
+      "name": "preparedConditionalCommitBrand",
+      "kind": "variable",
+      "text": "preparedConditionalCommitBrand: unique symbol"
+    },
+    {
+      "package": "@sekiban/dcb-client",
+      "file": "dist/conditionalCommit.d.ts",
+      "name": "T",
+      "kind": "TypeParameter",
+      "text": "T extends JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-client",
+      "file": "dist/conditionalCommit.d.ts",
+      "name": "TPayload",
+      "kind": "TypeParameter",
+      "text": "TPayload extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-client",
       "file": "dist/executor.d.ts",
       "name": "C",
       "kind": "TypeParameter",
@@ -85080,12 +87063,23 @@
   "declarationFiles": [],
   "runtimeNamespaces": {
     "@sekiban/dcb-core": [
+      "CONDITIONAL_COMMIT_CANONICALIZATION_VERSION",
+      "CONDITIONAL_COMMIT_DERIVATION_VERSION",
+      "CONDITIONAL_COMMIT_DOMAIN_SEPARATOR",
+      "CONDITIONAL_COMMIT_MAX_PAYLOAD_BYTES",
+      "CONDITIONAL_COMMIT_MAX_REQUEST_BYTES",
+      "CONDITIONAL_COMMIT_MAX_UTF8_FIELD_BYTES",
+      "CONDITIONAL_COMMIT_VERSION",
       "CanonicalEventIdentityError",
+      "ConditionalCommitProtocolError",
       "DcbDefinitionError",
       "DomainDefinitionError",
       "JsonValidationError",
       "assertJsonValue",
       "canonicalEventKey",
+      "canonicalizeConditionalCommitPayload",
+      "computeConditionalCommitFingerprint",
+      "conditionalCommitFingerprintPreimage",
       "defineCommand",
       "defineDomain",
       "defineEvent",
@@ -85096,7 +87090,10 @@
       "defineTag",
       "done",
       "noop",
+      "normalizeConditionalCommitKey",
       "parseCanonicalEventKey",
+      "parseSerializedConditionalCommitRequest",
+      "parseSerializedConditionalCommitRequestBody",
       "reject",
       "validateJsonValue"
     ],
@@ -85181,7 +87178,8 @@
       "createInProcessTransport",
       "createSekibanExecutor",
       "createSerializedDcbClient",
-      "preflightCommit"
+      "preflightCommit",
+      "prepareConditionalCommit"
     ],
     "@sekiban/dcb-runtime": [
       "AllocatorDurableObject",
@@ -85460,5 +87458,5 @@
       "materializedViewId"
     ]
   },
-  "publicSurfaceHash": "590e77382aacaa5482409e7e2d987b57a2548bdb7edbfe289b9515c82dc81db6"
+  "publicSurfaceHash": "c29c56fc9a04375975942d6dc81de683aee0b1be7e81089a562138d4aefb2b44"
 }

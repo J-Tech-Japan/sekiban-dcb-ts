@@ -69,6 +69,38 @@ const mutations = Object.freeze([
       reason: `${code} must keep its exact result kind`,
     },
   ]),
+  {
+    id: "conditional-invalid-key-kind-transport",
+    sourceFile: "packages/dcb-client/src/classification.ts",
+    from: "  conditional_commit_invalid_key: \"invalid\",\n",
+    to: "  conditional_commit_invalid_key: \"transport\",\n",
+    oracle: "invalid-key stays invalid with the canonical safe message",
+    reason: "conditional validation must stay invalid",
+  },
+  {
+    id: "conditional-in-doubt-kind-transport",
+    sourceFile: "packages/dcb-client/src/classification.ts",
+    from: "  conditional_commit_in_doubt: \"unavailable\",\n",
+    to: "  conditional_commit_in_doubt: \"transport\",\n",
+    oracle: "in-doubt stays unavailable with the validated reason",
+    reason: "in-doubt must stay unavailable",
+  },
+  {
+    id: "conditional-corrupt-kind-transport",
+    sourceFile: "packages/dcb-client/src/classification.ts",
+    from: "  conditional_commit_committed_state_corrupt: \"unavailable\",\n",
+    to: "  conditional_commit_committed_state_corrupt: \"transport\",\n",
+    oracle: "corrupt stays unavailable without public retry fields",
+    reason: "committed-state corrupt must stay unavailable",
+  },
+  {
+    id: "conditional-invalid-response-kind-invalid",
+    sourceFile: "packages/dcb-client/src/classification.ts",
+    from: "  conditional_commit_invalid_response: \"transport\",\n",
+    to: "  conditional_commit_invalid_response: \"invalid\",\n",
+    oracle: "malformed response stays transport",
+    reason: "a malformed conditional response must stay transport",
+  },
 ]);
 
 let reports;
@@ -115,6 +147,7 @@ function runOracle(mutation) {
     "--maxWorkers=1",
     "test/g78-error-classification.spec.ts",
     "test/query-client.spec.ts",
+    "test/conditional-commit-client.spec.ts",
     "--testNamePattern",
     mutation.oracle,
     "--reporter=json",
