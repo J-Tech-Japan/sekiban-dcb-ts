@@ -56,14 +56,16 @@ export default worker;
 ```
 
 `checkConfiguredBearer` is available beginning with `@sekiban/dcb-runtime` 0.2.2.
-`@sekiban/dcb-cloudflare` 0.1.4 depends on `@sekiban/dcb-runtime` 0.2.2 exactly.
+`@sekiban/dcb-cloudflare` 0.2.0 depends on `@sekiban/dcb-runtime` 0.3.0 exactly.
+These versions are candidates until the separate maintainer release makes them
+available from the registry.
 The callback returns `true` only for `authorized`. `unconfigured` is an explicit
 404, and `missing` or `invalid` is an explicit denial. The composition helper's
 `false` mapping is not the example's denial path.
 
 The declarations reference Workers types, so TypeScript consumers install `@cloudflare/workers-types`, include `"@cloudflare/workers-types"` in `compilerOptions.types`, and pass the environment type explicitly at the Worker boundary. The generated starter already does both. `requireHandlers()` bridges `createCloudflareOnlyRuntimeWorker()`'s result, whose handler members are optional in the Workers types.
 
-The generated starter pins the matched 0.2.2 set and permits `@sekiban/dcb-cloudflare` from `^0.1.4`.
+The generated starter pins the matched 0.3.0 set and permits `@sekiban/dcb-cloudflare` from `^0.2.0`.
 
 ## License
 

@@ -67,8 +67,9 @@ handler text, or causes:
 - 500 `query_handler_failed` — The query handler failed.
 - 503 `projection_unavailable` — The mapped query projection is unavailable
 
-There is no typed client overload yet. Release hardening and the `0.3.0`
-version bump are later changes.
+`@sekiban/dcb-client` provides the typed `query` and `listQuery` overloads.
+Runtime `0.3.0` is a candidate until the separate maintainer release makes it
+available from the registry.
 
 ## Configured bearer checks
 
