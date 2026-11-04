@@ -217,12 +217,11 @@ Next: register Trusted Publisher (AC1 OIDC path)
        Workflow filename:    publish-dcb-unpublished.yml
        Environment name:     (leave empty)
        Allowed actions:      allow npm publish
-  3. (Recommended) second connection: release-dcb-matched-set.yml
-  4. Docs: https://docs.npmjs.com/trusted-publishers/#for-github-actions
-  5. Run OIDC publish:
+  3. Docs: https://docs.npmjs.com/trusted-publishers/#for-github-actions
+  4. Run OIDC publish:
      https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/workflows/publish-dcb-unpublished.yml
      Branch: main · packages: dcb-runtime
-  6. Confirm later:
+  5. Confirm later:
      npm view @sekiban/dcb-runtime version
 
 EOF

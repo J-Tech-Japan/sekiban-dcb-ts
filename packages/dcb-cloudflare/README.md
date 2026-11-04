@@ -57,8 +57,7 @@ export default worker;
 
 `checkConfiguredBearer` is available beginning with `@sekiban/dcb-runtime` 0.2.2.
 `@sekiban/dcb-cloudflare` 0.2.0 depends on `@sekiban/dcb-runtime` 0.3.0 exactly.
-These versions are candidates until the separate maintainer release makes them
-available from the registry.
+These versions are released and available from npm.
 The callback returns `true` only for `authorized`. `unconfigured` is an explicit
 404, and `missing` or `invalid` is an explicit denial. The composition helper's
 `false` mapping is not the example's denial path.

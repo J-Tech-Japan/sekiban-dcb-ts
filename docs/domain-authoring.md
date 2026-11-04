@@ -272,10 +272,10 @@ not use the PostgreSQL command, declared tags, bootstrap counts, or an
 events-only file to populate TypeScript tag state; use the application's
 supported import and projection procedures instead.
 
-## Typed query authoring preview
+## Typed query authoring
 
-This preview is unreleased. It is bound for the matched `0.3.0` release and is
-not part of the published `0.2.x` packages.
+This surface is available in the released matched `0.3.0` packages and is
+absent from the older `0.2.x` line.
 
 `defineQueryView`, `defineQuery`, and `defineListQuery` are authoring-time
 helpers. A query view binds a row schema to an id and a version. A scalar query

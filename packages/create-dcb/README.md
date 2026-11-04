@@ -63,10 +63,10 @@ the shared core does not reconcile declared files with live Cloudflare state.
 The `0.1.4` creator publishes the keyed room tag-state read, which returns
 `lastSortedUniqueId`.
 
-The current `@sekiban/create-dcb` `0.2.0` candidate generates a project that
+The released `@sekiban/create-dcb` `0.2.0` generates a project that
 pins `@sekiban/dcb-core`, `@sekiban/dcb-domain`, `@sekiban/dcb-client`, and
 `@sekiban/dcb-runtime` at `0.3.0` and `@sekiban/dcb-cloudflare` at `^0.2.0`.
-Registry availability follows the separate maintainer release.
+Those versions are released and available from npm.
 
 The generated project includes `cosmos.experimental.json` as an experimental,
 read-only layout and binding descriptor. It does not activate Cosmos: the

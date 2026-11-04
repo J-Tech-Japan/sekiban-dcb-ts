@@ -5,10 +5,10 @@
 Start here: [`docs/getting-started-cloudflare.md`](docs/getting-started-cloudflare.md)
 (migrate both D1s → deploy → smoke → C-0 notes).
 
-This Worker is a small consumer of the matched package candidates
+This Worker is a small consumer of the released packages available from npm
 (`@sekiban/dcb-{core,domain,client,runtime}@0.3.0`) plus
 `@sekiban/dcb-cloudflare` `0.2.0`, linked from the workspace while developing in
-this repository. Registry availability follows the separate maintainer release.
+this repository.
 The helper mounts storage beside
 a caller's own Worker; this sample is not that caller's only application.
 For tip Cloudflare speed/latency deploys use `./scripts/deploy/npm-consumer-deploy.sh`

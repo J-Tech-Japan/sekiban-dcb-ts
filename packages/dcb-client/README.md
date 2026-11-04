@@ -4,9 +4,8 @@ Typed Serialized DCB V1 client and claim-ledger executor.
 
 `createSekibanExecutor` and the transport helpers provide the portable client
 surface for executing a V1 command without importing the Cloudflare runtime.
-The `0.3.0` candidate depends on the matched `@sekiban/dcb-core` and
-`@sekiban/dcb-domain` `0.3.0` set. Registry availability follows the separate
-maintainer release.
+The released `0.3.0` depends on the matched `@sekiban/dcb-core` and
+`@sekiban/dcb-domain` `0.3.0` set. Those versions are available from npm.
 
 It is not the earlier, unrelated `@sekiban/core` package line.
 
@@ -110,9 +109,8 @@ result: it remains `transport`, status 503, and message
 
 `projection_unavailable` stays `unavailable`. The public `ClientError` fields
 stay `code`, `status`, and `partial`. Do not retry `query_params_unsupported`
-unchanged; fix the parameters the selected query accepts. The typed client is
-part of the `0.3.0` candidate. Registry availability follows the separate
-maintainer release.
+unchanged; fix the parameters the selected query accepts. The typed client calls
+are part of the released `0.3.0` and are available from npm.
 
 ## Conditional commit v1
 
