@@ -11,9 +11,9 @@ runtime, storage, transport, or host APIs.
 npm install @sekiban/dcb-domain
 ```
 
-The package is ESM-only and supports Node.js 20 or newer. The 0.3.0 candidate
-pins `zod` to `4.4.3` and `@sekiban/dcb-core` to `0.3.0`. Registry availability
-follows the separate maintainer release. The `zod` pin for the
+The package is ESM-only and supports Node.js 20 or newer. The released 0.3.0
+pins `zod` to `4.4.3` and `@sekiban/dcb-core` to `0.3.0` and is available from
+npm. The `zod` pin for the
 0.1.x line is also `4.4.3`.
 
 ```ts
@@ -92,9 +92,9 @@ imports stay type-only.
 
 ## Typed query authoring
 
-`defineQueryView`, `defineQuery`, and `defineListQuery` are part of the matched
-`0.3.0` candidate. Published `0.2.x` packages do not include them. Registry
-availability follows the separate maintainer release.
+`defineQueryView`, `defineQuery`, and `defineListQuery` are part of the released
+matched `0.3.0` and are available from npm. Published `0.2.x` packages do not
+include them.
 
 `defineQueryView`, `defineQuery`, and `defineListQuery` build frozen
 definitions and frozen contracts. Params must be a strict Zod object
@@ -135,8 +135,8 @@ the code is `QUERY_DEFINITION_INVALID`, and the message is
 existing path. `RuntimeWorkerConfig.maxScanRows` sets the deployed raw scan
 bound: omission uses 1000, and a positive safe integer from 1 through 10000 is
 accepted. Executable queries run on the server through the existing raw V1
-routes. `SekibanExecutor` can call the frozen contract directly. This candidate
-includes that release hardening and the matched `0.3.0` version.
+routes. `SekibanExecutor` can call the frozen contract directly. The released
+`0.3.0` surface includes that release hardening.
 
 A `z.codec` is accepted when both directions are synchronous functions, even if
 encode is not the inverse of decode. Keeping that pair meaningful is the
@@ -169,9 +169,9 @@ helpers for the `0.1.x` line:
   `@sekiban/dcb-domain/testing`.
 - No deep imports beyond `.` and `./testing` are supported.
 
-The typed query authoring surface above is part of the matched `0.3.0`
-candidate. It is not available in the published `0.2.x` packages. Registry
-availability follows the separate maintainer release. The helpers compile
+The typed query authoring surface above is part of the released matched `0.3.0`
+and is available from npm. It is not available in the published `0.2.x`
+packages. The helpers compile
 server registrations. `SekibanExecutor.query` and `listQuery` accept the
 frozen `.contract` in this repository. Configured `queries` replace
 `domain.queries`, so a runtime config that keeps a metadata-only record must

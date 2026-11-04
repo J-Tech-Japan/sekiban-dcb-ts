@@ -167,7 +167,7 @@ To reuse short demo IDs after verify seed / conflicts:
 | `@sekiban/dcb-runtime` | `0.3.0` | workspace link while developing in this repo |
 | `@sekiban/dcb-cloudflare` | `0.2.0` | workspace link while developing in this repo; composition helper, not the application |
 
-The versions above are candidate manifest versions. Registry availability follows the separate maintainer release.
+The versions above are released and available from npm.
 
 The sample must not copy package `src` trees. Sample-local files are domain,
 Worker composition, and UI only.

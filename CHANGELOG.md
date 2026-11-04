@@ -2,8 +2,7 @@
 
 ## @sekiban/dcb-domain 0.3.0 (matched release)
 
-These package versions are candidates until the separate maintainer release
-makes them available from the registry.
+These package versions are released and available from npm.
 
 ### @sekiban/dcb-core 0.3.0
 
@@ -46,7 +45,7 @@ makes them available from the registry.
   facade. Prepare once and resend only that same held value after an
   explicitly retryable in-doubt result. There is no V1 fallback.
 - Pins `@sekiban/dcb-core` and `@sekiban/dcb-domain` to the exact matched
-  `0.3.0` candidate.
+  `0.3.0` release.
 
 ### @sekiban/dcb-runtime 0.3.0
 
@@ -72,8 +71,8 @@ makes them available from the registry.
 
 - Composition forwarding covers the already-merged public surface, including
   the conditional route when serialized forwarding stays on.
-- Depends on `@sekiban/dcb-runtime` `0.3.0` exactly. This helper version is a
-  candidate until the separate maintainer release.
+- Depends on `@sekiban/dcb-runtime` `0.3.0` exactly. This helper version is
+  released and available from npm.
 
 ### @sekiban/create-dcb 0.2.0
 
@@ -81,7 +80,7 @@ makes them available from the registry.
   `@sekiban/dcb-cloudflare` from `^0.2.0`.
 - The generated offline deployment check stays in the starter. It does not
   create Cloudflare resources.
-- This creator version is a candidate until the separate maintainer release.
+- This creator version is released and available from npm.
 
 ### Migration from matched 0.2.2 and helper/creator 0.1.4
 

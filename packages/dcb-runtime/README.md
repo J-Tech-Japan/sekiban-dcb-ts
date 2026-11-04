@@ -68,8 +68,7 @@ handler text, or causes:
 - 503 `projection_unavailable` — The mapped query projection is unavailable
 
 `@sekiban/dcb-client` provides the typed `query` and `listQuery` overloads.
-Runtime `0.3.0` is a candidate until the separate maintainer release makes it
-available from the registry.
+Runtime `0.3.0` is released and available from npm.
 
 ## Configured bearer checks
 

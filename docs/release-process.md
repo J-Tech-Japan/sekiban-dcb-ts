@@ -134,12 +134,11 @@ command. The gate proves creation, installation, typechecking, and a Wrangler
 dry-run from packed artifacts outside the repository.
 
 The creator template carries the byte-checked copy of the shared offline
-validation core through its existing `template/` package allowlist. The current
-`@sekiban/create-dcb` `0.2.0` candidate ships that file. Its generated project
-pins the matched set at the candidate version and permits
-`@sekiban/dcb-cloudflare` from the candidate helper range. Publish the helper
-before the creator, using the sequence below. This document does not publish
-either package.
+validation core through its existing `template/` package allowlist. The released
+`@sekiban/create-dcb` `0.2.0` ships that file. Its generated project pins the
+matched set at `0.3.0` and permits `@sekiban/dcb-cloudflare` from `^0.2.0`.
+When both move, publish the helper before the creator, using the sequence
+below. This document does not publish either package.
 
 Both starter packages exist on npm. Their first versions, `0.1.0`, were
 published by a maintainer from a local checkout, carry no provenance, and stay
@@ -148,7 +147,7 @@ and provenance therefore first reach npm in a later version. Trusted
 publishing requires an existing npm package, so the first publish of any new
 package remains a maintainer-controlled action.
 
-For the current `0.2.0` candidate release, use this procedure. Versions stay
+For a coordinated starter release, use this procedure. Versions stay
 manifest-derived; do not type a target version into a workflow.
 
 1. In a reviewed pull request, bump the version of each starter package being
