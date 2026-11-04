@@ -132,7 +132,8 @@ async function checkPackageManifestAndPack() {
   const manifest = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"));
   const dependencies = Object.keys(manifest.dependencies ?? {}).sort();
   if (JSON.stringify(dependencies) !== JSON.stringify(["@sekiban/dcb-core", "zod"])) fail(`dependency allowlist is ${dependencies.join(",")}`);
-  if (manifest.dependencies["@sekiban/dcb-core"] !== "0.2.2") fail("core dependency must be the exact matched 0.2.2 pin");
+  const expectedCore = manifest.version;
+  if (manifest.dependencies["@sekiban/dcb-core"] !== expectedCore) fail(`core dependency must be the exact matched ${expectedCore} pin`);
   if (manifest.dependencies.zod !== "4.4.3") fail("zod dependency must remain pinned at 4.4.3");
   if (Object.keys(manifest.devDependencies ?? {}).length > 0 || Object.keys(manifest.peerDependencies ?? {}).length > 0) fail("package has an unexpected dependency section");
   const packed = spawnSync("npm", ["pack", "--dry-run", "--json", "--workspace", "@sekiban/dcb-domain"], {

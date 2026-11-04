@@ -48,5 +48,5 @@ accept. A metadata-only scalar query accepts only `{}`. A metadata-only list
 query accepts only `PageNumber`, `PageSize`, `NewestFirst`, and `consistency`.
 This is a V1 request-acceptance rule. Response envelopes, event identities, and
 projector/query/materialized-view identity pairs stay the same. The typed query
-API is defined in this repository and unreleased, bound for `0.3.0`. Published
-package versions stay `0.2.2`. V1 wire identities are unchanged.
+API is the matched `0.3.0` candidate package surface. Registry availability
+follows the separate maintainer release. V1 wire identities are unchanged.

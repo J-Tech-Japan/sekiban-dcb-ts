@@ -161,11 +161,13 @@ To reuse short demo IDs after verify seed / conflicts:
 
 | Package | npm | Sample dependency |
 |---------|-----|-------------------|
-| `@sekiban/dcb-core` | `0.2.2` | workspace link while developing in this repo |
-| `@sekiban/dcb-domain` | `0.2.2` | via domain authoring / client |
-| `@sekiban/dcb-client` | `0.2.2` | workspace link while developing in this repo |
-| `@sekiban/dcb-runtime` | `0.2.2` | workspace link while developing in this repo |
-| `@sekiban/dcb-cloudflare` | `0.1.4` | workspace link while developing in this repo; composition helper, not the application |
+| `@sekiban/dcb-core` | `0.3.0` | workspace link while developing in this repo |
+| `@sekiban/dcb-domain` | `0.3.0` | via domain authoring / client |
+| `@sekiban/dcb-client` | `0.3.0` | workspace link while developing in this repo |
+| `@sekiban/dcb-runtime` | `0.3.0` | workspace link while developing in this repo |
+| `@sekiban/dcb-cloudflare` | `0.2.0` | workspace link while developing in this repo; composition helper, not the application |
+
+The versions above are candidate manifest versions. Registry availability follows the separate maintainer release.
 
 The sample must not copy package `src` trees. Sample-local files are domain,
 Worker composition, and UI only.

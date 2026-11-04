@@ -1,83 +1,100 @@
 # Changelog
 
-## Unreleased
+## @sekiban/dcb-domain 0.3.0 (matched release)
 
-### @sekiban/dcb-core
+These package versions are candidates until the separate maintainer release
+makes them available from the registry.
 
-- Use the conditional-commit protocol values on the active versioned route.
+### @sekiban/dcb-core 0.3.0
+
+- Structural query shapes are part of this package: `QueryJsonValue`,
+  `QueryCodec`, `QueryRow`, `QueryProjection`, `QueryHandlerContext`,
+  `QueryContract`, `ListQueryContract`, `ListQueryControls`,
+  `QueryPageMetadata`, and `QueryPage`. Codecs are bidirectional `encode` /
+  `decode` pairs. Contracts do not carry handlers, and nothing in this package
+  executes a query.
+- Conditional-commit protocol shapes are on the active versioned route.
   Request and result DTOs, key normalization, canonicalization, fingerprint
-  helpers, and closed parsers are unchanged. There is no type-contract change
-  and no package version change.
+  helpers, and closed parsers are unchanged.
 
-- Export structural query contracts: `QueryJsonValue`, `QueryCodec`,
-  `QueryRow`, `QueryProjection`, `QueryHandlerContext`, `QueryContract`,
-  `ListQueryContract`, `ListQueryControls`, `QueryPageMetadata`, and
-  `QueryPage`. Codecs are bidirectional `encode` / `decode` pairs. Contracts
-  do not carry handlers. Nothing in this package executes a query.
+### @sekiban/dcb-domain 0.3.0
 
-### @sekiban/dcb-domain
-
-- Add `defineQueryView`, `defineQuery`, and `defineListQuery` as an authoring
-  preview. Params must be a strict Zod object and must not use a reserved
-  control name. Definitions and contracts are frozen. Handlers stay
-  synchronous and receive readonly inputs.
-- Depend on the matched `@sekiban/dcb-core` `0.2.2` package. Domain source
+- Author typed queries with `defineQueryView`, `defineQuery`, and
+  `defineListQuery`. Params must be a strict Zod object and must not use a
+  reserved control name. Definitions and contracts are frozen. Handlers stay
+  synchronous, receive readonly inputs, and receive no database, network,
+  environment, request, clock, paging, direction, consistency, waiting, or
+  cancellation capability.
+- Depend on the matched `@sekiban/dcb-core` `0.3.0` package. Domain source
   imports it only as types. `zod` stays pinned at `4.4.3`.
 - `toRuntimeDomain()` compiles authored queries into frozen server
-  registrations. A query-free domain still bridges an empty list. A source
-  view that cannot be mapped throws `QUERY_SOURCE_INVALID`.
-- Runtime composition rejects a malformed typed query on `domain.queries`,
-  `config.queries`, or `config.queryDefinitions` before precedence. Ordinary
-  id/version metadata is unchanged. `RuntimeWorkerConfig.maxScanRows` bounds
-  executable scans and defaults to 1000.
-- Refuse a codec output that cannot be copied into a detached value with
-  `QUERY_CODEC_OUTPUT_UNCOPYABLE`. `Date`, `Map`, and `Set` outputs are
-  admitted. A later internal execution copies them by value; it does not
-  freeze them.
-- Execute compiled queries on the server through the existing raw V1 routes
-  for the in-memory checkpoint fallback, D1 pipeline checkpoints, D1
-  materialized views, PostgreSQL, and Cosmos. Metadata-only queries keep the
-  previous parameter guard and response envelopes. Public failures are
-  `query_params_invalid`, `query_scan_limit_exceeded`, `query_row_invalid`,
-  `query_result_invalid`, and `query_handler_failed`. The preview is
-  unreleased and bound for `0.3.0`; it is not part of the published `0.2.x`
-  packages. Release hardening and the `0.3.0` version bump are later changes.
-  Handlers receive no database, network, environment, request, clock, paging,
-  direction, consistency, waiting, or cancellation capability.
+  registrations. A query-free domain still bridges an empty list. Compiled
+  queries execute on the server through the existing raw V1 routes for the
+  in-memory checkpoint fallback, D1 pipeline checkpoints, D1 materialized
+  views, PostgreSQL, and Cosmos.
+- `query_params_unsupported` is a caller correction. Do not blindly retry it.
 
-### @sekiban/dcb-client
+### @sekiban/dcb-client 0.3.0
 
-- Activate built-in conditional commit on `SerializedDcbClient`,
+- Typed `query` and `listQuery` calls sit beside the raw V1 overloads. Paging
+  and consistency stay controls rather than domain parameters. A request with
+  string `queryType` and `queryParamsJson` stays raw.
+- Fixed query error classification keeps the recognized server codes.
+  `query_params_unsupported` is non-retryable caller correction.
+- Built-in conditional commit is available on `SerializedDcbClient`,
   `createHttpTransport`, `createInProcessTransport`, and the `SekibanExecutor`
-  facade. An explicit resend must send the same prepared value. There is no
-  V1 fallback. A missing custom member still returns Unsupported. Package
-  versions remain unchanged.
+  facade. Prepare once and resend only that same held value after an
+  explicitly retryable in-doubt result. There is no V1 fallback.
+- Pins `@sekiban/dcb-core` and `@sekiban/dcb-domain` to the exact matched
+  `0.3.0` candidate.
 
-- Add typed `SekibanExecutor.query` and `listQuery` overloads beside the raw
-  V1 overloads. `QueryCallOptions` is `waitForSortableUniqueId` and `signal`.
-  List controls stay separate and map to `PageNumber`, `PageSize`,
-  `NewestFirst`, and `consistency`. A request with string `queryType` and
-  `queryParamsJson` stays raw. Transports stay raw.
-- Local failures `query_params_encode_failed` (`invalid`, no status) and
-  `query_result_decode_failed` (`unavailable`, no status) are fresh client
-  errors. Recognized server codes are unchanged.
-  `projection_ordering_quarantined` stays `transport` with status 503 and is
-  not decoded. Package versions stay `0.2.2`. This client change is not in
-  the published `0.2.2` packages, and `0.3.0` is not released.
+### @sekiban/dcb-runtime 0.3.0
 
-### @sekiban/dcb-runtime
+- Query parameter validation rejects unsupported own keys as
+  `query_params_unsupported` before provider or store work. Public failures
+  use fixed safe messages and do not echo a thrown provider or handler
+  message.
+- The V1 resend contract is unchanged. An identical JSON body is a new
+  operation. A timeout, HTTP 504, or network or transport failure after
+  dispatch leaves the outcome unknown. V1 commit is not safe for a blind
+  resend after an unknown outcome.
+- `POST /api/sekiban/serialized/conditional-commit` admits one event and one
+  tag. Fixed D1 and the built-in PostgreSQL composition support it. Cosmos and
+  custom providers return Unsupported.
+- An existing receipt is resolved before the import marker or bootstrap state.
+  The same operation returns 200, a different operation returns 409, and a
+  contradictory receipt returns 500. Only an absent receipt proceeds to those
+  gates. A present import marker returns 501. Only no receipt plus no import
+  marker consults bootstrap: `PLANNED`, `IMPORTING`, or `VERIFYING` returns
+  retryable 503, and `READY`, `FAILED`, or any other value returns 501.
 
-- Activate `POST /api/sekiban/serialized/conditional-commit` for fixed D1 and
-  omitted-provider PostgreSQL. Cosmos and custom providers remain Unsupported.
-  Downstream formats and versions are unchanged. Package versions remain
-  unchanged.
+### @sekiban/dcb-cloudflare 0.2.0
 
-- Document the existing V1 resend contract. An identical JSON body is a new
-  operation. Consistency expectations are optimistic concurrency, not
-  idempotency. A timeout, HTTP 504, or network or transport failure after
-  dispatch leaves the outcome unknown and must be reconciled rather than
-  blindly resent. Runtime, client, and wire semantics are unchanged. Package
-  versions are unchanged.
+- Composition forwarding covers the already-merged public surface, including
+  the conditional route when serialized forwarding stays on.
+- Depends on `@sekiban/dcb-runtime` `0.3.0` exactly. This helper version is a
+  candidate until the separate maintainer release.
+
+### @sekiban/create-dcb 0.2.0
+
+- Generated starters pin the matched set at `0.3.0` and permit
+  `@sekiban/dcb-cloudflare` from `^0.2.0`.
+- The generated offline deployment check stays in the starter. It does not
+  create Cloudflare resources.
+- This creator version is a candidate until the separate maintainer release.
+
+### Migration from matched 0.2.2 and helper/creator 0.1.4
+
+- Define queries with the authored query definitions and move callers to the
+  typed `query` and `listQuery` methods. Keep paging and consistency in the
+  controls argument.
+- Treat `query_params_unsupported` as a request bug. Correct the parameters
+  the selected query accepts, and do not blindly retry that code.
+- Adopt conditional commit only when the caller can prepare once, hold that
+  prepared value, and resend the same value after an explicitly retryable
+  in-doubt result. Never fall back from conditional commit to V1.
+- V1 commit is still not safe for a blind resend after an unknown outcome.
+  Reconcile fresh authoritative state before issuing a new operation.
 
 ## @sekiban/dcb-domain 0.2.2 (matched release)
 

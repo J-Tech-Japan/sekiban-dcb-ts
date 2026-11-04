@@ -10,7 +10,7 @@
   "packages": [
     {
       "name": "@sekiban/dcb-core",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "private": false,
       "type": "module",
       "engines": {
@@ -36,7 +36,7 @@
     },
     {
       "name": "@sekiban/dcb-domain",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "private": false,
       "type": "module",
       "engines": {
@@ -65,7 +65,7 @@
         ]
       },
       "dependencies": {
-        "@sekiban/dcb-core": "0.2.2",
+        "@sekiban/dcb-core": "0.3.0",
         "zod": "4.4.3"
       },
       "otherFields": {
@@ -75,7 +75,7 @@
     },
     {
       "name": "@sekiban/dcb-client",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "private": false,
       "type": "module",
       "engines": {
@@ -94,8 +94,8 @@
         ]
       },
       "dependencies": {
-        "@sekiban/dcb-core": "0.2.2",
-        "@sekiban/dcb-domain": "0.2.2"
+        "@sekiban/dcb-core": "0.3.0",
+        "@sekiban/dcb-domain": "0.3.0"
       },
       "otherFields": {
         "sideEffects": false,
@@ -104,7 +104,7 @@
     },
     {
       "name": "@sekiban/dcb-runtime",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "private": false,
       "type": "module",
       "engines": {
@@ -173,7 +173,7 @@
         ]
       },
       "dependencies": {
-        "@sekiban/dcb-core": "0.2.2"
+        "@sekiban/dcb-core": "0.3.0"
       },
       "otherFields": {
         "sideEffects": false,
@@ -185,7 +185,7 @@
     {
       "package": "@sekiban/dcb-core",
       "shortName": "dcb-core",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "subpath": ".",
       "declaration": "./dist/index.d.ts",
       "import": "./dist/index.js",
@@ -7274,7 +7274,7 @@
     {
       "package": "@sekiban/dcb-domain",
       "shortName": "dcb-domain",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "subpath": ".",
       "declaration": "./dist/index.d.ts",
       "import": "./dist/index.js",
@@ -20021,7 +20021,7 @@
     {
       "package": "@sekiban/dcb-domain",
       "shortName": "dcb-domain",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "subpath": "./testing",
       "declaration": "./dist/testing.d.ts",
       "import": "./dist/testing.js",
@@ -20565,7 +20565,7 @@
     {
       "package": "@sekiban/dcb-client",
       "shortName": "dcb-client",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "subpath": ".",
       "declaration": "./dist/index.d.ts",
       "import": "./dist/index.js",
@@ -24710,7 +24710,7 @@
     {
       "package": "@sekiban/dcb-runtime",
       "shortName": "dcb-runtime",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "subpath": ".",
       "declaration": "./dist/index.d.ts",
       "import": "./dist/index.js",
@@ -50521,7 +50521,7 @@
     {
       "package": "@sekiban/dcb-runtime",
       "shortName": "dcb-runtime",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "subpath": "./cloudflare",
       "declaration": "./dist/cloudflare.d.ts",
       "import": "./dist/cloudflare.js",
@@ -67922,7 +67922,7 @@
     {
       "package": "@sekiban/dcb-runtime",
       "shortName": "dcb-runtime",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "subpath": "./cosmos",
       "declaration": "./dist/cosmos.d.ts",
       "import": "./dist/cosmos.js",
@@ -69369,7 +69369,7 @@
     {
       "package": "@sekiban/dcb-runtime",
       "shortName": "dcb-runtime",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "subpath": "./d1",
       "declaration": "./dist/d1.d.ts",
       "import": "./dist/d1.js",
@@ -73475,7 +73475,7 @@
     {
       "package": "@sekiban/dcb-runtime",
       "shortName": "dcb-runtime",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "subpath": "./d1-mv",
       "declaration": "./dist/d1-mv.d.ts",
       "import": "./dist/d1-mv.js",
@@ -78851,7 +78851,7 @@
     {
       "package": "@sekiban/dcb-runtime",
       "shortName": "dcb-runtime",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "subpath": "./mv",
       "declaration": "./dist/mv/index.d.ts",
       "import": "./dist/mv/index.js",

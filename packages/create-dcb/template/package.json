@@ -11,11 +11,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@sekiban/dcb-client": "0.2.2",
-    "@sekiban/dcb-core": "0.2.2",
-    "@sekiban/dcb-domain": "0.2.2",
-    "@sekiban/dcb-runtime": "0.2.2",
-    "@sekiban/dcb-cloudflare": "^0.1.4",
+    "@sekiban/dcb-client": "0.3.0",
+    "@sekiban/dcb-core": "0.3.0",
+    "@sekiban/dcb-domain": "0.3.0",
+    "@sekiban/dcb-runtime": "0.3.0",
+    "@sekiban/dcb-cloudflare": "^0.2.0",
     "wrangler": "4.125.0"
   },
   "devDependencies": {

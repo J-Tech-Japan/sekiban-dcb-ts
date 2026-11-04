@@ -39,8 +39,9 @@ if (packageJson.publishConfig?.access !== "public" || packageJson.publishConfig?
 if (JSON.stringify(Object.keys(packageJson.dependencies ?? {}).sort()) !== JSON.stringify(["@sekiban/dcb-core", "zod"])) {
   throw new Error("SDT-G59 pack guard: runtime dependency allowlist must be exactly @sekiban/dcb-core and zod");
 }
-if (packageJson.dependencies["@sekiban/dcb-core"] !== "0.2.2") {
-  throw new Error("SDT-G59 pack guard: @sekiban/dcb-core must be pinned at 0.2.2");
+const expectedCore = packageJson.version;
+if (packageJson.dependencies["@sekiban/dcb-core"] !== expectedCore) {
+  throw new Error(`SDT-G59 pack guard: @sekiban/dcb-core must be pinned at ${expectedCore}`);
 }
 if (packageJson.dependencies.zod !== "4.4.3") {
   throw new Error("SDT-G59 pack guard: zod must remain pinned at 4.4.3");

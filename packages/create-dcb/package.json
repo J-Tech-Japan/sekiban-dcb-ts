@@ -1,6 +1,6 @@
 {
   "name": "@sekiban/create-dcb",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "private": false,
   "description": "Create a named Sekiban Cloudflare starter project.",
   "license": "Elastic-2.0",
