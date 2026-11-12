@@ -1,9 +1,10 @@
 import { env, runInDurableObject } from "cloudflare:test";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { AllocationVector } from "../packages/dcb-runtime/src/allocator/types";
 import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 import { CommitWorker, type CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitWorker";
+import { stableTraceHash } from "../packages/dcb-runtime/src/trace/CommitTrace";
 import { GlobalCompletenessReconciler } from "../packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler";
 import type { SourceObligationPage } from "../packages/dcb-runtime/src/completeness/types";
 import { g32EventId, g32Suid, G32_FIXTURE_TIMESTAMP } from "./helpers/g32-fixtures";
@@ -25,6 +26,12 @@ interface TagFact {
   readonly body: Record<string, unknown>;
 }
 
+interface FakeEffect {
+  readonly path: "/fence/install" | "/command/permit-release";
+  readonly tag?: string;
+  readonly ok?: boolean;
+}
+
 interface FakeRun {
   readonly worker: CommitWorker;
   readonly journalCalls: NamespaceCalls;
@@ -33,12 +40,14 @@ interface FakeRun {
   readonly appends: string[];
   readonly cancels: TagFact[];
   readonly fences: TagFact[];
+  readonly effects: FakeEffect[];
 }
 
 interface FakeRunOptions {
   readonly acquire?: (tag: string) => Response;
   readonly append?: (tag: string) => Response;
   readonly cancel?: (tag: string) => Response;
+  readonly fence?: (tag: string) => Response;
 }
 
 interface TagScannerSeam {
@@ -116,6 +125,7 @@ function fakeRun(options: FakeRunOptions = {}): FakeRun {
   const appends: string[] = [];
   const cancels: TagFact[] = [];
   const fences: TagFact[] = [];
+  const effects: FakeEffect[] = [];
   const journal = namespace(journalCalls, async () => json({ code: "journal_must_not_run" }, 500));
   const tag = namespace(tagCalls, async (id, incoming) => {
     const tagName = id.split("/").at(-1)!;
@@ -133,7 +143,9 @@ function fakeRun(options: FakeRunOptions = {}): FakeRun {
     if (path === "/fence/install") {
       const body = await incoming.json<Record<string, unknown>>();
       fences.push({ tag: tagName, path, body });
-      return json({ status: "fence-installed" }, 201);
+      const response = options.fence?.(tagName) ?? json({ status: "fence-installed" }, 201);
+      effects.push({ path: "/fence/install", tag: tagName, ok: response.ok });
+      return response;
     }
     if (path === "/head-facts") {
       return json({ head: g32Suid(`g41-head:${tagName}`), version: 1, updatedAt: "2026-08-29T00:00:00.000Z" });
@@ -149,7 +161,12 @@ function fakeRun(options: FakeRunOptions = {}): FakeRun {
       candidates: body.candidates.map((candidate) => ({ ...candidate, suid: g32Suid(`g41-allocation-${candidate.candidateIndex}`) })),
     });
   });
-  const bootstrap = namespace(bootstrapCalls, async () => json({ leaseEpoch: 1 }));
+  const bootstrap = namespace(bootstrapCalls, async (_id, incoming) => {
+    if (new URL(incoming.url).pathname === "/command/permit-release") {
+      effects.push({ path: "/command/permit-release" });
+    }
+    return json({ leaseEpoch: 1 });
+  });
   return {
     worker: new CommitWorker({ ALLOCATOR: allocator, JOURNAL: journal, TAG: tag, BOOTSTRAP: bootstrap }, SERVICE),
     journalCalls,
@@ -158,6 +175,7 @@ function fakeRun(options: FakeRunOptions = {}): FakeRun {
     appends,
     cancels,
     fences,
+    effects,
   };
 }
 
@@ -413,55 +431,312 @@ describe("SDT-G41 Journal-free commit path", () => {
   });
 
   it("AC3: prepare failure cancels every already-reserved tag and leaves the primary refusal intact", async () => {
-    const first = "room:g41:prepare:a";
-    const refused = "room:g41:prepare:b";
+    const failedTags = Array.from({ length: 18 }, (_, index) => `room:g41:prepare:${String(index).padStart(2, "0")}`);
+    const refused = "room:g41:prepare:refused";
+    const attemptId = "g41-prepare-cancel-attempt";
+    const run = fakeRun({
+      acquire: (tag) => tag === refused
+        ? json({ reason: "consistency_head_mismatch" }, 409)
+        : json({ reservation: { token: `token:${tag}` } }, 201),
+      cancel: (tag) => json({ code: "cancel_ack_lost" }, failedTags.indexOf(tag) % 2 === 0 ? 503 : 409),
+    });
+    const warn = vi.spyOn(console, "warn");
+    try {
+      const response = await run.worker.handle(request(
+        [...failedTags, refused],
+        [...failedTags, refused],
+        "tag-state-unavailable",
+        attemptId,
+      ));
+      const body = await response.json<{ code: string }>();
+
+      expect(response.status).toBe(400);
+      expect(body.code).toBe("consistency_conflict");
+      expect(run.allocatorCalls).toEqual({ idFromName: 0, get: 0, fetch: 0 });
+      expect(run.appends).toEqual([]);
+      expect(run.cancels.map((entry) => entry.tag).sort()).toEqual([...failedTags].sort());
+      expect(run.cancels[0]?.body).toMatchObject({ epoch: 0, forceTombstone: true });
+      expect(run.journalCalls).toEqual({ idFromName: 0, get: 0, fetch: 0 });
+      expect(run.effects.filter((effect) => effect.path === "/command/permit-release")).toEqual([]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]).toEqual([
+        "reservation_cancel",
+        {
+          status: "failed",
+          reason: "best_effort_cancellation_failed",
+          serviceId: SERVICE,
+          attemptId,
+          failedTagCount: failedTags.length,
+          failedTagHashes: failedTags.slice(0, 16).map((tag) => stableTraceHash(tag)),
+          omittedFailedTagCount: failedTags.length - 16,
+          thrownCount: 0,
+          non2xxCount: failedTags.length,
+          acknowledgementLostCount: 0,
+          httpStatuses: [409, 503],
+        },
+      ]);
+      const serialized = JSON.stringify(warn.mock.calls);
+      for (const tag of [...failedTags, refused]) expect(serialized).not.toContain(tag);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("AC3: a thrown reservation cancellation logs the attempt and hashed tag", async () => {
+    const reserved = "room:g41:thrown:reserved";
+    const refused = "room:g41:thrown:refused";
+    const attemptId = "g41-thrown-cancel-attempt";
+    const canary = "g41-thrown-cancel-canary";
+    const run = fakeRun({
+      acquire: (tag) => tag === refused
+        ? json({ reason: "consistency_head_mismatch" }, 409)
+        : json({ reservation: { token: `token:${tag}` } }, 201),
+      cancel: () => {
+        throw new Error(canary);
+      },
+    });
+    const warn = vi.spyOn(console, "warn");
+    try {
+      const response = await run.worker.handle(request([reserved, refused], [reserved, refused], "tag-state-unavailable", attemptId));
+      const body = await response.json<{ code: string }>();
+
+      expect(response.status).toBe(400);
+      expect(body.code).toBe("consistency_conflict");
+      expect(run.effects.filter((effect) => effect.path === "/command/permit-release")).toEqual([]);
+      expect(warn.mock.calls).toEqual([[
+        "reservation_cancel",
+        {
+          status: "failed",
+          reason: "best_effort_cancellation_failed",
+          serviceId: SERVICE,
+          attemptId,
+          failedTagCount: 1,
+          failedTagHashes: [stableTraceHash(reserved)],
+          omittedFailedTagCount: 0,
+          thrownCount: 1,
+          non2xxCount: 0,
+          acknowledgementLostCount: 0,
+          httpStatuses: [],
+        },
+      ]]);
+      const serialized = JSON.stringify(warn.mock.calls);
+      expect(serialized).not.toContain(reserved);
+      expect(serialized).not.toContain(refused);
+      expect(serialized).not.toContain(canary);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("AC3: successful reservation cancellation after a prepare refusal logs nothing and releases the permit", async () => {
+    const reserved = "room:g41:cancel-ok:reserved";
+    const refused = "room:g41:cancel-ok:refused";
+    const attemptId = "g41-cancel-ok-attempt";
+    const run = fakeRun({
+      acquire: (tag) => tag === refused
+        ? json({ reason: "consistency_head_mismatch" }, 409)
+        : json({ reservation: { token: `token:${tag}` } }, 201),
+      cancel: () => json({ status: "cancelled" }, 200),
+    });
+    const warn = vi.spyOn(console, "warn");
+    try {
+      const response = await run.worker.handle(request([reserved, refused], [reserved, refused], "tag-state-unavailable", attemptId));
+      const body = await response.json<{ code: string }>();
+
+      expect(response.status).toBe(400);
+      expect(body.code).toBe("consistency_conflict");
+      expect(run.cancels.map((entry) => entry.tag)).toEqual([reserved]);
+      expect(warn.mock.calls.filter((call) => call[0] === "reservation_cancel")).toEqual([]);
+      expect(run.effects).toEqual([{ path: "/command/permit-release" }]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("AC3: a throwing reservation cancellation warning leaves the primary refusal and holds the permit", async () => {
+    const reserved = "room:g41:warn-throw:reserved";
+    const refused = "room:g41:warn-throw:refused";
+    const attemptId = "g41-warn-throw-attempt";
     const run = fakeRun({
       acquire: (tag) => tag === refused
         ? json({ reason: "consistency_head_mismatch" }, 409)
         : json({ reservation: { token: `token:${tag}` } }, 201),
       cancel: () => json({ code: "cancel_ack_lost" }, 503),
     });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {
+      throw new Error("g41-warn-throw-canary");
+    });
+    try {
+      const response = await run.worker.handle(request([reserved, refused], [reserved, refused], "tag-state-unavailable", attemptId));
+      const body = await response.json<{ code: string }>();
 
-    const response = await run.worker.handle(request([first, refused]));
-    const body = await response.json<{ code: string }>();
+      expect(response.status).toBe(400);
+      expect(body.code).toBe("consistency_conflict");
+      expect(run.effects.filter((effect) => effect.path === "/command/permit-release")).toEqual([]);
+      expect(warn).toHaveBeenCalledWith("reservation_cancel", expect.objectContaining({
+        status: "failed",
+        reason: "best_effort_cancellation_failed",
+        serviceId: SERVICE,
+        attemptId,
+        thrownCount: 0,
+        non2xxCount: 1,
+        httpStatuses: [503],
+      }));
+    } finally {
+      warn.mockRestore();
+    }
+  });
 
-    expect(response.status).toBe(400);
-    expect(body.code).toBe("consistency_conflict");
-    expect(run.allocatorCalls).toEqual({ idFromName: 0, get: 0, fetch: 0 });
-    expect(run.appends).toEqual([]);
-    expect(run.cancels.map((entry) => entry.tag)).toEqual([first]);
-    expect(run.cancels[0]?.body).toMatchObject({ epoch: 0, forceTombstone: true });
-    expect(run.journalCalls).toEqual({ idFromName: 0, get: 0, fetch: 0 });
+  it("AC3: acknowledgement loss after a durable tombstone logs once and holds the permit", async () => {
+    const reserved = "room:g41:ack-lost:reserved";
+    const refused = "room:g41:ack-lost:refused";
+    const attemptId = "g41-ack-lost-attempt";
+    const run = fakeRun({
+      acquire: (tag) => tag === refused
+        ? json({ reason: "consistency_head_mismatch" }, 409)
+        : json({ reservation: { token: `token:${tag}` } }, 201),
+      cancel: () => json({ status: "cancelled" }, 200),
+    });
+    const warn = vi.spyOn(console, "warn");
+    try {
+      const response = await run.worker.handle(request(
+        [reserved, refused],
+        [reserved, refused],
+        "tombstone-after-durable",
+        attemptId,
+      ));
+      const body = await response.json<{ code: string }>();
+
+      expect(response.status).toBe(400);
+      expect(body.code).toBe("consistency_conflict");
+      expect(run.cancels.map((entry) => entry.tag)).toEqual([reserved]);
+      expect(run.effects.filter((effect) => effect.path === "/command/permit-release")).toEqual([]);
+      expect(warn.mock.calls).toEqual([[
+        "reservation_cancel",
+        {
+          status: "failed",
+          reason: "best_effort_cancellation_failed",
+          serviceId: SERVICE,
+          attemptId,
+          failedTagCount: 1,
+          failedTagHashes: [stableTraceHash(reserved)],
+          omittedFailedTagCount: 0,
+          thrownCount: 0,
+          non2xxCount: 0,
+          acknowledgementLostCount: 1,
+          httpStatuses: [],
+        },
+      ]]);
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(reserved);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("AC3: commit failure cancels every tag but cannot delete a committed event or overwrite partial_write", async () => {
     const written = "room:g41:commit:a";
     const missing = "room:g41:commit:b";
+    const attemptId = "g41-partial-cancel-attempt";
+    const failedTags = [written, missing];
     const run = fakeRun({
       append: (tag) => tag === missing ? json({ code: "append_failed" }, 500) : json({ appended: true }, 201),
       cancel: () => json({ code: "cancel_ack_lost" }, 503),
     });
+    const warn = vi.spyOn(console, "warn");
+    try {
+      const response = await run.worker.handle(request(
+        [written, missing],
+        [written, missing],
+        "tag-state-unavailable",
+        attemptId,
+      ));
+      const body = await response.json<{ code: string; partial: { writtenTags: string[]; missingTags: string[]; eventsDeleted: boolean } }>();
 
-    const response = await run.worker.handle(request([written, missing]));
-    const body = await response.json<{ code: string; partial: { writtenTags: string[]; missingTags: string[]; eventsDeleted: boolean } }>();
+      expect(response.status).toBe(500);
+      expect(body).toMatchObject({
+        code: "partial_write",
+        partial: { writtenTags: [written], missingTags: [missing], eventsDeleted: false },
+      });
+      expect(run.appends).toEqual([written, missing, missing]);
+      expect(run.cancels.map((entry) => entry.tag).sort()).toEqual([missing, written].sort());
+      expect(run.fences).toEqual([
+        expect.objectContaining({
+          tag: missing,
+          body: expect.objectContaining({ attemptId, epoch: 0, reason: "partial_write" }),
+        }),
+      ]);
+      // The fake represents the durable event written by the first append.
+      // Cancellation receives no deletion capability and cannot remove it.
+      expect(run.appends).toContain(written);
+      expect(run.journalCalls).toEqual({ idFromName: 0, get: 0, fetch: 0 });
+      expect(warn.mock.calls).toEqual([[
+        "reservation_cancel",
+        {
+          status: "failed",
+          reason: "best_effort_cancellation_failed",
+          serviceId: SERVICE,
+          attemptId,
+          failedTagCount: failedTags.length,
+          failedTagHashes: failedTags.slice(0, 16).map((tag) => stableTraceHash(tag)),
+          omittedFailedTagCount: 0,
+          thrownCount: 0,
+          non2xxCount: failedTags.length,
+          acknowledgementLostCount: 0,
+          httpStatuses: [503],
+        },
+      ]]);
+      const fenceIndex = run.effects.findIndex((effect) => effect.path === "/fence/install" && effect.ok === true);
+      const releaseIndex = run.effects.findIndex((effect) => effect.path === "/command/permit-release");
+      expect(fenceIndex).toBeGreaterThanOrEqual(0);
+      expect(releaseIndex).toBeGreaterThan(fenceIndex);
+    } finally {
+      warn.mockRestore();
+    }
+  });
 
-    expect(response.status).toBe(500);
-    expect(body).toMatchObject({
-      code: "partial_write",
-      partial: { writtenTags: [written], missingTags: [missing], eventsDeleted: false },
+  it("AC3: a failed partial-write fence keeps the timeout and does not release the permit", async () => {
+    const written = "room:g41:fence-fail:a";
+    const missing = "room:g41:fence-fail:b";
+    const attemptId = "g41-fence-fail-attempt";
+    const failedTags = [written, missing];
+    const run = fakeRun({
+      append: (tag) => tag === missing ? json({ code: "append_failed" }, 500) : json({ appended: true }, 201),
+      cancel: () => json({ code: "cancel_ack_lost" }, 503),
+      fence: () => json({ code: "fence_unavailable" }, 503),
     });
-    expect(run.appends).toEqual([written, missing, missing]);
-    expect(run.cancels.map((entry) => entry.tag).sort()).toEqual([missing, written].sort());
-    expect(run.fences).toEqual([
-      expect.objectContaining({
-        tag: missing,
-        body: expect.objectContaining({ attemptId: expect.any(String), epoch: 0, reason: "partial_write" }),
-      }),
-    ]);
-    // The fake represents the durable event written by the first append.
-    // Cancellation receives no deletion capability and cannot remove it.
-    expect(run.appends).toContain(written);
-    expect(run.journalCalls).toEqual({ idFromName: 0, get: 0, fetch: 0 });
+    const warn = vi.spyOn(console, "warn");
+    try {
+      const response = await run.worker.handle(request(
+        [written, missing],
+        [written, missing],
+        "tag-state-unavailable",
+        attemptId,
+      ));
+      const body = await response.json<{ code: string }>();
+
+      expect(response.status).toBe(504);
+      expect(body.code).toBe("timeout");
+      expect(warn.mock.calls).toEqual([[
+        "reservation_cancel",
+        {
+          status: "failed",
+          reason: "best_effort_cancellation_failed",
+          serviceId: SERVICE,
+          attemptId,
+          failedTagCount: failedTags.length,
+          failedTagHashes: failedTags.slice(0, 16).map((tag) => stableTraceHash(tag)),
+          omittedFailedTagCount: 0,
+          thrownCount: 0,
+          non2xxCount: failedTags.length,
+          acknowledgementLostCount: 0,
+          httpStatuses: [503],
+        },
+      ]]);
+      expect(run.effects).toEqual([{ path: "/fence/install", tag: missing, ok: false }]);
+      expect(run.effects.some((effect) => effect.path === "/command/permit-release")).toBe(false);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("AC4 genuine interruption boundary 1: surviving reservations converge through Tag alarms with no CommitWorker cleanup", async () => {

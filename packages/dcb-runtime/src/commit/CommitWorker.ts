@@ -25,6 +25,7 @@ import {
   type CommitTraceSink,
   createTraceCorrelationId,
   type NativeTracing,
+  stableTraceHash,
 } from "../trace/CommitTrace";
 import { observeWorkerInvocation, type ObservationLogSink } from "../trace/ObservationStream";
 import { verifyCommitTrace } from "../trace/CommitTraceVerifier";
@@ -1224,20 +1225,57 @@ export class CommitWorker {
           epoch: INITIAL_OWNER_EPOCH,
           forceTombstone: true,
         }, stageScope?.fork(), stageScope === undefined ? undefined : "S19", { memberIndex, attemptId });
-        return response.status >= 200 && response.status < 300;
+        return {
+          ok: response.status >= 200 && response.status < 300,
+          status: response.status,
+        };
       }),
     );
     const cancelled = traceScope === undefined
       ? await cancel()
       : await traceScope.span("S18", {}, async (stage) => cancel(stage));
-    const failedTags = cancelled.flatMap((result, index) =>
-      result.status === "fulfilled" && result.value ? [] : [tags[index]!],
-    );
+    const failedTags: string[] = [];
+    let thrownCount = 0;
+    let non2xxCount = 0;
+    const httpStatuses: number[] = [];
+    for (const [index, result] of cancelled.entries()) {
+      if (result.status === "rejected") {
+        failedTags.push(tags[index]!);
+        thrownCount += 1;
+        continue;
+      }
+      if (result.value.ok) continue;
+      failedTags.push(tags[index]!);
+      non2xxCount += 1;
+      httpStatuses.push(result.value.status);
+    }
+    let acknowledgementLostCount = 0;
     // A test-only fault models an acknowledgement loss after the target
     // performed its durable tombstone write.  Either way, cancellation is
     // never allowed to replace the primary prepare/commit result.
     if (fault === "tombstone-after-durable" && tags.length > 0 && !failedTags.includes(tags[0]!)) {
       failedTags.push(tags[0]!);
+      acknowledgementLostCount = 1;
+    }
+    if (failedTags.length > 0) {
+      try {
+        const failedTagHashes = failedTags.slice(0, 16).map((tag) => stableTraceHash(tag));
+        console.warn("reservation_cancel", {
+          status: "failed",
+          reason: "best_effort_cancellation_failed",
+          serviceId: this.serviceId,
+          attemptId,
+          failedTagCount: failedTags.length,
+          failedTagHashes,
+          omittedFailedTagCount: failedTags.length - failedTagHashes.length,
+          thrownCount,
+          non2xxCount,
+          acknowledgementLostCount,
+          httpStatuses: [...new Set(httpStatuses)].sort((left, right) => left - right),
+        });
+      } catch {
+        // Production logging is observational and cannot replace the commit result.
+      }
     }
     return Object.freeze({ attemptedTags: [...tags], failedTags });
   }

@@ -69,7 +69,11 @@ through settlement and reconciliation.
 
 After every supplied reservation has succeeded, a multi-tag append is still
 best effort. Zero or more Tags can commit while others do not. Reconcile
-every affected authoritative tag after an unknown or partial result.
+every affected authoritative tag after an unknown or partial result. A failed
+best-effort reservation cancellation emits a bounded `reservation_cancel`
+warning with service and attempt identifiers, aggregate counts, non-2xx
+statuses, and hashed tag identifiers; the warning does not change the primary
+result or cleanup semantics.
 
 ## Conditional commit v1 request identity
 

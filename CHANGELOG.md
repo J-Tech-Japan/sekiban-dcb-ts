@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### @sekiban/dcb-runtime
+
+- Failed best-effort reservation cancellations now emit a bounded production
+  warning; commit responses and cleanup semantics are unchanged.
+
 ## @sekiban/dcb-domain 0.3.0 (matched release)
 
 These package versions are released and available from npm.
