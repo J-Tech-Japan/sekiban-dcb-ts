@@ -6,7 +6,7 @@ CREATE TABLE dcb_projection_statuses (
   projector_version TEXT NOT NULL COLLATE BINARY,
   cluster_id TEXT NOT NULL COLLATE BINARY,
   activation_id TEXT NOT NULL COLLATE BINARY,
-  sequence INTEGER NOT NULL CHECK (sequence >= 0),
+  sequence INTEGER NOT NULL CHECK (sequence > 0),
   applied_event_count INTEGER NOT NULL CHECK (applied_event_count >= 0),
   last_applied_sortable_unique_id TEXT COLLATE BINARY,
   last_traversed_sortable_unique_id TEXT COLLATE BINARY,

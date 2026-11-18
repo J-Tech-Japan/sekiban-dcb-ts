@@ -16,6 +16,8 @@ const deploy = read("packages/create-dcb/template/scripts/deploy-check.mjs");
 const spec = read("test/g150-mv-status.spec.ts");
 const rootMigration = read("migrations/d1/g32/0022_g150_projection_statuses.sql");
 const templateMigration = read("packages/create-dcb/template/migrations/d1/g32/0022_g150_projection_statuses.sql");
+const legacyMigration = read("migrations/d1/0004_g150_projection_statuses.sql");
+const postgresMigration = read("migrations/postgres/0001_g150_projection_statuses.sql");
 
 const route = `if (url.pathname === "/api/sekiban/serialized/projection-status") {
         return handleSerializedProjectionStatus(request, {`;
@@ -63,6 +65,9 @@ function check(name, ok) {
 
 const phase = slice(status, "export function mapMaterializedViewStatusPhase", "export function serializeProjectionStatusRequestV1");
 const publication = slice(catchUp, "private async publishProjectionStatusBestEffort", "private async writeProjectionStatusHeartbeat");
+const statusHandler = slice(status, "export async function handleSerializedProjectionStatus", "async function openProjectionStatusRead");
+const statusRead = slice(status, "async function openProjectionStatusRead", "export function parseProjectionStatusRequestV1");
+const statusOpen = slice(postgres, "async openProjectionStatusConnection", "async close(");
 const build = slice(catchUp, "async build<", "async follow<");
 const follow = slice(catchUp, "async follow<", "async rebuild<");
 const rebuild = slice(catchUp, "async rebuild<", "async promote(");
@@ -92,9 +97,25 @@ check("rebuild-before-active", phase.includes('if (facts.rebuildRequired) return
   && phase.indexOf("facts.rebuildRequired") < phase.indexOf('return "active"'));
 check("hard-finding-fault", phase.includes("facts.checkpointAhead || facts.targetPoison || facts.openOrderingQuarantine"));
 check("publication-guard", publication.includes("try {")
-  && publication.indexOf("try {") < publication.indexOf("await this.writeProjectionStatusHeartbeat(input);")
+  && publication.includes("Promise.race([")
+  && publication.includes("timeoutMs = 2_000")
+  && publication.includes("clearTimeout(timer)")
+  && publication.indexOf("try {") < publication.indexOf("this.writeProjectionStatusHeartbeat(input)")
+  && publication.includes(".catch(() => undefined)")
   && publication.includes("} catch {")
   && publication.includes("return;"));
+check("status-read-ddl", statusHandler.includes("await openProjectionStatusRead(store)")
+  && !statusHandler.includes("store.initialize(")
+  && statusRead.includes("await store.openProjectionStatusConnection();")
+  && statusRead.indexOf("await store.openProjectionStatusConnection();") < statusRead.indexOf("return;")
+  && statusRead.indexOf("return;") < statusRead.indexOf("await store.initialize();")
+  && statusOpen.includes('SELECT 1 AS status_connection')
+  && !statusOpen.includes("SCHEMA")
+  && !statusOpen.includes("CREATE TABLE")
+  && !statusOpen.includes("CREATE INDEX"));
+check("positive-sequence", [rootMigration, templateMigration, legacyMigration, postgresMigration].every((source) => source.includes("sequence > 0") && !source.includes("sequence >= 0"))
+  && status.includes("heartbeat.sequence <= 0"));
+check("exact-service-cleanup", spec.includes("WHERE service_id = $1") && !spec.includes("service_id LIKE"));
 check("publication-after-action", build.indexOf("createActive(") < build.indexOf("publishProjectionStatusBestEffort(")
   && follow.indexOf("followGeneration(") < follow.indexOf("publishProjectionStatusBestEffort(")
   && rebuild.lastIndexOf("markGenerationRebuilt(") < rebuild.lastIndexOf("publishProjectionStatusBestEffort(")

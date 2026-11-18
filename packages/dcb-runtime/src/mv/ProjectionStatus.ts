@@ -90,6 +90,7 @@ export interface ProjectionStatusRouteDependencies {
 
 interface ProjectionStatusReadStore extends ProjectionStore {
   initialize(): Promise<void>;
+  openProjectionStatusConnection?(): Promise<void>;
   close?(): Promise<void>;
 }
 
@@ -103,7 +104,9 @@ export function assertProjectionStatusHeartbeat(heartbeat: ProjectionStatusHeart
   boundedText(heartbeat.projectorVersion, 1, 128);
   boundedText(heartbeat.clusterId, 1, 256);
   boundedText(heartbeat.activationId, 1, 128);
-  nonNegative(heartbeat.sequence);
+  if (!Number.isSafeInteger(heartbeat.sequence) || heartbeat.sequence <= 0) {
+    throw new Error("projection status heartbeat is invalid");
+  }
   nonNegative(expectedSequence);
   nonNegative(heartbeat.appliedEventCount);
   nonNegative(heartbeat.recordedAt);
@@ -245,7 +248,7 @@ export async function handleSerializedProjectionStatus(
     return statusError(501, "projection_status_unsupported", "Projection status is not supported by this provider.");
   }
   try {
-    await store.initialize();
+    await openProjectionStatusRead(store);
     const envelope = await readProjectionStatusEnvelope(store, dependencies.serverServiceId, parsed.request, dependencies.nowMs?.() ?? Date.now());
     return jsonResponse(envelope);
   } catch {
@@ -253,6 +256,14 @@ export async function handleSerializedProjectionStatus(
   } finally {
     await closeStore(store);
   }
+}
+
+async function openProjectionStatusRead(store: ProjectionStatusReadStore): Promise<void> {
+  if (typeof store.openProjectionStatusConnection === "function") {
+    await store.openProjectionStatusConnection();
+    return;
+  }
+  await store.initialize();
 }
 
 export function parseProjectionStatusRequestV1(body: string): RequestDecision {

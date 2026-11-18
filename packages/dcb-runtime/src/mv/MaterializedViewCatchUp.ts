@@ -456,10 +456,23 @@ export class MaterializedViewCatchUpRuntime {
   }
 
   private async publishProjectionStatusBestEffort(input: ProjectionPublicationInput): Promise<void> {
+    const timeoutMs = 2_000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settleTimeout: (() => void) | undefined;
     try {
-      await this.writeProjectionStatusHeartbeat(input);
+      const timeout = new Promise<void>((resolve, reject) => {
+        settleTimeout = resolve;
+        timer = setTimeout(() => reject(new Error("projection status publication timed out")), timeoutMs);
+      });
+      await Promise.race([
+        this.writeProjectionStatusHeartbeat(input).catch(() => undefined),
+        timeout.catch(() => undefined),
+      ]);
     } catch {
       return;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      settleTimeout?.();
     }
   }
 

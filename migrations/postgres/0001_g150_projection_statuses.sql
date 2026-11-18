@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS dcb_projection_statuses (
   projector_version varchar(128) NOT NULL,
   cluster_id varchar(256) NOT NULL,
   activation_id varchar(128) NOT NULL,
-  sequence bigint NOT NULL CHECK (sequence >= 0),
+  sequence bigint NOT NULL CHECK (sequence > 0),
   applied_event_count bigint NOT NULL CHECK (applied_event_count >= 0),
   last_applied_sortable_unique_id varchar(100) NULL,
   last_traversed_sortable_unique_id varchar(100) NULL,

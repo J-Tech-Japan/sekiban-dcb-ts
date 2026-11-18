@@ -20,6 +20,8 @@ const files = {
   deploy: "packages/create-dcb/template/scripts/deploy-check.mjs",
   store: "packages/dcb-runtime/src/mv/MaterializedViewStore.ts",
   rootMigration: "migrations/d1/g32/0022_g150_projection_statuses.sql",
+  legacyMigration: "migrations/d1/0004_g150_projection_statuses.sql",
+  postgresMigration: "migrations/postgres/0001_g150_projection_statuses.sql",
 };
 
 const route = `      if (url.pathname === "/api/sekiban/serialized/projection-status") {
@@ -59,17 +61,17 @@ const mutants = [
   {
     name: "publication-guard",
     file: "catchUp",
-    from: `    try {
-      await this.writeProjectionStatusHeartbeat(input);
-    } catch {
-      return;
-    }`,
-    to: `    await this.writeProjectionStatusHeartbeat(input);
-    try {
-      await Promise.resolve();
-    } catch {
-      return;
-    }`,
+    from: `      await Promise.race([
+        this.writeProjectionStatusHeartbeat(input).catch(() => undefined),
+        timeout.catch(() => undefined),
+      ]);`,
+    to: `      await this.writeProjectionStatusHeartbeat(input);`,
+  },
+  {
+    name: "status-read-ddl",
+    file: "postgres",
+    from: 'await sql.unsafe("SELECT 1 AS status_connection");',
+    to: 'await sql.unsafe("CREATE TABLE dcb_projection_statuses (service_id text)");',
   },
   {
     name: "reader-isolation",

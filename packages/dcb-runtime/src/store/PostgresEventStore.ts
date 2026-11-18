@@ -382,6 +382,18 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
     }
   }
 
+  async openProjectionStatusConnection(): Promise<void> {
+    if (this.sql !== undefined) return;
+    const sql = postgres(this.connectionString, { fetch_types: false, max: 1, prepare: true });
+    try {
+      await sql.unsafe("SELECT 1 AS status_connection");
+      this.sql = sql;
+    } catch (error) {
+      await sql.end({ timeout: 1 });
+      throw error;
+    }
+  }
+
   /** Close an owned request/test client without touching durable records. */
   async close(): Promise<void> {
     const sql = this.sql;

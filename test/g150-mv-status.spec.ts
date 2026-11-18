@@ -133,8 +133,14 @@ function heartbeat(service: string, sequence: number, overrides: Partial<Project
   };
 }
 
-async function expectMatrix(store: StatusStore): Promise<void> {
+async function expectMatrix(store: StatusStore, ids: string[]): Promise<void> {
+  const rejected = serviceId("g150z");
+  ids.push(rejected);
+  await expect(store.upsertProjectionStatusHeartbeat(heartbeat(rejected, 0), 0)).rejects.toThrow("projection status heartbeat is invalid");
+  expect(await store.readProjectionStatusHeartbeat(rejected, "mv:students", "v:1", "cloudflare")).toBeUndefined();
+
   const created = serviceId("g150c");
+  ids.push(created);
   const createdRow = heartbeat(created, 1);
   const first = await store.upsertProjectionStatusHeartbeat(createdRow, 0);
   expect(first).toEqual({ committed: true, current: createdRow });
@@ -149,11 +155,13 @@ async function expectMatrix(store: StatusStore): Promise<void> {
   expect(competing.current).toEqual(replaced);
 
   const absent = serviceId("g150a");
+  ids.push(absent);
   const missing = await store.upsertProjectionStatusHeartbeat(heartbeat(absent, 2), 1);
   expect(missing).toEqual({ committed: false, current: undefined });
   expect(await store.readProjectionStatusHeartbeat(absent, "mv:students", "v:1", "cloudflare")).toBeUndefined();
 
   const listed = serviceId("g150l");
+  ids.push(listed);
   const rows = [
     heartbeat(listed, 1, { projectorName: "mv:b", projectorVersion: "v:2", clusterId: "b", activationId: "b" }),
     heartbeat(listed, 1, { projectorName: "mv:a", projectorVersion: "v:2", clusterId: "a", activationId: "z" }),
@@ -170,6 +178,7 @@ async function expectMatrix(store: StatusStore): Promise<void> {
   expect(await store.listProjectionStatusHeartbeats(listed, null, "v:2")).toHaveLength(2);
 
   const detailed = serviceId("g150d");
+  ids.push(detailed);
   const roundTrip = heartbeat(detailed, 1, {
     phase: "faulted",
     isFaulted: true,
@@ -214,6 +223,8 @@ class MemoryStatus {
   upserts = 0;
   loseNext = false;
   throwNext = false;
+  hangRead = false;
+  hangUpsert = false;
 
   private key(row: Pick<ProjectionStatusHeartbeat, "serviceId" | "projectorName" | "projectorVersion" | "clusterId">): string {
     return `${row.serviceId}\u0000${row.projectorName}\u0000${row.projectorVersion}\u0000${row.clusterId}`;
@@ -225,6 +236,7 @@ class MemoryStatus {
     projectorVersion: string,
     clusterId: string,
   ): Promise<ProjectionStatusHeartbeat | undefined> {
+    if (this.hangRead) return new Promise(() => undefined);
     return this.rows.get(this.key({ serviceId: service, projectorName, projectorVersion, clusterId }));
   }
 
@@ -232,6 +244,7 @@ class MemoryStatus {
     row: ProjectionStatusHeartbeat,
     expectedSequence: number,
   ): Promise<ProjectionStatusWriteResult> {
+    if (this.hangUpsert) return new Promise<ProjectionStatusWriteResult>(() => undefined);
     this.upserts += 1;
     if (this.throwNext) {
       this.throwNext = false;
@@ -321,6 +334,31 @@ function observation(overrides: Partial<MaterializedViewStatusObservation> = {})
   };
 }
 
+async function serializedStatus(row: ProjectionStatusHeartbeat, sampledAt: number): Promise<{ text: string; snapshot: Record<string, unknown> }> {
+  const status = new MemoryStatus();
+  status.rows.set(`${row.serviceId}\u0000${row.projectorName}\u0000${row.projectorVersion}\u0000${row.clusterId}`, row);
+  const response = await handleSerializedProjectionStatus(new Request("https://status.test/api/sekiban/serialized/projection-status", {
+    method: "POST",
+    body: "{\"version\":1,\"serviceId\":null,\"projectorName\":null,\"projectorVersion\":null}",
+  }), {
+    serverServiceId: row.serviceId,
+    nowMs: () => sampledAt,
+    createStore: () => ({
+      initialize: async () => undefined,
+      readAllEvents: async () => [],
+      readProjectionStatusHeartbeat: status.readProjectionStatusHeartbeat.bind(status),
+      upsertProjectionStatusHeartbeat: status.upsertProjectionStatusHeartbeat.bind(status),
+      listProjectionStatusHeartbeats: status.listProjectionStatusHeartbeats.bind(status),
+    }) as never,
+  });
+  expect(response.status).toBe(200);
+  const text = await response.text();
+  const body = JSON.parse(text) as { snapshots: Array<Record<string, unknown>> };
+  const snapshot = body.snapshots[0];
+  if (snapshot === undefined) throw new Error("missing projection status snapshot");
+  return { text, snapshot };
+}
+
 async function snapshotGeneration(mv: D1MaterializedViewStore, service: string, viewId: string, generation: number): Promise<MaterializedViewInstance | undefined> {
   return mv.readInstance(service, viewId, generation);
 }
@@ -344,24 +382,34 @@ describe("passive materialized-view projection status", () => {
 
   it("keeps the starter migration byte-identical to the root migration", () => {
     expect(templateStatusMigration).toBe(d1StatusMigration);
+    expect(d1StatusMigration).toContain("CHECK (sequence > 0)");
+    expect(d1StatusMigration).not.toContain("sequence >= 0");
+    expect(postgresStatusMigration).toContain("CHECK (sequence > 0)");
+    expect(postgresStatusMigration).not.toContain("sequence >= 0");
   });
 
   it("compares and sets heartbeats on D1 and PostgreSQL", async () => {
     const d1Store = new D1EventStore(d1());
     await d1Store.initialize();
+    const d1Ids: string[] = [];
     try {
-      await expectMatrix(d1Store);
+      await expectMatrix(d1Store, d1Ids);
     } finally {
-      await d1().prepare("DELETE FROM dcb_projection_statuses WHERE service_id LIKE 'g150%'").run();
+      for (const id of d1Ids) {
+        await d1().prepare("DELETE FROM dcb_projection_statuses WHERE service_id = ?").bind(id).run();
+      }
     }
 
     const pgStore = new PostgresEventStore(postgresUrl());
     const sql = postgres(postgresUrl(), { max: 1, fetch_types: false });
+    const pgIds: string[] = [];
     try {
       await pgStore.initialize();
-      await expectMatrix(pgStore);
+      await expectMatrix(pgStore, pgIds);
     } finally {
-      await sql.unsafe("DELETE FROM dcb_projection_statuses WHERE service_id LIKE 'g150%'");
+      for (const id of pgIds) {
+        await sql.unsafe("DELETE FROM dcb_projection_statuses WHERE service_id = $1", [id]);
+      }
     }
   });
 
@@ -766,20 +814,164 @@ describe("passive materialized-view projection status", () => {
     expect(afterLoss.instance.lastSuid).toBe(events.at(-1)?.suid);
     expect(await snapshotGeneration(mv, service, viewId, 0)).toEqual(beforeLoss);
 
-    const sentinel = new MaterializedViewStoreError("apply", "MV_INSTANCE_MISSING", "sentinel");
+    const sentinel = new MaterializedViewStoreError("apply", "MV_STORE_OPERATION_FAILED", "sentinel");
+    let publicationAttempts = 0;
     const failing = new Proxy(mv, {
       get(target, prop, receiver) {
         if (prop === "readInstance") return async () => { throw sentinel; };
-        if (prop === "readStatusFacts") return async () => { throw new Error("facts blew up"); };
+        if (prop === "readStatusFacts") return async () => {
+          publicationAttempts += 1;
+          throw new Error("facts blew up");
+        };
         const value = Reflect.get(target, prop, receiver);
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
     const failingRuntime = new MaterializedViewCatchUpRuntime(sourceFor(events, status), failing);
     const caught = await failingRuntime.follow(service, second, NOW_MS).then(() => undefined, (error: unknown) => error);
+    expect(publicationAttempts).toBeGreaterThan(0);
     expect(caught).toBe(sentinel);
     expect(await snapshotGeneration(mv, service, viewId, 1)).toEqual(before);
     expect(built.instance.generation).toBe(0);
+  });
+
+  it("returns catch-up results when status publication never settles", async () => {
+    const service = serviceId("g150h");
+    const viewId = `g150-hang-${service}`;
+    const view = materializer(viewId, 1);
+    const events = [storedEvent(service, 1, `${service}-1`)];
+    const status = new MemoryStatus();
+    const mv = new D1MaterializedViewStore(materializedViewDatabase());
+    await mv.initialize();
+    const runtime = new MaterializedViewCatchUpRuntime(sourceFor(events, status), mv);
+    const built = await runtime.build(service, view, NOW_MS);
+    const identity = mvProjectionStatusIdentity(viewId, 1);
+    expect(built.stopReason).toBe(null);
+    expect(await status.readProjectionStatusHeartbeat(service, identity.projectorName, identity.projectorVersion, "cloudflare")).toMatchObject({ sequence: 1 });
+
+    status.hangRead = true;
+    const afterRead = await runtime.follow(service, view, NOW_MS);
+    status.hangRead = false;
+    expect(afterRead.instance.lastSuid).toBe(events[0]!.suid);
+    expect((await status.readProjectionStatusHeartbeat(service, identity.projectorName, identity.projectorVersion, "cloudflare"))?.sequence).toBe(1);
+
+    status.hangUpsert = true;
+    const afterUpsert = await runtime.follow(service, view, NOW_MS);
+    expect(afterUpsert.appliedEvents).toBe(0);
+    expect((await status.readProjectionStatusHeartbeat(service, identity.projectorName, identity.projectorVersion, "cloudflare"))?.sequence).toBe(1);
+    status.hangUpsert = false;
+
+    let captures = 0;
+    const hangingFacts = new Proxy(mv, {
+      get(target, prop, receiver) {
+        if (prop === "readStatusFacts") return () => {
+          captures += 1;
+          return new Promise(() => undefined);
+        };
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const captured = await new MaterializedViewCatchUpRuntime(sourceFor(events, status), hangingFacts).follow(service, view, NOW_MS);
+    expect(captures).toBeGreaterThan(0);
+    expect(captured.instance.generation).toBe(built.instance.generation);
+    expect((await status.readProjectionStatusHeartbeat(service, identity.projectorName, identity.projectorVersion, "cloudflare"))?.sequence).toBe(1);
+
+    const sentinel = new MaterializedViewStoreError("apply", "MV_ORDERING_QUARANTINED", "sentinel");
+    let faultPublications = 0;
+    const faulting = new Proxy(mv, {
+      get(target, prop, receiver) {
+        if (prop === "readInstance") return async () => { throw sentinel; };
+        if (prop === "readStatusFacts") return () => {
+          faultPublications += 1;
+          return new Promise(() => undefined);
+        };
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const caught = await new MaterializedViewCatchUpRuntime(sourceFor(events, status), faulting).follow(service, view, NOW_MS).then(() => undefined, (error: unknown) => error);
+    expect(faultPublications).toBeGreaterThan(0);
+    expect(caught).toBe(sentinel);
+  }, 20_000);
+
+  it("serializes fail-closed caught-up flags for lease, fault, rebuild, and hard findings", async () => {
+    const sampledAt = 1_700_000_000_000;
+    const fresh = {
+      recordedAt: sampledAt,
+      leaseExpiresAt: sampledAt + 60_000,
+      lastAppliedSortableUniqueId: g32Suid(1),
+      lastTraversedSortableUniqueId: g32Suid(1),
+      appliedEventCount: 0,
+      isFaulted: false,
+      faultMessage: null,
+    };
+    const caughtUp = await serializedStatus(heartbeat("g150-reader", 1, { ...fresh, phase: "active" }), sampledAt);
+    expect(caughtUp.text).toContain('"isCaughtUp":true');
+    expect(caughtUp.snapshot).toMatchObject({ isCaughtUp: true, remainingEventCount: 0, isFresh: true, phase: "active" });
+
+    const expired = await serializedStatus(heartbeat("g150-reader", 1, {
+      ...fresh,
+      phase: "active",
+      leaseExpiresAt: sampledAt - 1,
+    }), sampledAt);
+    expect(expired.text).toContain('"isCaughtUp":false');
+    expect(expired.snapshot).toMatchObject({ isCaughtUp: false, remainingEventCount: 0, isFresh: false, phase: "active" });
+
+    const fault = await serializedStatus(heartbeat("g150-reader", 1, {
+      ...fresh,
+      phase: "faulted",
+      isFaulted: true,
+      faultMessage: "materialized view catch-up faulted",
+    }), sampledAt);
+    expect(fault.text).toContain('"isCaughtUp":false');
+    expect(fault.snapshot).toMatchObject({ isCaughtUp: false, remainingEventCount: 0, isFresh: true, phase: "faulted", isFaulted: true });
+
+    const rebuildPhase = mapMaterializedViewStatusPhase(observation({ facts: facts({ rebuildRequired: true }) }));
+    expect(rebuildPhase).toBe("catchingUp");
+    const rebuild = await serializedStatus(heartbeat("g150-reader", 1, { ...fresh, phase: rebuildPhase }), sampledAt);
+    expect(rebuild.text).toContain('"isCaughtUp":false');
+    expect(rebuild.snapshot).toMatchObject({ isCaughtUp: false, remainingEventCount: 0, isFresh: true, phase: "catchingUp", isFaulted: false });
+
+    for (const finding of ["checkpointAhead", "targetPoison", "openOrderingQuarantine"] as const) {
+      const phase = mapMaterializedViewStatusPhase(observation({ facts: facts({ [finding]: true }) }));
+      expect(phase).toBe("faulted");
+      const serialized = await serializedStatus(heartbeat("g150-reader", 1, {
+        ...fresh,
+        phase,
+        isFaulted: true,
+        faultMessage: "materialized view catch-up faulted",
+      }), sampledAt);
+      expect(serialized.text).toContain('"isCaughtUp":false');
+      expect(serialized.snapshot).toMatchObject({ isCaughtUp: false, remainingEventCount: 0, isFresh: true, phase: "faulted" });
+    }
+  });
+
+  it("opens PostgreSQL for status reads without schema DDL", async () => {
+    const store = new PostgresEventStore(postgresUrl());
+    let ddlStatements = 0;
+    const guarded = new Proxy(store, {
+      get(target, property, receiver) {
+        if (property === "initialize") {
+          return async () => {
+            ddlStatements += 1;
+            throw new Error("CREATE TABLE");
+          };
+        }
+        if (property === "close") return async () => undefined;
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const response = await handleSerializedProjectionStatus(new Request("https://status.test/api/sekiban/serialized/projection-status", {
+      method: "POST",
+      body: "{\"version\":1,\"serviceId\":null,\"projectorName\":null,\"projectorVersion\":null}",
+    }), {
+      serverServiceId: "server-service",
+      createStore: () => guarded as never,
+    });
+    expect(ddlStatements).toBe(0);
+    expect(response.status).toBe(200);
   });
 
   it("does not publish from query, wait, unsafe, or live polling", async () => {
