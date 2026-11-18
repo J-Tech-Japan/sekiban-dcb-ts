@@ -76,9 +76,10 @@ check("v1-routing", [ordinary, cloudflare].every((source) => {
   return branch.includes("handleConditionalCommit(") && !branch.includes("handleSerializedCommit(");
 }));
 check("private-path-exposure", composed.every((path) => !path.includes("__internal")));
-check("six-path-agreement", composed.length === 6
+check("seven-path-agreement", composed.length === 7
   && composed.join("\n") === deployed.join("\n")
-  && composed.includes("/api/sekiban/serialized/conditional-commit"));
+  && composed.includes("/api/sekiban/serialized/conditional-commit")
+  && composed.includes("/api/sekiban/serialized/projection-status"));
 check("missing-builtin-member", member.startsWith("async conditionalCommit(") && transportMember.includes("conditionalCommit:"));
 check("wrong-path", member.includes("/api/sekiban/serialized/conditional-commit`")
   && transportMember.includes('"/api/sekiban/serialized/conditional-commit"'));
@@ -107,8 +108,8 @@ check("missing-export-evidence", diff.includes('"id": "@sekiban/dcb-client::Seri
   && matched.includes("createInProcessTransport")
   && baseline.includes("commitPreparedConditionally"));
 check("compensating-event-runbook", [architecture, writePath, facade].every((text) => text.includes("Append a new ordinary compensating event with an explicit causal link.")));
-check("six-path-readme", cloudflareReadme.includes("six serialized paths")
-  && cloudflareReadme.includes("six-path default")
+check("seven-path-readme", cloudflareReadme.includes("seven serialized paths")
+  && cloudflareReadme.includes("seven-path default")
   && (cloudflareReadme.match(/POST \/api\/sekiban\/serialized\/conditional-commit/g) ?? []).length >= 2);
 
 if (failures.length > 0) {

@@ -82,6 +82,9 @@
     { "id": "@sekiban/dcb-domain::StateUnion", "kind": "changed" },
     { "id": "@sekiban/dcb-domain::Tag", "kind": "changed" },
     { "id": "@sekiban/dcb-domain::TagFamily", "kind": "changed" },
-    { "id": "@sekiban/dcb-domain::TerminalDecision", "kind": "changed" }
+    { "id": "@sekiban/dcb-domain::TerminalDecision", "kind": "changed" },
+    { "id": "@sekiban/dcb-runtime::D1EventStore", "kind": "changed" },
+    { "id": "@sekiban/dcb-runtime::D1MaterializedViewStore", "kind": "changed" },
+    { "id": "@sekiban/dcb-runtime::MaterializedViewCatchUpRuntime", "kind": "changed" }
   ]
 }

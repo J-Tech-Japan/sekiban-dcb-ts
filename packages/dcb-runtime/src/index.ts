@@ -19,6 +19,7 @@ import { JournalDurableObject } from "./journal/JournalDurableObject";
 import { composeRuntime, registeredEventParsers, type RuntimeDomainLike, type RuntimeWorkerConfig } from "./composition";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
+import { handleSerializedProjectionStatus } from "./mv/ProjectionStatus";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { handleIncidentMaintenance, isIncidentMaintenancePath } from "./http/IncidentMaintenance";
 import { TagDurableObject } from "./tag/TagDurableObject";
@@ -431,6 +432,12 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         return conditionalExecutor.handleConditionalCommit(request, env, {
           registeredEventParsers: registeredEventParsers(options.domain),
           serviceIdentityProvider: serviceIdentity,
+        });
+      }
+      if (url.pathname === "/api/sekiban/serialized/projection-status") {
+        return handleSerializedProjectionStatus(request, {
+          serverServiceId: requestServiceId,
+          createStore: () => storeProvider.create(env),
         });
       }
       if (

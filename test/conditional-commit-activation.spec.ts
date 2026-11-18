@@ -402,7 +402,7 @@ describe("conditional commit activation", () => {
     expect(commit).not.toHaveBeenCalled();
   });
 
-  it("serialized mount forwards all six paths only when enabled", async () => {
+  it("serialized mount forwards all seven paths only when enabled", async () => {
     expect(SERIALIZED_PATHS).toEqual([
       "/api/sekiban/serialized/commit",
       "/api/sekiban/serialized/conditional-commit",
@@ -410,6 +410,7 @@ describe("conditional commit activation", () => {
       "/api/sekiban/serialized/list-query",
       "/api/sekiban/serialized/tag-latest-sortable",
       "/api/sekiban/serialized/tag-state",
+      "/api/sekiban/serialized/projection-status",
     ]);
     let runtimeCalls = 0;
     let authorizeCalls = 0;
@@ -432,8 +433,8 @@ describe("conditional commit activation", () => {
       const response = await enabled(new Request(`https://app.test/sekiban${path}`) as Parameters<typeof enabled>[0], {}, {} as ExecutionContext);
       expect(response.status).toBe(200);
     }
-    expect(runtimeCalls).toBe(6);
-    expect(authorizeCalls).toBe(6);
+    expect(runtimeCalls).toBe(7);
+    expect(authorizeCalls).toBe(7);
     const disabled = composeFetch({
       application: async () => new Response("app"),
       sekiban: {

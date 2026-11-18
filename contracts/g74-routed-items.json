@@ -434,6 +434,17 @@
         "@sekiban/dcb-client::createInProcessTransport",
         "@sekiban/dcb-client::createSekibanExecutor"
       ]
+    },
+    {
+      "marker": "contract",
+      "key": "passive-projection-status-declarations",
+      "routedItem": "passive materialized-view status declarations",
+      "kind": "added-member",
+      "diffIds": [
+        "@sekiban/dcb-runtime::D1EventStore",
+        "@sekiban/dcb-runtime::D1MaterializedViewStore",
+        "@sekiban/dcb-runtime::MaterializedViewCatchUpRuntime"
+      ]
     }
   ],
   "receiptModelHash": "86beb8c78d357deabcd3df9b969adc895ff6665e779f1b918a3db371e22b2831",

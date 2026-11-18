@@ -428,6 +428,7 @@ const serializedRoutePaths = [
   "/api/sekiban/serialized/list-query",
   "/api/sekiban/serialized/tag-latest-sortable",
   "/api/sekiban/serialized/tag-state",
+  "/api/sekiban/serialized/projection-status",
 ];
 
 function booleanLiteral(node) {
