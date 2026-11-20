@@ -58,6 +58,34 @@ export interface MaterializedViewCatchUpOptions {
 }
 
 /**
+ * Heartbeat lane selected by the composition that owns this runtime. The
+ * scheduled lane is the default; authenticated operator actions select
+ * `operator`. The lane is row data only and never part of the status key.
+ */
+export interface MaterializedViewCatchUpRuntimeContext {
+  readonly publicationActivationId?: "scheduled" | "operator";
+}
+
+/** Optional promote fence. `undefined` keeps the existing active re-read. */
+export interface MaterializedViewPromoteOptions {
+  readonly expectedActiveGeneration?: number | null;
+}
+
+/**
+ * A follow of a generation built by a different materializer definition is
+ * refused before any event is applied or status is published. Operators
+ * prepare the new definition as a candidate and switch to it instead.
+ */
+export class MaterializedViewDefinitionVersionMismatchError extends Error {
+  readonly code = "MV_DEFINITION_VERSION_MISMATCH" as const;
+
+  constructor(message = "Materialized-view definition version does not match the selected generation; prepare and switch a new generation") {
+    super(message);
+    this.name = "MaterializedViewDefinitionVersionMismatchError";
+  }
+}
+
+/**
  * SafeWindow-aware row materializer runtime.  It keeps the memory projection
  * runtime untouched while allowing the same event source to feed a separate
  * D1 MV database.
@@ -66,6 +94,7 @@ export class MaterializedViewCatchUpRuntime {
   constructor(
     private readonly source: ProjectionStore,
     private readonly materializedViews: D1MaterializedViewStore,
+    private readonly context: MaterializedViewCatchUpRuntimeContext = {},
   ) {}
 
   async build<TEvent = StoredEvent>(
@@ -129,6 +158,9 @@ export class MaterializedViewCatchUpRuntime {
     const active = await this.materializedViews.readActive(serviceId, materializer.id);
     if (active === undefined) {
       throw new MaterializedViewStoreError("apply", "MV_INSTANCE_MISSING", "Materialized-view must be built before follow");
+    }
+    if (materializer.version !== active.definitionVersion) {
+      throw new MaterializedViewDefinitionVersionMismatchError();
     }
     const observation: SourceHeadObservation = {};
     try {
@@ -241,13 +273,16 @@ export class MaterializedViewCatchUpRuntime {
     materializer: MaterializedViewRowMaterializer,
     candidateGeneration: number,
     nowMs: number,
+    options: MaterializedViewPromoteOptions = {},
   ): Promise<MaterializedViewInstance> {
     const active = await this.materializedViews.readActive(serviceId, materializer.id);
     const promoted = await this.materializedViews.promoteGeneration({
       serviceId,
       viewId: materializer.id,
       candidateGeneration,
-      expectedActiveGeneration: active?.generation ?? null,
+      expectedActiveGeneration: options.expectedActiveGeneration !== undefined
+        ? options.expectedActiveGeneration
+        : active?.generation ?? null,
       updatedAt: nowMs,
     });
     await this.publishProjectionStatusBestEffort({
@@ -573,7 +608,7 @@ export class MaterializedViewCatchUpRuntime {
       projectorName: identity.projectorName,
       projectorVersion: identity.projectorVersion,
       clusterId: PROJECTION_STATUS_CLUSTER_ID,
-      activationId: PROJECTION_STATUS_ACTIVATION_ID,
+      activationId: this.context.publicationActivationId ?? PROJECTION_STATUS_ACTIVATION_ID,
       sequence: expectedSequence + 1,
       appliedEventCount: progress.appliedEventCount,
       lastAppliedSortableUniqueId: progress.lastAppliedSortableUniqueId,

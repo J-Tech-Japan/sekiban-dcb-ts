@@ -1,4 +1,4 @@
-import type { DomainDefinition } from "@sekiban/dcb-core";
+import type { DomainDefinition, MaterializedViewRowMaterializer } from "@sekiban/dcb-core";
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
 import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
 import {
@@ -20,6 +20,11 @@ import { composeRuntime, registeredEventParsers, type RuntimeDomainLike, type Ru
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { handleSerializedProjectionStatus } from "./mv/ProjectionStatus";
+import {
+  createMaterializedViewActionRegistry,
+  handleMaterializedViewAction,
+  isMaterializedViewActionPath,
+} from "./mv/MaterializedViewActions";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { handleIncidentMaintenance, isIncidentMaintenancePath } from "./http/IncidentMaintenance";
 import { TagDurableObject } from "./tag/TagDurableObject";
@@ -89,6 +94,8 @@ export type {
   MaterializedViewStoreOperation,
 } from "./mv/MaterializedViewStore";
 export { UnsafeWindowMaterializedViewError, UnsafeWindowMaterializedViewStore } from "./mv/UnsafeWindowMaterializedView";
+export { MaterializedViewDefinitionVersionMismatchError } from "./mv/MaterializedViewCatchUp";
+export type { MaterializedViewRuntimeStatus } from "./mv/MaterializedViewActions";
 export type { UnsafeComposedPage, UnsafeGcInput, UnsafeKickLease, UnsafeOutcome, UnsafeReadMeta, UnsafeWindowApplyInput, UnsafeWindowApplyResult, UnsafeWindowErrorCode, UnsafeWindowMaterializedViewStoreOptions } from "./mv/UnsafeWindowMaterializedView";
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
@@ -378,6 +385,11 @@ export interface RuntimeWorkerOptions {
   readonly materializedViewQueryPort?: MaterializedViewQueryPort;
   /** Host seam; default composition resolves identity from SDT_SERVICE_ID. */
   readonly serviceIdentityProvider?: ServiceIdentityProvider;
+  /**
+   * Server-registered row materializers addressable by the authenticated
+   * `/operator/materialized-views/:viewId/*` actions. Ids must be unique.
+   */
+  readonly materializedViewActions?: readonly MaterializedViewRowMaterializer[];
 }
 
 /**
@@ -391,11 +403,24 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
   configureTagStateProjectorRegistry(composition.projectors);
   const conditionalExecutor = createOrdinaryConditionalExecutor({ storeProvider: options.storeProvider });
   const storeProvider = options.storeProvider ?? POSTGRES_STORE_PROVIDER;
+  const materializedViewActions = createMaterializedViewActionRegistry(options.materializedViewActions);
   return {
     async fetch(request, env, ctx): Promise<Response> {
       const url = new URL(request.url);
       if (isIncidentMaintenancePath(url.pathname)) {
         return handleIncidentMaintenance(request, env, options.serviceIdentityProvider ?? envServiceIdentity(env));
+      }
+      if (isMaterializedViewActionPath(url.pathname)) {
+        // Authenticated before any view/body parsing, identity, or store work.
+        return handleMaterializedViewAction(request, {
+          registry: materializedViewActions,
+          operatorToken: env.REPAIR_OPERATOR_TOKEN,
+          resolveServiceId: () => (options.serviceIdentityProvider ?? envServiceIdentity(env)).forRequest(request, {
+            allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
+          }).serviceId,
+          createSource: () => storeProvider.create(env),
+          materializedViewDatabase: () => env.D1_MV,
+        });
       }
       const operatorRepair = url.pathname === "/operator/repair";
       const operatorBootstrap = url.pathname.startsWith("/operator/bootstrap/");

@@ -7,7 +7,7 @@
  * zero-external-database bundle while the ordinary entrypoint remains the
  * unchanged Postgres composition.
  */
-import type { DomainDefinition } from "@sekiban/dcb-core";
+import type { DomainDefinition, MaterializedViewRowMaterializer } from "@sekiban/dcb-core";
 import { AllocatorDurableObject as RuntimeAllocatorDurableObject } from "./allocator/AllocatorDurableObject";
 import { BootstrapCoordinatorDurableObject as RuntimeBootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
 import {
@@ -34,6 +34,11 @@ import { createD1StoreProvider } from "./d1";
 import { handleProjectionLag, pollLiveProjections, type LiveProjectionPollObserver } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { handleSerializedProjectionStatus } from "./mv/ProjectionStatus";
+import {
+  createMaterializedViewActionRegistry,
+  handleMaterializedViewAction,
+  isMaterializedViewActionPath,
+} from "./mv/MaterializedViewActions";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { handleIncidentMaintenance, isIncidentMaintenancePath } from "./http/IncidentMaintenance";
 import { TagDurableObject as RuntimeTagDurableObject } from "./tag/TagDurableObject";
@@ -118,6 +123,8 @@ export type {
   ServiceIdentityRequestOptions,
   ServiceIdentityResolution,
 } from "./service/ServiceIdentityProvider";
+export { MaterializedViewDefinitionVersionMismatchError } from "./mv/MaterializedViewCatchUp";
+export type { MaterializedViewRuntimeStatus } from "./mv/MaterializedViewActions";
 export { checkConfiguredBearer } from "./http/ConfiguredBearer";
 export type {
   CheckConfiguredBearerOptions,
@@ -214,6 +221,11 @@ export interface CloudflareOnlyWorkerOptions {
     readonly env: CloudflareOnlyEnv;
     readonly ctx: ExecutionContext;
   }) => void;
+  /**
+   * Server-registered row materializers addressable by the authenticated
+   * `/operator/materialized-views/:viewId/*` actions. Ids must be unique.
+   */
+  readonly materializedViewActions?: readonly MaterializedViewRowMaterializer[];
 }
 
 /**
@@ -278,11 +290,24 @@ export function createCloudflareOnlyRuntimeWorker(
   configureTagStateProjectorRegistry(composition.projectors);
   const conditionalExecutor = createFixedD1ConditionalExecutor();
   const storeProvider = createD1StoreProvider();
+  const materializedViewActions = createMaterializedViewActionRegistry(options.materializedViewActions);
   return {
     async fetch(request, env, ctx): Promise<Response> {
       const url = new URL(request.url);
       if (isIncidentMaintenancePath(url.pathname)) {
         return handleIncidentMaintenance(request, env, options.serviceIdentityProvider ?? envServiceIdentity(env));
+      }
+      if (isMaterializedViewActionPath(url.pathname)) {
+        // Authenticated before any view/body parsing, identity, or store work.
+        return handleMaterializedViewAction(request, {
+          registry: materializedViewActions,
+          operatorToken: env.REPAIR_OPERATOR_TOKEN,
+          resolveServiceId: () => (options.serviceIdentityProvider ?? envServiceIdentity(env)).forRequest(request, {
+            allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
+          }).serviceId,
+          createSource: () => storeProvider.create(env),
+          materializedViewDatabase: () => env.D1_MV,
+        });
       }
       const operatorRepair = url.pathname === "/operator/repair";
       const operatorBootstrap = url.pathname.startsWith("/operator/bootstrap/");

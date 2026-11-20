@@ -445,6 +445,42 @@
         "@sekiban/dcb-runtime::D1MaterializedViewStore",
         "@sekiban/dcb-runtime::MaterializedViewCatchUpRuntime"
       ]
+    },
+    {
+      "marker": "contract",
+      "key": "materialized-view-action-declarations",
+      "routedItem": "authenticated materialized-view action declarations",
+      "kind": "added-member",
+      "diffIds": [
+        "@sekiban/dcb-runtime::RuntimeWorkerOptions",
+        "@sekiban/dcb-runtime::CloudflareOnlyWorkerOptions",
+        "@sekiban/dcb-runtime::MaterializedViewCatchUpRuntime",
+        "@sekiban/dcb-runtime::MaterializedViewDefinitionVersionMismatchError",
+        "@sekiban/dcb-runtime::MaterializedViewRuntimeStatus",
+        "@sekiban/dcb-runtime::MaterializedViewCatchUpRuntimeContext",
+        "@sekiban/dcb-runtime::MaterializedViewPromoteOptions"
+      ]
+    },
+    {
+      "marker": "contract",
+      "key": "materialized-view-actions",
+      "routedItem": "authenticated materialized-view actions and definition-version follow refusal",
+      "kind": "behavioural",
+      "evidence": "test/g151-mv-actions.spec.ts",
+      "diffIds": [
+        "@sekiban/dcb-runtime::RuntimeWorkerOptions",
+        "@sekiban/dcb-runtime::CloudflareOnlyWorkerOptions",
+        "@sekiban/dcb-runtime::MaterializedViewDefinitionVersionMismatchError"
+      ]
+    },
+    {
+      "marker": "contract",
+      "key": "g42-probe-request-union-order",
+      "routedItem": "G42 probe request literal union printed in a different order; members unchanged",
+      "kind": "declaration",
+      "diffIds": [
+        "@sekiban/dcb-runtime::G42JournalProbeRequest"
+      ]
     }
   ],
   "receiptModelHash": "86beb8c78d357deabcd3df9b969adc895ff6665e779f1b918a3db371e22b2831",

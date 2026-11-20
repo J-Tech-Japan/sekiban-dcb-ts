@@ -39143,6 +39143,85 @@
           }
         },
         {
+          "name": "MaterializedViewDefinitionVersionMismatchError",
+          "namespace": {
+            "value": true,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/mv/MaterializedViewCatchUp.d.ts",
+              "kind": "class",
+              "text": "export declare class MaterializedViewDefinitionVersionMismatchError extends Error { readonly code: \"MV_DEFINITION_VERSION_MISMATCH\"; constructor(message?: string); }",
+              "typeParameters": []
+            }
+          ],
+          "type": "typeof MaterializedViewDefinitionVersionMismatchError",
+          "signatures": {
+            "call": [],
+            "construct": [
+              {
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "name": "message",
+                    "optional": true,
+                    "rest": false,
+                    "type": "string | undefined"
+                  }
+                ],
+                "returnType": "MaterializedViewDefinitionVersionMismatchError"
+              }
+            ]
+          },
+          "members": [
+            {
+              "name": "code",
+              "optional": false,
+              "readonly": true,
+              "type": "\"MV_DEFINITION_VERSION_MISMATCH\""
+            },
+            {
+              "name": "name",
+              "optional": false,
+              "readonly": false,
+              "type": "string"
+            },
+            {
+              "name": "message",
+              "optional": false,
+              "readonly": false,
+              "type": "string"
+            },
+            {
+              "name": "stack",
+              "optional": true,
+              "readonly": false,
+              "type": "string | undefined"
+            },
+            {
+              "name": "cause",
+              "optional": true,
+              "readonly": false,
+              "type": "unknown"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": true,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "MaterializedViewIndexEntry",
           "namespace": {
             "value": false,
@@ -40788,6 +40867,180 @@
           ],
           "syntax": {
             "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "MaterializedViewRuntimeStatus",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/mv/MaterializedViewActions.d.ts",
+              "kind": "interface",
+              "text": "export interface MaterializedViewRuntimeStatus { readonly serviceId: string; readonly viewName: string; readonly viewVersion: number | null; readonly started: boolean; readonly catchUpInProgress: boolean; readonly isCatchUpActive: boolean; readonly subscriptionActive: false; readonly bufferedEventCount: 0; readonly currentPosition: string | null; readonly lastReceivedSortableUniqueId: string | null; readonly lastError: string | null; readonly lastCatchUpStartedAt: null; readonly lastCatchUpCompletedAt: string | null; readonly lastCatchUpAttemptAt: string | null; readonly consecutiveEmptyBatches: 0; readonly lastProgressSortableUniqueId: string | null; readonly needsImmediateCatchUp: boolean; readonly catchUpBatchSkipCount: 0; readonly catchUpHalted: boolean; readonly generation: number | null; readonly generationStatus: MaterializedViewInstance[\"status\"] | null; readonly rebuildRequired: boolean; readonly isFresh: boolean; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "serviceId",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "viewName",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "viewVersion",
+              "optional": false,
+              "readonly": true,
+              "type": "number | null"
+            },
+            {
+              "name": "started",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "catchUpInProgress",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "isCatchUpActive",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "subscriptionActive",
+              "optional": false,
+              "readonly": true,
+              "type": "false"
+            },
+            {
+              "name": "bufferedEventCount",
+              "optional": false,
+              "readonly": true,
+              "type": "0"
+            },
+            {
+              "name": "currentPosition",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "lastReceivedSortableUniqueId",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "lastError",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "lastCatchUpStartedAt",
+              "optional": false,
+              "readonly": true,
+              "type": "null"
+            },
+            {
+              "name": "lastCatchUpCompletedAt",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "lastCatchUpAttemptAt",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "consecutiveEmptyBatches",
+              "optional": false,
+              "readonly": true,
+              "type": "0"
+            },
+            {
+              "name": "lastProgressSortableUniqueId",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "needsImmediateCatchUp",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "catchUpBatchSkipCount",
+              "optional": false,
+              "readonly": true,
+              "type": "0"
+            },
+            {
+              "name": "catchUpHalted",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "generation",
+              "optional": false,
+              "readonly": true,
+              "type": "number | null"
+            },
+            {
+              "name": "generationStatus",
+              "optional": false,
+              "readonly": true,
+              "type": "\"candidate\" | \"active\" | \"retired\" | null"
+            },
+            {
+              "name": "rebuildRequired",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "isFresh",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            }
+          ],
+          "syntax": {
+            "union": true,
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
@@ -45327,7 +45580,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface RuntimeWorkerOptions { readonly domain?: DomainDefinition | RuntimeDomainLike; readonly config?: RuntimeWorkerConfig; readonly storeProvider?: StoreProvider; readonly queryBacking?: QueryBacking; readonly materializedViewQueryPort?: MaterializedViewQueryPort; readonly serviceIdentityProvider?: ServiceIdentityProvider; }",
+              "text": "export interface RuntimeWorkerOptions { readonly domain?: DomainDefinition | RuntimeDomainLike; readonly config?: RuntimeWorkerConfig; readonly storeProvider?: StoreProvider; readonly queryBacking?: QueryBacking; readonly materializedViewQueryPort?: MaterializedViewQueryPort; readonly serviceIdentityProvider?: ServiceIdentityProvider; readonly materializedViewActions?: readonly MaterializedViewRowMaterializer[]; }",
               "typeParameters": []
             }
           ],
@@ -45372,6 +45625,12 @@
               "optional": true,
               "readonly": true,
               "type": "ServiceIdentityProvider | undefined"
+            },
+            {
+              "name": "materializedViewActions",
+              "optional": true,
+              "readonly": true,
+              "type": "readonly MaterializedViewRowMaterializer<unknown>[] | undefined"
             }
           ],
           "syntax": {
@@ -50412,6 +50671,7 @@
         "MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST",
         "MAX_UNIX_MILLISECONDS",
         "MaterializedViewCasError",
+        "MaterializedViewDefinitionVersionMismatchError",
         "MaterializedViewPatchError",
         "MaterializedViewPromotionCasError",
         "MaterializedViewStoreError",
@@ -51602,7 +51862,7 @@
             {
               "file": "dist/cloudflare.d.ts",
               "kind": "interface",
-              "text": "export interface CloudflareOnlyWorkerOptions { readonly domain?: DomainDefinition | RuntimeDomainLike; readonly config?: RuntimeWorkerConfig; readonly serviceIdentityProvider?: ServiceIdentityProvider; readonly afterBootstrapVerify?: (input: { readonly serviceId: string; readonly env: CloudflareOnlyEnv; }) => Promise<void>; readonly beforeLiveProjectionPoll?: (input: { readonly env: CloudflareOnlyEnv; readonly serviceId: string; readonly scan: GlobalCompletenessScanResult; readonly ctx: ExecutionContext; }) => Promise<BeforeLiveProjectionPollResult | void>; readonly liveProjectionPollObserver?: LiveProjectionPollObserver; readonly deliveryViews?: (input: { readonly env: CloudflareOnlyEnv; readonly ctx: ExecutionContext; }) => readonly DeliveryViewHandler[]; readonly afterStoredDownstreamDelivery?: (input: { readonly message: DownstreamOutboxMessage; readonly event: StoredEvent; readonly arrivedAt: number; readonly env: CloudflareOnlyEnv; readonly ctx: ExecutionContext; readonly source?: \"queue\" | \"fast\" | \"import\"; readonly result?: DeliveryCoreResult; }) => Promise<void>; readonly afterStoredQueueDelivery?: (input: { readonly message: DownstreamOutboxMessage; readonly result: DeliveryCoreResult; readonly env: CloudflareOnlyEnv; readonly ctx: ExecutionContext; }) => void; }",
+              "text": "export interface CloudflareOnlyWorkerOptions { readonly domain?: DomainDefinition | RuntimeDomainLike; readonly config?: RuntimeWorkerConfig; readonly serviceIdentityProvider?: ServiceIdentityProvider; readonly afterBootstrapVerify?: (input: { readonly serviceId: string; readonly env: CloudflareOnlyEnv; }) => Promise<void>; readonly beforeLiveProjectionPoll?: (input: { readonly env: CloudflareOnlyEnv; readonly serviceId: string; readonly scan: GlobalCompletenessScanResult; readonly ctx: ExecutionContext; }) => Promise<BeforeLiveProjectionPollResult | void>; readonly liveProjectionPollObserver?: LiveProjectionPollObserver; readonly deliveryViews?: (input: { readonly env: CloudflareOnlyEnv; readonly ctx: ExecutionContext; }) => readonly DeliveryViewHandler[]; readonly afterStoredDownstreamDelivery?: (input: { readonly message: DownstreamOutboxMessage; readonly event: StoredEvent; readonly arrivedAt: number; readonly env: CloudflareOnlyEnv; readonly ctx: ExecutionContext; readonly source?: \"queue\" | \"fast\" | \"import\"; readonly result?: DeliveryCoreResult; }) => Promise<void>; readonly afterStoredQueueDelivery?: (input: { readonly message: DownstreamOutboxMessage; readonly result: DeliveryCoreResult; readonly env: CloudflareOnlyEnv; readonly ctx: ExecutionContext; }) => void; readonly materializedViewActions?: readonly MaterializedViewRowMaterializer[]; }",
               "typeParameters": []
             }
           ],
@@ -51665,6 +51925,12 @@
               "optional": true,
               "readonly": true,
               "type": "((input: { readonly message: DownstreamOutboxMessage; readonly result: DeliveryCoreResult; readonly env: CloudflareOnlyEnv; readonly ctx: ExecutionContext; }) => void) | undefined"
+            },
+            {
+              "name": "materializedViewActions",
+              "optional": true,
+              "readonly": true,
+              "type": "readonly MaterializedViewRowMaterializer<unknown>[] | undefined"
             }
           ],
           "syntax": {
@@ -56896,7 +57162,7 @@
               "name": "action",
               "optional": false,
               "readonly": true,
-              "type": "\"trial\" | \"prepare\" | \"measure\" | \"cleanup\" | \"inventory\""
+              "type": "\"prepare\" | \"trial\" | \"measure\" | \"cleanup\" | \"inventory\""
             },
             {
               "name": "trialId",
@@ -63928,6 +64194,259 @@
           }
         },
         {
+          "name": "MaterializedViewDefinitionVersionMismatchError",
+          "namespace": {
+            "value": true,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/mv/MaterializedViewCatchUp.d.ts",
+              "kind": "class",
+              "text": "export declare class MaterializedViewDefinitionVersionMismatchError extends Error { readonly code: \"MV_DEFINITION_VERSION_MISMATCH\"; constructor(message?: string); }",
+              "typeParameters": []
+            }
+          ],
+          "type": "typeof MaterializedViewDefinitionVersionMismatchError",
+          "signatures": {
+            "call": [],
+            "construct": [
+              {
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "name": "message",
+                    "optional": true,
+                    "rest": false,
+                    "type": "string | undefined"
+                  }
+                ],
+                "returnType": "MaterializedViewDefinitionVersionMismatchError"
+              }
+            ]
+          },
+          "members": [
+            {
+              "name": "code",
+              "optional": false,
+              "readonly": true,
+              "type": "\"MV_DEFINITION_VERSION_MISMATCH\""
+            },
+            {
+              "name": "name",
+              "optional": false,
+              "readonly": false,
+              "type": "string"
+            },
+            {
+              "name": "message",
+              "optional": false,
+              "readonly": false,
+              "type": "string"
+            },
+            {
+              "name": "stack",
+              "optional": true,
+              "readonly": false,
+              "type": "string | undefined"
+            },
+            {
+              "name": "cause",
+              "optional": true,
+              "readonly": false,
+              "type": "unknown"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": true,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "MaterializedViewRuntimeStatus",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/mv/MaterializedViewActions.d.ts",
+              "kind": "interface",
+              "text": "export interface MaterializedViewRuntimeStatus { readonly serviceId: string; readonly viewName: string; readonly viewVersion: number | null; readonly started: boolean; readonly catchUpInProgress: boolean; readonly isCatchUpActive: boolean; readonly subscriptionActive: false; readonly bufferedEventCount: 0; readonly currentPosition: string | null; readonly lastReceivedSortableUniqueId: string | null; readonly lastError: string | null; readonly lastCatchUpStartedAt: null; readonly lastCatchUpCompletedAt: string | null; readonly lastCatchUpAttemptAt: string | null; readonly consecutiveEmptyBatches: 0; readonly lastProgressSortableUniqueId: string | null; readonly needsImmediateCatchUp: boolean; readonly catchUpBatchSkipCount: 0; readonly catchUpHalted: boolean; readonly generation: number | null; readonly generationStatus: MaterializedViewInstance[\"status\"] | null; readonly rebuildRequired: boolean; readonly isFresh: boolean; }",
+              "typeParameters": []
+            }
+          ],
+          "type": null,
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "serviceId",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "viewName",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "viewVersion",
+              "optional": false,
+              "readonly": true,
+              "type": "number | null"
+            },
+            {
+              "name": "started",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "catchUpInProgress",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "isCatchUpActive",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "subscriptionActive",
+              "optional": false,
+              "readonly": true,
+              "type": "false"
+            },
+            {
+              "name": "bufferedEventCount",
+              "optional": false,
+              "readonly": true,
+              "type": "0"
+            },
+            {
+              "name": "currentPosition",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "lastReceivedSortableUniqueId",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "lastError",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "lastCatchUpStartedAt",
+              "optional": false,
+              "readonly": true,
+              "type": "null"
+            },
+            {
+              "name": "lastCatchUpCompletedAt",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "lastCatchUpAttemptAt",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "consecutiveEmptyBatches",
+              "optional": false,
+              "readonly": true,
+              "type": "0"
+            },
+            {
+              "name": "lastProgressSortableUniqueId",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "needsImmediateCatchUp",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "catchUpBatchSkipCount",
+              "optional": false,
+              "readonly": true,
+              "type": "0"
+            },
+            {
+              "name": "catchUpHalted",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "generation",
+              "optional": false,
+              "readonly": true,
+              "type": "number | null"
+            },
+            {
+              "name": "generationStatus",
+              "optional": false,
+              "readonly": true,
+              "type": "\"candidate\" | \"active\" | \"retired\" | null"
+            },
+            {
+              "name": "rebuildRequired",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "isFresh",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            }
+          ],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST",
           "namespace": {
             "value": true,
@@ -67864,6 +68383,7 @@
         "JournalDurableObject",
         "LIVE_PROJECTION_POLL_OUTCOMES",
         "MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST",
+        "MaterializedViewDefinitionVersionMismatchError",
         "ScopeNameError",
         "ServiceIdentityMissingError",
         "ShardRotationError",
@@ -74688,7 +75208,7 @@
             {
               "file": "dist/mv/MaterializedViewCatchUp.d.ts",
               "kind": "class",
-              "text": "export declare class MaterializedViewCatchUpRuntime { private readonly source; private readonly materializedViews; constructor(source: ProjectionStore, materializedViews: D1MaterializedViewStore); build<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; follow<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; rebuild<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, rebuildId?: string, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult & { readonly candidateGeneration: number; readonly rebuildId?: string; }>; promote(serviceId: string, materializer: MaterializedViewRowMaterializer, candidateGeneration: number, nowMs: number): Promise<MaterializedViewInstance>; read(serviceId: string, materializer: MaterializedViewRowMaterializer): Promise<{ readonly instance: MaterializedViewInstance; readonly rows: Awaited<ReturnType<D1MaterializedViewStore[\"readRows\"]>>; } | undefined>; private followGeneration; private publishProjectionStatusBestEffort; private writeProjectionStatusHeartbeat; private writeObservedHeartbeat; private writeHeartbeat; private detectLateLowerSuid; private assertSourceBatchOrder; }",
+              "text": "export declare class MaterializedViewCatchUpRuntime { private readonly source; private readonly materializedViews; private readonly context; constructor(source: ProjectionStore, materializedViews: D1MaterializedViewStore, context?: MaterializedViewCatchUpRuntimeContext); build<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; follow<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; rebuild<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, rebuildId?: string, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult & { readonly candidateGeneration: number; readonly rebuildId?: string; }>; promote(serviceId: string, materializer: MaterializedViewRowMaterializer, candidateGeneration: number, nowMs: number, options?: MaterializedViewPromoteOptions): Promise<MaterializedViewInstance>; read(serviceId: string, materializer: MaterializedViewRowMaterializer): Promise<{ readonly instance: MaterializedViewInstance; readonly rows: Awaited<ReturnType<D1MaterializedViewStore[\"readRows\"]>>; } | undefined>; private followGeneration; private publishProjectionStatusBestEffort; private writeProjectionStatusHeartbeat; private writeObservedHeartbeat; private writeHeartbeat; private detectLateLowerSuid; private assertSourceBatchOrder; }",
               "typeParameters": []
             }
           ],
@@ -74710,6 +75230,12 @@
                     "optional": false,
                     "rest": false,
                     "type": "D1MaterializedViewStore"
+                  },
+                  {
+                    "name": "context",
+                    "optional": true,
+                    "rest": false,
+                    "type": "MaterializedViewCatchUpRuntimeContext | undefined"
                   }
                 ],
                 "returnType": "MaterializedViewCatchUpRuntime"
@@ -74725,6 +75251,12 @@
             },
             {
               "name": "materializedViews",
+              "optional": false,
+              "readonly": true,
+              "type": "any"
+            },
+            {
+              "name": "context",
               "optional": false,
               "readonly": true,
               "type": "any"
@@ -74751,7 +75283,7 @@
               "name": "promote",
               "optional": false,
               "readonly": false,
-              "type": "(serviceId: string, materializer: MaterializedViewRowMaterializer, candidateGeneration: number, nowMs: number) => Promise<MaterializedViewInstance>"
+              "type": "(serviceId: string, materializer: MaterializedViewRowMaterializer, candidateGeneration: number, nowMs: number, options?: MaterializedViewPromoteOptions) => Promise<MaterializedViewInstance>"
             },
             {
               "name": "read",
@@ -79704,7 +80236,7 @@
             {
               "file": "dist/mv/MaterializedViewCatchUp.d.ts",
               "kind": "class",
-              "text": "export declare class MaterializedViewCatchUpRuntime { private readonly source; private readonly materializedViews; constructor(source: ProjectionStore, materializedViews: D1MaterializedViewStore); build<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; follow<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; rebuild<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, rebuildId?: string, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult & { readonly candidateGeneration: number; readonly rebuildId?: string; }>; promote(serviceId: string, materializer: MaterializedViewRowMaterializer, candidateGeneration: number, nowMs: number): Promise<MaterializedViewInstance>; read(serviceId: string, materializer: MaterializedViewRowMaterializer): Promise<{ readonly instance: MaterializedViewInstance; readonly rows: Awaited<ReturnType<D1MaterializedViewStore[\"readRows\"]>>; } | undefined>; private followGeneration; private publishProjectionStatusBestEffort; private writeProjectionStatusHeartbeat; private writeObservedHeartbeat; private writeHeartbeat; private detectLateLowerSuid; private assertSourceBatchOrder; }",
+              "text": "export declare class MaterializedViewCatchUpRuntime { private readonly source; private readonly materializedViews; private readonly context; constructor(source: ProjectionStore, materializedViews: D1MaterializedViewStore, context?: MaterializedViewCatchUpRuntimeContext); build<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; follow<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; rebuild<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, rebuildId?: string, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult & { readonly candidateGeneration: number; readonly rebuildId?: string; }>; promote(serviceId: string, materializer: MaterializedViewRowMaterializer, candidateGeneration: number, nowMs: number, options?: MaterializedViewPromoteOptions): Promise<MaterializedViewInstance>; read(serviceId: string, materializer: MaterializedViewRowMaterializer): Promise<{ readonly instance: MaterializedViewInstance; readonly rows: Awaited<ReturnType<D1MaterializedViewStore[\"readRows\"]>>; } | undefined>; private followGeneration; private publishProjectionStatusBestEffort; private writeProjectionStatusHeartbeat; private writeObservedHeartbeat; private writeHeartbeat; private detectLateLowerSuid; private assertSourceBatchOrder; }",
               "typeParameters": []
             }
           ],
@@ -79726,6 +80258,12 @@
                     "optional": false,
                     "rest": false,
                     "type": "D1MaterializedViewStore"
+                  },
+                  {
+                    "name": "context",
+                    "optional": true,
+                    "rest": false,
+                    "type": "MaterializedViewCatchUpRuntimeContext | undefined"
                   }
                 ],
                 "returnType": "MaterializedViewCatchUpRuntime"
@@ -79741,6 +80279,12 @@
             },
             {
               "name": "materializedViews",
+              "optional": false,
+              "readonly": true,
+              "type": "any"
+            },
+            {
+              "name": "context",
               "optional": false,
               "readonly": true,
               "type": "any"
@@ -79767,7 +80311,7 @@
               "name": "promote",
               "optional": false,
               "readonly": false,
-              "type": "(serviceId: string, materializer: MaterializedViewRowMaterializer, candidateGeneration: number, nowMs: number) => Promise<MaterializedViewInstance>"
+              "type": "(serviceId: string, materializer: MaterializedViewRowMaterializer, candidateGeneration: number, nowMs: number, options?: MaterializedViewPromoteOptions) => Promise<MaterializedViewInstance>"
             },
             {
               "name": "read",
@@ -86463,6 +87007,20 @@
     {
       "package": "@sekiban/dcb-runtime",
       "file": "dist/mv/MaterializedViewCatchUp.d.ts",
+      "name": "MaterializedViewCatchUpRuntimeContext",
+      "kind": "interface",
+      "text": "export interface MaterializedViewCatchUpRuntimeContext { readonly publicationActivationId?: \"scheduled\" | \"operator\"; }"
+    },
+    {
+      "package": "@sekiban/dcb-runtime",
+      "file": "dist/mv/MaterializedViewCatchUp.d.ts",
+      "name": "MaterializedViewPromoteOptions",
+      "kind": "interface",
+      "text": "export interface MaterializedViewPromoteOptions { readonly expectedActiveGeneration?: number | null; }"
+    },
+    {
+      "package": "@sekiban/dcb-runtime",
+      "file": "dist/mv/MaterializedViewCatchUp.d.ts",
       "name": "TEvent",
       "kind": "TypeParameter",
       "text": "TEvent = StoredEvent"
@@ -87363,6 +87921,7 @@
       "MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST",
       "MAX_UNIX_MILLISECONDS",
       "MaterializedViewCasError",
+      "MaterializedViewDefinitionVersionMismatchError",
       "MaterializedViewPatchError",
       "MaterializedViewPromotionCasError",
       "MaterializedViewStoreError",
@@ -87498,6 +88057,7 @@
       "JournalDurableObject",
       "LIVE_PROJECTION_POLL_OUTCOMES",
       "MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST",
+      "MaterializedViewDefinitionVersionMismatchError",
       "ScopeNameError",
       "ServiceIdentityMissingError",
       "ShardRotationError",
@@ -87608,5 +88168,5 @@
       "materializedViewId"
     ]
   },
-  "publicSurfaceHash": "938d9a5486b13b076b92b65370d3145eea0a4d4736092a4e3270c6d842cf743d"
+  "publicSurfaceHash": "4fb276b44adcea41074e334d1d991b536bd1a5410a7e995cb429d5d63a8a3787"
 }
