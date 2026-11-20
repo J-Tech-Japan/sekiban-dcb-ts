@@ -38,6 +38,7 @@ import {
   type MaterializedViewStatusFacts,
 } from "../packages/dcb-runtime/src/mv/MaterializedViewStore";
 import {
+  formatProjectionStatusUtc,
   handleSerializedProjectionStatus,
   mapMaterializedViewStatusPhase,
   mvProjectionStatusIdentity,
@@ -445,6 +446,27 @@ describe("passive materialized-view projection status", () => {
       switchedAtUtc: null,
     };
     expect(serializeProjectionStatusEnvelopeV1("server-service", [snapshot])).toBe(GOLDEN_RESPONSE);
+  });
+
+  it("formats UTC milliseconds as a zero-padded trimmed fraction", () => {
+    const base = Date.UTC(2026, 0, 1, 0, 0, 0, 0);
+    expect(formatProjectionStatusUtc(base)).toBe("2026-01-01T00:00:00+00:00");
+    expect(formatProjectionStatusUtc(base + 60_000)).toBe("2026-01-01T00:01:00+00:00");
+    const cases: Array<[number, string]> = [
+      [1, ".001"],
+      [5, ".005"],
+      [10, ".01"],
+      [42, ".042"],
+      [99, ".099"],
+      [100, ".1"],
+      [500, ".5"],
+      [999, ".999"],
+    ];
+    for (const [ms, fraction] of cases) {
+      const formatted = formatProjectionStatusUtc(base + ms);
+      expect(formatted).toBe(`2026-01-01T00:00:00${fraction}+00:00`);
+      expect(Date.parse(formatted)).toBe(base + ms);
+    }
   });
 
   it("refuses malformed and unsupported requests before opening a store", async () => {

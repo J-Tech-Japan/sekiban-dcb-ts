@@ -162,7 +162,7 @@ export function formatProjectionStatusUtc(epochMs: number): string {
   const pad = (value: number, width: number): string => String(value).padStart(width, "0");
   const fraction = date.getUTCMilliseconds() === 0
     ? ""
-    : `.${String(date.getUTCMilliseconds()).replace(/0+$/, "")}`;
+    : `.${String(date.getUTCMilliseconds()).padStart(3, "0").replace(/0+$/, "")}`;
   return `${pad(date.getUTCFullYear(), 4)}-${pad(date.getUTCMonth() + 1, 2)}-${pad(date.getUTCDate(), 2)}T${pad(date.getUTCHours(), 2)}:${pad(date.getUTCMinutes(), 2)}:${pad(date.getUTCSeconds(), 2)}${fraction}+00:00`;
 }
 
