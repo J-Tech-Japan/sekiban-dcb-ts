@@ -9,6 +9,12 @@
   version-1 status sample from the event-source registry.
 - Failed best-effort reservation cancellations now emit a bounded production
   warning; commit responses and cleanup semantics are unchanged.
+- Both worker compositions accept a `materializedViewActions` registry and
+  serve six bearer-protected `/operator/materialized-views/:viewId/*` routes:
+  ensure-started, refresh, prepare, switch (with an expected active
+  generation), runtime status, and a one-shot received check. A follow now
+  refuses a generation built with a different definition version; after a
+  version bump, prepare the new generation and switch promptly.
 
 ## @sekiban/dcb-domain 0.3.0 (matched release)
 

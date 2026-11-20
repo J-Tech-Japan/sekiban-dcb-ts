@@ -85,6 +85,13 @@
     { "id": "@sekiban/dcb-domain::TerminalDecision", "kind": "changed" },
     { "id": "@sekiban/dcb-runtime::D1EventStore", "kind": "changed" },
     { "id": "@sekiban/dcb-runtime::D1MaterializedViewStore", "kind": "changed" },
-    { "id": "@sekiban/dcb-runtime::MaterializedViewCatchUpRuntime", "kind": "changed" }
+    { "id": "@sekiban/dcb-runtime::MaterializedViewCatchUpRuntime", "kind": "changed" },
+    { "id": "@sekiban/dcb-runtime::RuntimeWorkerOptions", "kind": "changed" },
+    { "id": "@sekiban/dcb-runtime::CloudflareOnlyWorkerOptions", "kind": "changed" },
+    { "id": "@sekiban/dcb-runtime::G42JournalProbeRequest", "kind": "changed" },
+    { "id": "@sekiban/dcb-runtime::MaterializedViewDefinitionVersionMismatchError", "kind": "added" },
+    { "id": "@sekiban/dcb-runtime::MaterializedViewRuntimeStatus", "kind": "added" },
+    { "id": "@sekiban/dcb-runtime::MaterializedViewCatchUpRuntimeContext", "kind": "added" },
+    { "id": "@sekiban/dcb-runtime::MaterializedViewPromoteOptions", "kind": "added" }
   ]
 }
