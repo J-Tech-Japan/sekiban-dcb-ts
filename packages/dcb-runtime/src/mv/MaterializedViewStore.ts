@@ -200,6 +200,23 @@ export interface MaterializedViewWaitForState {
   readonly poison: boolean;
 }
 
+/** Observation-only completion facts for one already-open generation. */
+export interface MaterializedViewStatusFacts {
+  readonly serviceId: string;
+  readonly viewId: string;
+  readonly generation: number;
+  readonly definitionVersion: number;
+  readonly status: MaterializedViewInstance["status"];
+  readonly lastSuid: string;
+  readonly activePointer: boolean;
+  readonly rebuildRequired: boolean;
+  readonly checkpointAhead: boolean;
+  readonly targetPoison: boolean;
+  readonly openOrderingQuarantine: boolean;
+  readonly rebuildVerifiedAt: number | null;
+  readonly rebuildSourceEventCount: number | null;
+}
+
 export type MaterializedViewOrderingQuarantineClassification = "LATE_LOWER_SUID" | "ORDER_VIOLATION";
 
 export interface MaterializedViewOrderingQuarantine {
@@ -774,6 +791,75 @@ export class D1MaterializedViewStore {
       checkpointAhead: asInteger(row.checkpoint_ahead, "checkpoint_ahead") === 1,
       rebuildRequired: asInteger(row.rebuild_required, "rebuild_required") === 1,
       poison: asInteger(row.poison, "poison") === 1,
+    };
+  }
+
+  /**
+   * One bound read of completion facts for a generation the caller already
+   * opened. A missing or malformed row is not healthy evidence.
+   */
+  async readStatusFacts(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewStatusFacts | undefined> {
+    this.ready("initialize");
+    const row = await this.database.prepare(
+      `SELECT instance.service_id, instance.view_id, instance.generation, instance.status,
+              instance.last_suid, instance.definition_version, instance.rebuild_verified_at,
+              instance.rebuild_source_event_count,
+              CASE WHEN active.generation = instance.generation THEN 1 ELSE 0 END AS active_pointer,
+              CASE WHEN EXISTS (
+                SELECT 1 FROM mv_checkpoint_ahead_findings finding
+                 WHERE finding.service_id = instance.service_id
+                   AND finding.view_id = instance.view_id
+                   AND finding.generation = instance.generation
+              ) THEN 1 ELSE 0 END AS checkpoint_ahead,
+              COALESCE((
+                SELECT arrival.rebuild_required
+                  FROM mv_unsafe_arrivals arrival
+                 WHERE arrival.service_id = instance.service_id
+                   AND arrival.view_id = instance.view_id
+                   AND arrival.generation = instance.generation
+              ), 0) AS rebuild_required,
+              CASE WHEN EXISTS (
+                SELECT 1 FROM mv_wait_target_poison finding
+                 WHERE finding.service_id = instance.service_id
+                   AND finding.view_id = instance.view_id
+                   AND finding.generation = instance.generation
+              ) THEN 1 ELSE 0 END AS target_poison,
+              CASE WHEN EXISTS (
+                SELECT 1 FROM mv_ordering_quarantines quarantine
+                 WHERE quarantine.service_id = instance.service_id
+                   AND quarantine.view_id = instance.view_id
+                   AND quarantine.generation = instance.generation
+                   AND quarantine.status = 'open'
+              ) THEN 1 ELSE 0 END AS open_ordering_quarantine
+         FROM mv_instances instance
+         LEFT JOIN mv_active_generations active
+           ON active.service_id = instance.service_id
+          AND active.view_id = instance.view_id
+        WHERE instance.service_id = ? AND instance.view_id = ? AND instance.generation = ?`,
+    ).bind(serviceId, viewId, generation).first<D1Row>();
+    if (row === null || row === undefined) return undefined;
+    const status = row.status;
+    if (status !== "active" && status !== "candidate" && status !== "retired") {
+      throw new MaterializedViewStoreError("initialize", "MV_STORE_OPERATION_FAILED", "Materialized-view status facts were invalid");
+    }
+    return {
+      serviceId: asString(row.service_id, "status_facts.service_id"),
+      viewId: asString(row.view_id, "status_facts.view_id"),
+      generation: asInteger(row.generation, "status_facts.generation"),
+      definitionVersion: asInteger(row.definition_version, "status_facts.definition_version"),
+      status,
+      lastSuid: asString(row.last_suid, "status_facts.last_suid"),
+      activePointer: asInteger(row.active_pointer, "status_facts.active_pointer") === 1,
+      rebuildRequired: asInteger(row.rebuild_required, "status_facts.rebuild_required") === 1,
+      checkpointAhead: asInteger(row.checkpoint_ahead, "status_facts.checkpoint_ahead") === 1,
+      targetPoison: asInteger(row.target_poison, "status_facts.target_poison") === 1,
+      openOrderingQuarantine: asInteger(row.open_ordering_quarantine, "status_facts.open_ordering_quarantine") === 1,
+      rebuildVerifiedAt: row.rebuild_verified_at === null || row.rebuild_verified_at === undefined
+        ? null
+        : asInteger(row.rebuild_verified_at, "status_facts.rebuild_verified_at"),
+      rebuildSourceEventCount: row.rebuild_source_event_count === null || row.rebuild_source_event_count === undefined
+        ? null
+        : asInteger(row.rebuild_source_event_count, "status_facts.rebuild_source_event_count"),
     };
   }
 

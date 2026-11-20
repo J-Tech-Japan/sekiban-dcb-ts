@@ -33,6 +33,7 @@ import { composeRuntime, registeredEventParsers, type RuntimeDomainLike, type Ru
 import { createD1StoreProvider } from "./d1";
 import { handleProjectionLag, pollLiveProjections, type LiveProjectionPollObserver } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
+import { handleSerializedProjectionStatus } from "./mv/ProjectionStatus";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { handleIncidentMaintenance, isIncidentMaintenancePath } from "./http/IncidentMaintenance";
 import { TagDurableObject as RuntimeTagDurableObject } from "./tag/TagDurableObject";
@@ -330,6 +331,12 @@ export function createCloudflareOnlyRuntimeWorker(
         return conditionalExecutor.handleConditionalCommit(request, env, {
           registeredEventParsers: registeredEventParsers(options.domain),
           serviceIdentityProvider: serviceIdentity,
+        });
+      }
+      if (url.pathname === "/api/sekiban/serialized/projection-status") {
+        return handleSerializedProjectionStatus(request, {
+          serverServiceId: requestServiceId,
+          createStore: () => storeProvider.create(env),
         });
       }
       if (

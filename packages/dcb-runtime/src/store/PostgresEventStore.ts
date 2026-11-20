@@ -6,6 +6,7 @@ import {
 } from "../safeWindow";
 import { resolveDeliveryIdentity } from "../eventIdentity";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
+import { assertProjectionStatusHeartbeat } from "../mv/ProjectionStatus";
 import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
 import {
   CanonicalEventIdentityConflictError,
@@ -23,6 +24,8 @@ import {
   type ProjectionCheckpointCandidateScan,
   type ProjectionLag,
   type RawProjectionCheckpointCandidate,
+  type ProjectionStatusHeartbeat,
+  type ProjectionStatusWriteResult,
   type ProjectionStore,
   type StoredEvent,
 } from "./types";
@@ -372,6 +375,18 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
         await transaction.unsafe("SELECT pg_advisory_xact_lock($1)", [SCHEMA_BOOTSTRAP_LOCK]);
         await transaction.unsafe(SCHEMA, [], { prepare: false });
       });
+      this.sql = sql;
+    } catch (error) {
+      await sql.end({ timeout: 1 });
+      throw error;
+    }
+  }
+
+  async openProjectionStatusConnection(): Promise<void> {
+    if (this.sql !== undefined) return;
+    const sql = postgres(this.connectionString, { fetch_types: false, max: 1, prepare: true });
+    try {
+      await sql.unsafe("SELECT 1 AS status_connection");
       this.sql = sql;
     } catch (error) {
       await sql.end({ timeout: 1 });
@@ -1093,4 +1108,162 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
     const row = rows[0];
     return row === undefined ? undefined : pendingFrom(row);
   }
+
+  async readProjectionStatusHeartbeat(
+    serviceId: string,
+    projectorName: string,
+    projectorVersion: string,
+    clusterId: string,
+  ): Promise<ProjectionStatusHeartbeat | undefined> {
+    const rows = await this.query(PROJECTION_STATUS_POINT_READ, [serviceId, projectorName, projectorVersion, clusterId]);
+    return rows[0] === undefined ? undefined : projectionStatusFromRow(rows[0]);
+  }
+
+  async upsertProjectionStatusHeartbeat(
+    heartbeat: ProjectionStatusHeartbeat,
+    expectedSequence: number,
+  ): Promise<ProjectionStatusWriteResult> {
+    assertProjectionStatusHeartbeat(heartbeat, expectedSequence);
+    const written = await this.query(
+      `INSERT INTO dcb_projection_statuses (
+         service_id, projector_name, projector_version, cluster_id, activation_id,
+         sequence, applied_event_count, last_applied_sortable_unique_id,
+         last_traversed_sortable_unique_id, recorded_at_utc, phase, lease_expires_at_utc,
+         is_faulted, fault_message, switch_kind, switch_reason, switched_at_utc
+       )
+       SELECT $2, $3, $4, $5, $6, $7, $8, $9, $10,
+              to_timestamp($11::double precision / 1000.0), $12,
+              to_timestamp($13::double precision / 1000.0), $14 <> 0, $15, $16, $17,
+              to_timestamp($18::double precision / 1000.0)
+        WHERE $1::bigint = 0 OR EXISTS (
+          SELECT 1 FROM dcb_projection_statuses current
+           WHERE current.service_id = $19 AND current.projector_name = $20
+             AND current.projector_version = $21 AND current.cluster_id = $22
+             AND current.sequence = $23
+        )
+       ON CONFLICT (service_id, projector_name, projector_version, cluster_id) DO UPDATE
+          SET activation_id = EXCLUDED.activation_id,
+              sequence = EXCLUDED.sequence,
+              applied_event_count = EXCLUDED.applied_event_count,
+              last_applied_sortable_unique_id = EXCLUDED.last_applied_sortable_unique_id,
+              last_traversed_sortable_unique_id = EXCLUDED.last_traversed_sortable_unique_id,
+              recorded_at_utc = EXCLUDED.recorded_at_utc,
+              phase = EXCLUDED.phase,
+              lease_expires_at_utc = EXCLUDED.lease_expires_at_utc,
+              is_faulted = EXCLUDED.is_faulted,
+              fault_message = EXCLUDED.fault_message,
+              switch_kind = EXCLUDED.switch_kind,
+              switch_reason = EXCLUDED.switch_reason,
+              switched_at_utc = EXCLUDED.switched_at_utc
+        WHERE $1::bigint <> 0
+          AND dcb_projection_statuses.sequence = $1 AND EXCLUDED.sequence > dcb_projection_statuses.sequence
+       RETURNING ${PROJECTION_STATUS_RETURNING}`,
+      projectionStatusParameters(heartbeat, expectedSequence),
+    );
+    if (written[0] !== undefined) return { committed: true, current: projectionStatusFromRow(written[0]) };
+    const current = await this.readProjectionStatusHeartbeat(
+      heartbeat.serviceId,
+      heartbeat.projectorName,
+      heartbeat.projectorVersion,
+      heartbeat.clusterId,
+    );
+    return { committed: false, current };
+  }
+
+  async listProjectionStatusHeartbeats(
+    serviceId: string,
+    projectorName?: string | null,
+    projectorVersion?: string | null,
+  ): Promise<readonly ProjectionStatusHeartbeat[]> {
+    const name = projectorName === undefined || projectorName === null ? undefined : projectorName;
+    const version = projectorVersion === undefined || projectorVersion === null ? undefined : projectorVersion;
+    const rows = name !== undefined && version !== undefined
+      ? await this.query(`${PROJECTION_STATUS_LIST_PREFIX} AND projector_name = $2 AND projector_version = $3 ${PROJECTION_STATUS_LIST_ORDER}`, [serviceId, name, version])
+      : name !== undefined
+        ? await this.query(`${PROJECTION_STATUS_LIST_PREFIX} AND projector_name = $2 ${PROJECTION_STATUS_LIST_ORDER}`, [serviceId, name])
+        : version !== undefined
+          ? await this.query(`${PROJECTION_STATUS_LIST_PREFIX} AND projector_version = $2 ${PROJECTION_STATUS_LIST_ORDER}`, [serviceId, version])
+          : await this.query(`${PROJECTION_STATUS_LIST_PREFIX} ${PROJECTION_STATUS_LIST_ORDER}`, [serviceId]);
+    return rows.map(projectionStatusFromRow);
+  }
+}
+
+const PROJECTION_STATUS_RETURNING = `service_id, projector_name, projector_version, cluster_id, activation_id,
+  sequence::text AS sequence, applied_event_count::text AS applied_event_count,
+  last_applied_sortable_unique_id, last_traversed_sortable_unique_id,
+  ROUND(EXTRACT(EPOCH FROM recorded_at_utc) * 1000)::bigint::text AS recorded_at_utc,
+  phase,
+  CASE WHEN lease_expires_at_utc IS NULL THEN NULL ELSE ROUND(EXTRACT(EPOCH FROM lease_expires_at_utc) * 1000)::bigint::text END AS lease_expires_at_utc,
+  CASE WHEN is_faulted THEN 1 ELSE 0 END AS is_faulted,
+  fault_message, switch_kind, switch_reason,
+  CASE WHEN switched_at_utc IS NULL THEN NULL ELSE ROUND(EXTRACT(EPOCH FROM switched_at_utc) * 1000)::bigint::text END AS switched_at_utc`;
+
+const PROJECTION_STATUS_POINT_READ = `SELECT ${PROJECTION_STATUS_RETURNING}
+  FROM dcb_projection_statuses
+ WHERE service_id = $1 AND projector_name = $2 AND projector_version = $3 AND cluster_id = $4`;
+
+const PROJECTION_STATUS_LIST_PREFIX = `SELECT ${PROJECTION_STATUS_RETURNING}
+  FROM dcb_projection_statuses
+ WHERE service_id = $1`;
+
+const PROJECTION_STATUS_LIST_ORDER = `ORDER BY projector_name COLLATE "C" ASC, projector_version COLLATE "C" ASC,
+  cluster_id COLLATE "C" ASC, activation_id COLLATE "C" ASC`;
+
+function projectionStatusParameters(heartbeat: ProjectionStatusHeartbeat, expectedSequence: number): SqlParameter[] {
+  return [
+    expectedSequence,
+    heartbeat.serviceId,
+    heartbeat.projectorName,
+    heartbeat.projectorVersion,
+    heartbeat.clusterId,
+    heartbeat.activationId,
+    heartbeat.sequence,
+    heartbeat.appliedEventCount,
+    heartbeat.lastAppliedSortableUniqueId === null || heartbeat.lastAppliedSortableUniqueId.length === 0 ? null : heartbeat.lastAppliedSortableUniqueId,
+    heartbeat.lastTraversedSortableUniqueId === null || heartbeat.lastTraversedSortableUniqueId.length === 0 ? null : heartbeat.lastTraversedSortableUniqueId,
+    heartbeat.recordedAt,
+    heartbeat.phase,
+    heartbeat.leaseExpiresAt,
+    heartbeat.isFaulted ? 1 : 0,
+    heartbeat.faultMessage,
+    heartbeat.switchKind,
+    heartbeat.switchReason,
+    heartbeat.switchedAt,
+    heartbeat.serviceId,
+    heartbeat.projectorName,
+    heartbeat.projectorVersion,
+    heartbeat.clusterId,
+    expectedSequence,
+  ];
+}
+
+function projectionStatusFromRow(row: DbRow): ProjectionStatusHeartbeat {
+  const phase = asString(row.phase, "projection_status.phase");
+  if (phase !== "unknown" && phase !== "starting" && phase !== "catchingUp" && phase !== "active"
+    && phase !== "caughtUp" && phase !== "faulted" && phase !== "stopped") {
+    throw new Error("Postgres projection status phase was invalid");
+  }
+  return {
+    serviceId: asString(row.service_id, "projection_status.service_id"),
+    projectorName: asString(row.projector_name, "projection_status.projector_name"),
+    projectorVersion: asString(row.projector_version, "projection_status.projector_version"),
+    clusterId: asString(row.cluster_id, "projection_status.cluster_id"),
+    activationId: asString(row.activation_id, "projection_status.activation_id"),
+    sequence: asNumber(row.sequence, "projection_status.sequence"),
+    appliedEventCount: asNumber(row.applied_event_count, "projection_status.applied_event_count"),
+    lastAppliedSortableUniqueId: nullableString(row.last_applied_sortable_unique_id, "projection_status.last_applied"),
+    lastTraversedSortableUniqueId: nullableString(row.last_traversed_sortable_unique_id, "projection_status.last_traversed"),
+    recordedAt: asNumber(row.recorded_at_utc, "projection_status.recorded_at"),
+    phase,
+    leaseExpiresAt: row.lease_expires_at_utc === null || row.lease_expires_at_utc === undefined
+      ? null
+      : asNumber(row.lease_expires_at_utc, "projection_status.lease_expires_at"),
+    isFaulted: asNumber(row.is_faulted, "projection_status.is_faulted") === 1,
+    faultMessage: nullableString(row.fault_message, "projection_status.fault_message"),
+    switchKind: nullableString(row.switch_kind, "projection_status.switch_kind"),
+    switchReason: nullableString(row.switch_reason, "projection_status.switch_reason"),
+    switchedAt: row.switched_at_utc === null || row.switched_at_utc === undefined
+      ? null
+      : asNumber(row.switched_at_utc, "projection_status.switched_at"),
+  };
 }

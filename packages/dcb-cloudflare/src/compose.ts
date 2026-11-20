@@ -5,6 +5,7 @@ export const SERIALIZED_PATHS = [
   "/api/sekiban/serialized/list-query",
   "/api/sekiban/serialized/tag-latest-sortable",
   "/api/sekiban/serialized/tag-state",
+  "/api/sekiban/serialized/projection-status",
 ] as const;
 
 export type IncomingRequest<CfHostMetadata = unknown> = Request<

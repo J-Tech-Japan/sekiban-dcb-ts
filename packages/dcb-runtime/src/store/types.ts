@@ -224,6 +224,48 @@ export interface DetectorStore {
   listDeliveryIncidents(serviceId?: string): Promise<DeliveryIncident[]>;
 }
 
+export const PROJECTION_STATUS_PHASES = [
+  "unknown",
+  "starting",
+  "catchingUp",
+  "active",
+  "caughtUp",
+  "faulted",
+  "stopped",
+] as const;
+
+export type ProjectionStatusPhase = (typeof PROJECTION_STATUS_PHASES)[number];
+
+/** One source-side heartbeat. Activation is row data, not part of the CAS key. */
+export interface ProjectionStatusHeartbeat {
+  serviceId: string;
+  projectorName: string;
+  projectorVersion: string;
+  clusterId: string;
+  activationId: string;
+  sequence: number;
+  appliedEventCount: number;
+  lastAppliedSortableUniqueId: string | null;
+  lastTraversedSortableUniqueId: string | null;
+  recordedAt: number;
+  phase: ProjectionStatusPhase;
+  leaseExpiresAt: number | null;
+  isFaulted: boolean;
+  faultMessage: string | null;
+  switchKind: string | null;
+  switchReason: string | null;
+  switchedAt: number | null;
+}
+
+/**
+ * A rejected write returns the current row. Callers must not replace that row
+ * with an unconditional update.
+ */
+export interface ProjectionStatusWriteResult {
+  readonly committed: boolean;
+  readonly current: ProjectionStatusHeartbeat | undefined;
+}
+
 /**
  * Read-only event consumption plus durable checkpoint operations. This port
  * intentionally omits recordDelivery, keeping SafeWindow projection unable to
@@ -251,6 +293,28 @@ export interface ProjectionStore {
   projectionLag(serviceId: string, projectionId: string, tag: string): Promise<ProjectionLag>;
   /** Catch-up must persist an ORDER_VIOLATION before failing closed. */
   appendDeliveryIncident(incident: DeliveryIncident): Promise<void>;
+  /** Optional exact-row heartbeat read. Absent on providers without this registry. */
+  readProjectionStatusHeartbeat?(
+    serviceId: string,
+    projectorName: string,
+    projectorVersion: string,
+    clusterId: string,
+  ): Promise<ProjectionStatusHeartbeat | undefined>;
+  /**
+   * Optional compare-and-set upsert. Expected sequence 0 creates a missing row.
+   * Any other expected sequence updates only when it equals the durable sequence
+   * and the proposed sequence is greater. There is no unconditional upsert.
+   */
+  upsertProjectionStatusHeartbeat?(
+    heartbeat: ProjectionStatusHeartbeat,
+    expectedSequence: number,
+  ): Promise<ProjectionStatusWriteResult>;
+  /** Optional service-scoped list. Projector and version filters are exact. */
+  listProjectionStatusHeartbeats?(
+    serviceId: string,
+    projectorName?: string | null,
+    projectorVersion?: string | null,
+  ): Promise<readonly ProjectionStatusHeartbeat[]>;
 }
 
 export type PipelineStore = EventStore & DetectorStore & ProjectionStore;

@@ -7,8 +7,18 @@ import {
   MaterializedViewStoreError,
   type MaterializedViewApplyResult,
   type MaterializedViewInstance,
+  type MaterializedViewStatusFacts,
 } from "./MaterializedViewStore";
 import type { D1MaterializedViewStore } from "./MaterializedViewStore";
+import {
+  PROJECTION_STATUS_ACTIVATION_ID,
+  PROJECTION_STATUS_CLUSTER_ID,
+  PROJECTION_STATUS_FAULT_MESSAGE,
+  PROJECTION_STATUS_FRESHNESS_MS,
+  mapMaterializedViewStatusPhase,
+  mvProjectionStatusIdentity,
+  statusCapability,
+} from "./ProjectionStatus";
 
 const MAX_CAS_RETRIES = 8;
 
@@ -76,7 +86,37 @@ export class MaterializedViewCatchUpRuntime {
       definitionVersion: materializer.version,
       updatedAt: nowMs,
     });
-    return this.follow(serviceId, materializer, nowMs, hooks, options);
+    const observation: SourceHeadObservation = {};
+    try {
+      const result = await this.followGeneration(serviceId, materializer, 0, nowMs, "apply", hooks, options, observation);
+      await this.publishProjectionStatusBestEffort({
+        serviceId,
+        viewId: materializer.id,
+        generation: result.instance.generation,
+        nowMs,
+        observation,
+        indeterminate: result.indeterminate,
+        stopReason: result.stopReason,
+        typedFault: false,
+        rebuildRecovery: false,
+      });
+      return result;
+    } catch (error) {
+      if (isTypedCatchUpFault(error)) {
+        await this.publishProjectionStatusBestEffort({
+          serviceId,
+          viewId: materializer.id,
+          generation: 0,
+          nowMs,
+          observation,
+          indeterminate: false,
+          stopReason: null,
+          typedFault: true,
+          rebuildRecovery: false,
+        });
+      }
+      throw error;
+    }
   }
 
   async follow<TEvent = StoredEvent>(
@@ -90,7 +130,37 @@ export class MaterializedViewCatchUpRuntime {
     if (active === undefined) {
       throw new MaterializedViewStoreError("apply", "MV_INSTANCE_MISSING", "Materialized-view must be built before follow");
     }
-    return this.followGeneration(serviceId, materializer, active.generation, nowMs, "apply", hooks, options);
+    const observation: SourceHeadObservation = {};
+    try {
+      const result = await this.followGeneration(serviceId, materializer, active.generation, nowMs, "apply", hooks, options, observation);
+      await this.publishProjectionStatusBestEffort({
+        serviceId,
+        viewId: materializer.id,
+        generation: result.instance.generation,
+        nowMs,
+        observation,
+        indeterminate: result.indeterminate,
+        stopReason: result.stopReason,
+        typedFault: false,
+        rebuildRecovery: false,
+      });
+      return result;
+    } catch (error) {
+      if (isTypedCatchUpFault(error)) {
+        await this.publishProjectionStatusBestEffort({
+          serviceId,
+          viewId: materializer.id,
+          generation: active.generation,
+          nowMs,
+          observation,
+          indeterminate: false,
+          stopReason: null,
+          typedFault: true,
+          rebuildRecovery: false,
+        });
+      }
+      throw error;
+    }
   }
 
   async rebuild<TEvent = StoredEvent>(
@@ -110,7 +180,26 @@ export class MaterializedViewCatchUpRuntime {
       definitionVersion: materializer.version,
       updatedAt: nowMs,
     });
-    const result = await this.followGeneration(serviceId, materializer, candidate.generation, nowMs, "apply", hooks, options);
+    const observation: SourceHeadObservation = {};
+    let result: MaterializedViewCatchUpResult;
+    try {
+      result = await this.followGeneration(serviceId, materializer, candidate.generation, nowMs, "apply", hooks, options, observation);
+    } catch (error) {
+      if (isTypedCatchUpFault(error)) {
+        await this.publishProjectionStatusBestEffort({
+          serviceId,
+          viewId: materializer.id,
+          generation: candidate.generation,
+          nowMs,
+          observation,
+          indeterminate: false,
+          stopReason: null,
+          typedFault: true,
+          rebuildRecovery: true,
+        });
+      }
+      throw error;
+    }
     const sourceAfter = await this.source.readAllEvents(serviceId, "");
     const sourceAfterProof = await sourceHistoryProof(sourceAfter);
     if (
@@ -132,7 +221,19 @@ export class MaterializedViewCatchUpRuntime {
         sourceHistoryDigest: sourceBeforeProof.digest,
       });
     }
-    return { ...result, candidateGeneration: candidate.generation, rebuildId: effectiveRebuildId };
+    const published = { ...result, candidateGeneration: candidate.generation, rebuildId: effectiveRebuildId };
+    await this.publishProjectionStatusBestEffort({
+      serviceId,
+      viewId: materializer.id,
+      generation: candidate.generation,
+      nowMs,
+      observation,
+      indeterminate: result.indeterminate,
+      stopReason: result.stopReason,
+      typedFault: false,
+      rebuildRecovery: true,
+    });
+    return published;
   }
 
   async promote(
@@ -142,13 +243,26 @@ export class MaterializedViewCatchUpRuntime {
     nowMs: number,
   ): Promise<MaterializedViewInstance> {
     const active = await this.materializedViews.readActive(serviceId, materializer.id);
-    return this.materializedViews.promoteGeneration({
+    const promoted = await this.materializedViews.promoteGeneration({
       serviceId,
       viewId: materializer.id,
       candidateGeneration,
       expectedActiveGeneration: active?.generation ?? null,
       updatedAt: nowMs,
     });
+    await this.publishProjectionStatusBestEffort({
+      serviceId,
+      viewId: materializer.id,
+      generation: promoted.generation,
+      nowMs,
+      previousGeneration: active?.generation,
+      indeterminate: false,
+      stopReason: null,
+      typedFault: false,
+      rebuildRecovery: false,
+      promote: true,
+    });
+    return promoted;
   }
 
   async read(serviceId: string, materializer: MaterializedViewRowMaterializer): Promise<{
@@ -168,6 +282,7 @@ export class MaterializedViewCatchUpRuntime {
     _operation: "apply",
     hooks: MaterializedViewCatchUpHooks,
     options: MaterializedViewCatchUpOptions,
+    observation?: SourceHeadObservation,
   ): Promise<MaterializedViewCatchUpResult> {
     for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt += 1) {
       const instance = await this.materializedViews.readInstance(serviceId, materializer.id, generation);
@@ -179,6 +294,7 @@ export class MaterializedViewCatchUpRuntime {
       // the source head separately so the latter can never freeze silently.
       const sourceForHead = await this.source.readAllEvents(serviceId, "");
       for (const event of sourceForHead) assertSortableUniqueId(event.suid);
+      if (observation !== undefined) observation.sourceEvents = sourceForHead;
       const storeMaxSuid = sourceForHead.reduce(
         (maximum, event) => compareSuid(maximum, event.suid) >= 0 ? maximum : event.suid,
         "",
@@ -339,6 +455,140 @@ export class MaterializedViewCatchUpRuntime {
     throw new MaterializedViewStoreError("apply", "MV_CAS_MISMATCH", "Materialized-view catch-up did not converge after concurrent updates");
   }
 
+  private async publishProjectionStatusBestEffort(input: ProjectionPublicationInput): Promise<void> {
+    const timeoutMs = 2_000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settleTimeout: (() => void) | undefined;
+    try {
+      const timeout = new Promise<void>((resolve, reject) => {
+        settleTimeout = resolve;
+        timer = setTimeout(() => reject(new Error("projection status publication timed out")), timeoutMs);
+      });
+      await Promise.race([
+        this.writeProjectionStatusHeartbeat(input).catch(() => undefined),
+        timeout.catch(() => undefined),
+      ]);
+    } catch {
+      return;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      settleTimeout?.();
+    }
+  }
+
+  private async writeProjectionStatusHeartbeat(input: ProjectionPublicationInput): Promise<void> {
+    const capability = statusCapability(this.source);
+    if (capability === undefined) return;
+    if (input.promote === true) {
+      const selected = await this.materializedViews.readStatusFacts(input.serviceId, input.viewId, input.generation);
+      if (selected === undefined) return;
+      const previous = input.previousGeneration === undefined
+        ? undefined
+        : await this.materializedViews.readStatusFacts(input.serviceId, input.viewId, input.previousGeneration);
+      const sharedIdentity = previous !== undefined && previous.definitionVersion === selected.definitionVersion;
+      if (previous !== undefined && !sharedIdentity) {
+        await this.writeObservedHeartbeat(input, previous, false);
+      }
+      await this.writeObservedHeartbeat(input, selected, true);
+      return;
+    }
+    const facts = await this.materializedViews.readStatusFacts(input.serviceId, input.viewId, input.generation);
+    if (facts === undefined) return;
+    const events = input.observation?.sourceEvents;
+    if (events === undefined) return;
+    const cursor = facts.lastSuid.length === 0 ? null : facts.lastSuid;
+    await this.writeHeartbeat(input, facts, {
+      appliedEventCount: countApplied(events, facts.lastSuid),
+      lastAppliedSortableUniqueId: cursor,
+      lastTraversedSortableUniqueId: cursor,
+      knownSourceCount: true,
+      sourceEventCount: events.length,
+    }, false);
+  }
+
+  private async writeObservedHeartbeat(
+    input: ProjectionPublicationInput,
+    facts: MaterializedViewStatusFacts,
+    recordSwitch: boolean,
+  ): Promise<void> {
+    const capability = statusCapability(this.source);
+    if (capability === undefined) return;
+    const identity = mvProjectionStatusIdentity(facts.viewId, facts.definitionVersion);
+    const existing = await capability.readProjectionStatusHeartbeat(
+      facts.serviceId,
+      identity.projectorName,
+      identity.projectorVersion,
+      PROJECTION_STATUS_CLUSTER_ID,
+    );
+    const cursor = facts.lastSuid.length === 0 ? null : facts.lastSuid;
+    const progress = existing === undefined
+      ? facts.rebuildSourceEventCount === null
+        ? undefined
+        : {
+          appliedEventCount: facts.rebuildSourceEventCount,
+          lastAppliedSortableUniqueId: cursor,
+          lastTraversedSortableUniqueId: cursor,
+          knownSourceCount: true,
+          sourceEventCount: facts.rebuildSourceEventCount,
+        }
+      : {
+        appliedEventCount: existing.appliedEventCount,
+        lastAppliedSortableUniqueId: existing.lastAppliedSortableUniqueId,
+        lastTraversedSortableUniqueId: existing.lastTraversedSortableUniqueId,
+        knownSourceCount: true,
+        sourceEventCount: existing.appliedEventCount,
+      };
+    if (progress === undefined) return;
+    await this.writeHeartbeat(input, facts, progress, recordSwitch);
+  }
+
+  private async writeHeartbeat(
+    input: ProjectionPublicationInput,
+    facts: MaterializedViewStatusFacts,
+    progress: StatusProgress,
+    recordSwitch: boolean,
+  ): Promise<void> {
+    const capability = statusCapability(this.source);
+    if (capability === undefined) return;
+    const phase = mapMaterializedViewStatusPhase({
+      facts,
+      indeterminate: input.indeterminate,
+      stopReason: input.stopReason,
+      typedFault: input.typedFault,
+      rebuildRecovery: input.rebuildRecovery,
+      knownSourceCount: progress.knownSourceCount,
+      sourceEventCount: progress.sourceEventCount,
+      appliedEventCount: progress.appliedEventCount,
+    });
+    const identity = mvProjectionStatusIdentity(facts.viewId, facts.definitionVersion);
+    const current = await capability.readProjectionStatusHeartbeat(
+      facts.serviceId,
+      identity.projectorName,
+      identity.projectorVersion,
+      PROJECTION_STATUS_CLUSTER_ID,
+    );
+    const expectedSequence = current?.sequence ?? 0;
+    await capability.upsertProjectionStatusHeartbeat({
+      serviceId: facts.serviceId,
+      projectorName: identity.projectorName,
+      projectorVersion: identity.projectorVersion,
+      clusterId: PROJECTION_STATUS_CLUSTER_ID,
+      activationId: PROJECTION_STATUS_ACTIVATION_ID,
+      sequence: expectedSequence + 1,
+      appliedEventCount: progress.appliedEventCount,
+      lastAppliedSortableUniqueId: progress.lastAppliedSortableUniqueId,
+      lastTraversedSortableUniqueId: progress.lastTraversedSortableUniqueId,
+      recordedAt: input.nowMs,
+      phase,
+      leaseExpiresAt: input.nowMs + PROJECTION_STATUS_FRESHNESS_MS,
+      isFaulted: phase === "faulted",
+      faultMessage: phase === "faulted" ? PROJECTION_STATUS_FAULT_MESSAGE : null,
+      switchKind: recordSwitch ? "ordinary" : null,
+      switchReason: null,
+      switchedAt: recordSwitch ? input.nowMs : null,
+    }, expectedSequence);
+  }
+
   private async detectLateLowerSuid(
     serviceId: string,
     viewId: string,
@@ -480,6 +730,46 @@ async function sourceHistoryProof(events: readonly StoredEvent[]): Promise<{
   const digestBytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
   const digest = [...new Uint8Array(digestBytes)].map((value) => value.toString(16).padStart(2, "0")).join("");
   return { eventIds, suids, maxSuid, digest };
+}
+
+interface SourceHeadObservation {
+  sourceEvents?: readonly StoredEvent[];
+}
+
+interface StatusProgress {
+  readonly appliedEventCount: number;
+  readonly lastAppliedSortableUniqueId: string | null;
+  readonly lastTraversedSortableUniqueId: string | null;
+  readonly knownSourceCount: boolean;
+  readonly sourceEventCount: number;
+}
+
+interface ProjectionPublicationInput {
+  readonly serviceId: string;
+  readonly viewId: string;
+  readonly generation: number;
+  readonly nowMs: number;
+  readonly observation?: SourceHeadObservation;
+  readonly previousGeneration?: number;
+  readonly indeterminate: boolean;
+  readonly stopReason: MaterializedViewCatchUpResult["stopReason"];
+  readonly typedFault: boolean;
+  readonly rebuildRecovery: boolean;
+  readonly promote?: boolean;
+}
+
+function isTypedCatchUpFault(error: unknown): boolean {
+  return error instanceof MaterializedViewStoreError
+    && (error.code === "MV_ORDERING_QUARANTINED" || error.code === "MV_STORE_OPERATION_FAILED");
+}
+
+function countApplied(events: readonly StoredEvent[], checkpoint: string): number {
+  if (checkpoint.length === 0) return 0;
+  let count = 0;
+  for (const event of events) {
+    if (compareSuid(event.suid, checkpoint) <= 0) count += 1;
+  }
+  return count;
 }
 
 function compareSuid(left: string, right: string): number {

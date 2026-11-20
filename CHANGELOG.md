@@ -4,6 +4,9 @@
 
 ### @sekiban/dcb-runtime
 
+- Materialized views record a passive projection-status heartbeat after
+  catch-up. `POST /api/sekiban/serialized/projection-status` returns the
+  version-1 status sample from the event-source registry.
 - Failed best-effort reservation cancellations now emit a bounded production
   warning; commit responses and cleanup semantics are unchanged.
 
