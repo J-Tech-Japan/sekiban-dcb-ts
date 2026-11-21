@@ -1,9 +1,9 @@
 /**
  * Authenticated materialized-view actions.
  *
- * Six operator routes under `/operator/materialized-views` map one request to
- * one existing catch-up runtime operation (build/follow/rebuild/promote) or to
- * a read of existing status/wait facts. The module is provider neutral at
+ * Seven operator routes under `/operator/materialized-views` map one request
+ * to one existing catch-up runtime operation (build/follow/rebuild/promote/
+ * break-glass force-reverse) or to a read of existing status/wait facts. The module is provider neutral at
  * import time: each worker composition supplies lazy source, target, and
  * request-identity factories, and none of them is invoked before the
  * operator bearer has been accepted.
@@ -21,7 +21,9 @@ import {
 import {
   D1MaterializedViewStore,
   MaterializedViewStoreError,
+  normalizeMaterializedViewForceReverseReason,
   type MaterializedViewInstance,
+  type MaterializedViewSwitchKind,
 } from "./MaterializedViewStore";
 import {
   PROJECTION_STATUS_CLUSTER_ID,
@@ -42,6 +44,7 @@ export type MaterializedViewActionName =
   | "refresh"
   | "prepare"
   | "switch"
+  | "force-reverse"
   | "status"
   | "received";
 
@@ -50,6 +53,7 @@ const ACTION_METHODS: Readonly<Record<MaterializedViewActionName, "GET" | "POST"
   refresh: "POST",
   prepare: "POST",
   switch: "POST",
+  "force-reverse": "POST",
   status: "GET",
   received: "GET",
 });
@@ -83,6 +87,12 @@ export interface MaterializedViewRuntimeStatus {
   readonly generationStatus: MaterializedViewInstance["status"] | null;
   readonly rebuildRequired: boolean;
   readonly isFresh: boolean;
+  /** How the active pointer last moved; `legacy` predates migration 0010; null when not started. */
+  readonly switchKind: MaterializedViewSwitchKind | null;
+  readonly switchReason: string | null;
+  readonly switchedAt: string | null;
+  /** An open ordering quarantine remains on a non-active generation of this view. */
+  readonly leavingGenerationQuarantineOpen: boolean;
 }
 
 /** Immutable server registry keyed by exact materializer id. */
@@ -153,6 +163,12 @@ type ParsedInput =
   | { readonly action: "ensure-started" | "refresh" | "status" }
   | { readonly action: "prepare"; readonly rebuildId: string | undefined }
   | { readonly action: "switch"; readonly candidateGeneration: number; readonly expectedActiveGeneration: number | null }
+  | {
+    readonly action: "force-reverse";
+    readonly retainedGeneration: number;
+    readonly expectedActiveGeneration: number;
+    readonly reason: string;
+  }
   | { readonly action: "received"; readonly sortableUniqueId: string };
 
 class InvalidActionRequest extends Error {}
@@ -273,6 +289,7 @@ async function parseActionInput(action: MaterializedViewActionName, url: URL, re
     }
     return { action, rebuildId };
   }
+  if (action === "force-reverse") return parseForceReverse(parseObject(body));
   // switch
   const value = parseObject(body);
   const keys = Object.keys(value);
@@ -288,6 +305,26 @@ async function parseActionInput(action: MaterializedViewActionName, url: URL, re
   if (!isGeneration(candidateGeneration)) throw new InvalidActionRequest();
   if (expectedActiveGeneration !== null && !isGeneration(expectedActiveGeneration)) throw new InvalidActionRequest();
   return { action: "switch", candidateGeneration, expectedActiveGeneration };
+}
+
+/** Exactly three members; reverse-only and reason rules are input errors (400). */
+function parseForceReverse(value: Record<string, unknown>): ParsedInput {
+  const keys = Object.keys(value);
+  if (
+    keys.length !== 3
+    || !Object.hasOwn(value, "retainedGeneration")
+    || !Object.hasOwn(value, "expectedActiveGeneration")
+    || !Object.hasOwn(value, "reason")
+  ) {
+    throw new InvalidActionRequest();
+  }
+  const retainedGeneration = value.retainedGeneration;
+  const expectedActiveGeneration = value.expectedActiveGeneration;
+  if (!isGeneration(retainedGeneration) || !isGeneration(expectedActiveGeneration)) throw new InvalidActionRequest();
+  if (retainedGeneration >= expectedActiveGeneration) throw new InvalidActionRequest();
+  const reason = normalizeMaterializedViewForceReverseReason(value.reason);
+  if (reason === undefined) throw new InvalidActionRequest();
+  return { action: "force-reverse", retainedGeneration, expectedActiveGeneration, reason };
 }
 
 function isGeneration(value: unknown): value is number {
@@ -358,6 +395,16 @@ async function actionResponse(
           expectedActiveGeneration: input.expectedActiveGeneration,
         });
         break;
+      case "force-reverse":
+        result = await runtime.forceReverse(
+          serviceId,
+          materializer,
+          input.retainedGeneration,
+          input.expectedActiveGeneration,
+          input.reason,
+          nowMs,
+        );
+        break;
     }
   } catch (error) {
     return actionError(error);
@@ -411,6 +458,10 @@ function actionError(error: unknown): Response {
     switch (error.code) {
       case "MV_PROMOTION_CAS_MISMATCH":
         return errorResponse(409, "materialized_view_switch_conflict", "The materialized-view switch expectation did not match.");
+      case "MV_FORCE_REVERSE_CAS_MISMATCH":
+        return errorResponse(409, "materialized_view_force_reverse_conflict", "The materialized-view force-reverse expectation did not match.");
+      case "MV_FORCE_REVERSE_REJECTED":
+        return errorResponse(409, "materialized_view_force_reverse_rejected", "The retained materialized-view generation cannot be re-served.");
       case "MV_INSTANCE_MISSING":
         return errorResponse(409, "materialized_view_not_started", "The materialized view has no active generation.");
       case "MV_CAS_MISMATCH":
@@ -492,6 +543,12 @@ export async function readMaterializedViewRuntimeStatus(
     generationStatus: active?.status ?? null,
     rebuildRequired: facts?.rebuildRequired ?? false,
     isFresh: fresh,
+    switchKind: active === undefined ? null : facts?.switchKind ?? null,
+    switchReason: active === undefined ? null : facts?.switchReason ?? null,
+    switchedAt: active === undefined || facts?.switchedAt === null || facts?.switchedAt === undefined
+      ? null
+      : formatProjectionStatusUtc(facts.switchedAt),
+    leavingGenerationQuarantineOpen: facts?.nonActiveOpenOrderingQuarantine ?? false,
   };
 }
 

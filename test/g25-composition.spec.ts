@@ -20,6 +20,8 @@ import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quar
 import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import rebuildProofMigration from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import forceReverseAuditMigration from "../migrations/mv/0010_g152_force_reverse_audit.sql?raw";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1-mv";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { g32Message, g32Suid } from "./helpers/g32-fixtures";
@@ -120,7 +122,7 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
   beforeAll(async () => {
     await database().batch(statements(g32Migration as string, database()));
     await applyG44D1Migration(database());
-    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, unsafeFailureMigration, g31WaitReceiptMigration, g31WaitPoisonMigration, orderingQuarantineMigration, rebuildVerificationMigration, rebuildProofMigration]) {
+    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, unsafeFailureMigration, g31WaitReceiptMigration, g31WaitPoisonMigration, orderingQuarantineMigration, rebuildVerificationMigration, rebuildProofMigration, forceReverseAuditMigration]) {
       await mvDatabase().batch(statements(migration as string, mvDatabase()));
     }
   });

@@ -309,6 +309,43 @@ export class MaterializedViewCatchUpRuntime {
     return { instance, rows: await this.materializedViews.readRows(serviceId, materializer.id, instance.generation) };
   }
 
+  /**
+   * Break-glass reverse to a retained (retired) predecessor generation behind
+   * the caller's expected active generation. One provider CAS; publication is
+   * the same bounded best-effort path as promote, recorded as `forced`.
+   */
+  async forceReverse(
+    serviceId: string,
+    materializer: MaterializedViewRowMaterializer,
+    retainedGeneration: number,
+    expectedActiveGeneration: number,
+    reason: string,
+    nowMs: number,
+  ): Promise<MaterializedViewInstance> {
+    const reversed = await this.materializedViews.forceReverseGeneration({
+      serviceId,
+      viewId: materializer.id,
+      retainedGeneration,
+      expectedActiveGeneration,
+      reason,
+      updatedAt: nowMs,
+    });
+    await this.publishProjectionStatusBestEffort({
+      serviceId,
+      viewId: materializer.id,
+      generation: reversed.generation,
+      nowMs,
+      previousGeneration: expectedActiveGeneration,
+      indeterminate: false,
+      stopReason: null,
+      typedFault: false,
+      rebuildRecovery: false,
+      promote: true,
+      switch: { kind: "forced", reason: reason.trim() },
+    });
+    return reversed;
+  }
+
   private async followGeneration<TEvent>(
     serviceId: string,
     materializer: MaterializedViewRowMaterializer<TEvent>,
@@ -522,9 +559,9 @@ export class MaterializedViewCatchUpRuntime {
         : await this.materializedViews.readStatusFacts(input.serviceId, input.viewId, input.previousGeneration);
       const sharedIdentity = previous !== undefined && previous.definitionVersion === selected.definitionVersion;
       if (previous !== undefined && !sharedIdentity) {
-        await this.writeObservedHeartbeat(input, previous, false);
+        await this.writeObservedHeartbeat(input, previous, null);
       }
-      await this.writeObservedHeartbeat(input, selected, true);
+      await this.writeObservedHeartbeat(input, selected, input.switch ?? ORDINARY_SWITCH);
       return;
     }
     const facts = await this.materializedViews.readStatusFacts(input.serviceId, input.viewId, input.generation);
@@ -538,13 +575,13 @@ export class MaterializedViewCatchUpRuntime {
       lastTraversedSortableUniqueId: cursor,
       knownSourceCount: true,
       sourceEventCount: events.length,
-    }, false);
+    }, null);
   }
 
   private async writeObservedHeartbeat(
     input: ProjectionPublicationInput,
     facts: MaterializedViewStatusFacts,
-    recordSwitch: boolean,
+    recordSwitch: HeartbeatSwitch | null,
   ): Promise<void> {
     const capability = statusCapability(this.source);
     if (capability === undefined) return;
@@ -581,7 +618,7 @@ export class MaterializedViewCatchUpRuntime {
     input: ProjectionPublicationInput,
     facts: MaterializedViewStatusFacts,
     progress: StatusProgress,
-    recordSwitch: boolean,
+    recordSwitch: HeartbeatSwitch | null,
   ): Promise<void> {
     const capability = statusCapability(this.source);
     if (capability === undefined) return;
@@ -618,9 +655,9 @@ export class MaterializedViewCatchUpRuntime {
       leaseExpiresAt: input.nowMs + PROJECTION_STATUS_FRESHNESS_MS,
       isFaulted: phase === "faulted",
       faultMessage: phase === "faulted" ? PROJECTION_STATUS_FAULT_MESSAGE : null,
-      switchKind: recordSwitch ? "ordinary" : null,
-      switchReason: null,
-      switchedAt: recordSwitch ? input.nowMs : null,
+      switchKind: recordSwitch?.kind ?? null,
+      switchReason: recordSwitch?.reason ?? null,
+      switchedAt: recordSwitch === null ? null : input.nowMs,
     }, expectedSequence);
   }
 
@@ -791,7 +828,16 @@ interface ProjectionPublicationInput {
   readonly typedFault: boolean;
   readonly rebuildRecovery: boolean;
   readonly promote?: boolean;
+  /** Switch audit recorded on the selected generation; promote defaults to ordinary. */
+  readonly switch?: HeartbeatSwitch;
 }
+
+interface HeartbeatSwitch {
+  readonly kind: "ordinary" | "forced";
+  readonly reason: string | null;
+}
+
+const ORDINARY_SWITCH: HeartbeatSwitch = { kind: "ordinary", reason: null };
 
 function isTypedCatchUpFault(error: unknown): boolean {
   return error instanceof MaterializedViewStoreError
