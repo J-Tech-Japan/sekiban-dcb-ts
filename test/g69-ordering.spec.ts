@@ -21,6 +21,8 @@ import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quar
 import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import rebuildProofMigration from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import forceReverseAuditMigration from "../migrations/mv/0010_g152_force_reverse_audit.sql?raw";
 import { D1EventStore, D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1";
 import { appendG69AdmissionAttempt, type G69AdmissionAttemptReceipt } from "../packages/dcb-runtime/src/diagnostics/G69AdmissionAttempt";
 import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
@@ -232,7 +234,7 @@ beforeAll(async () => {
   await database.batch(statements(database, pipelineMigration as string));
   await applyG44D1Migration(database);
   const mv = materializedViews();
-  for (const migration of [mvMigration, unsafeMvMigration, hardeningMvMigration, unsafeFailureMvMigration, g31WaitReceiptMigration, g31WaitPoisonMigration, orderingQuarantineMigration, rebuildVerificationMigration, rebuildProofMigration]) {
+  for (const migration of [mvMigration, unsafeMvMigration, hardeningMvMigration, unsafeFailureMvMigration, g31WaitReceiptMigration, g31WaitPoisonMigration, orderingQuarantineMigration, rebuildVerificationMigration, rebuildProofMigration, forceReverseAuditMigration]) {
     await mv.batch(statements(mv, migration as string));
   }
 });

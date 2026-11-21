@@ -20,6 +20,8 @@ import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quar
 import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import rebuildProofMigration from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import forceReverseAuditMigration from "../migrations/mv/0010_g152_force_reverse_audit.sql?raw";
 import { createSekibanExecutor } from "../packages/dcb-client/src";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { createCloudflareOnlyRuntimeWorker, scopeIdFor, TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/cloudflare";
@@ -261,6 +263,7 @@ beforeAll(async () => {
     orderingQuarantineMigration,
     rebuildVerificationMigration,
     rebuildProofMigration,
+    forceReverseAuditMigration,
   ]) {
     await mvDatabase().batch(statements(mvDatabase(), migration as string));
   }

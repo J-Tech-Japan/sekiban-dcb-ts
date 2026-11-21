@@ -21,6 +21,8 @@ import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quar
 import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import rebuildProofMigration from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import forceReverseAuditMigration from "../migrations/mv/0010_g152_force_reverse_audit.sql?raw";
 // @ts-expect-error Raw source fixture for the no-full-scan mutation oracle.
 import queryWorkerSource from "../packages/dcb-runtime/src/http/SerializedQueryWorker.ts?raw";
 import {
@@ -442,7 +444,7 @@ describe("SDT-G31 d1-mv waitFor", () => {
   beforeAll(async () => {
     await d1().batch(statements(d1(), g32Migration as string));
     await applyG44D1Migration(d1());
-    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, waitReceiptMigration, waitPoisonMigration, orderingQuarantineMigration, rebuildVerificationMigration, rebuildProofMigration]) {
+    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, waitReceiptMigration, waitPoisonMigration, orderingQuarantineMigration, rebuildVerificationMigration, rebuildProofMigration, forceReverseAuditMigration]) {
       await mvDatabase().batch(statements(mvDatabase(), migration as string));
     }
   });

@@ -14,7 +14,8 @@ export type MaterializedViewStoreOperation =
   | "create-active"
   | "create-candidate"
   | "apply"
-  | "promote";
+  | "promote"
+  | "force-reverse";
 
 export type MaterializedViewStoreErrorCode =
   | "MV_STORE_NOT_INITIALIZED"
@@ -22,6 +23,8 @@ export type MaterializedViewStoreErrorCode =
   | "MV_INSTANCE_MISSING"
   | "MV_CAS_MISMATCH"
   | "MV_PROMOTION_CAS_MISMATCH"
+  | "MV_FORCE_REVERSE_CAS_MISMATCH"
+  | "MV_FORCE_REVERSE_REJECTED"
   | "MV_GENERATION_INVALID"
   | "MV_PATCH_ROW_MISSING"
   | "MV_VALUE_INVALID"
@@ -53,6 +56,17 @@ export class MaterializedViewPromotionCasError extends MaterializedViewStoreErro
   constructor(message = "Materialized-view active-generation CAS did not match") {
     super("promote", "MV_PROMOTION_CAS_MISMATCH", message);
     this.name = "MaterializedViewPromotionCasError";
+  }
+}
+
+/**
+ * A break-glass reverse lost its fence: the retained generation is no longer
+ * retired, the active pointer moved, or quarantine history appeared.
+ */
+export class MaterializedViewForceReverseCasError extends MaterializedViewStoreError {
+  constructor(message = "Materialized-view force-reverse expectation did not match") {
+    super("force-reverse", "MV_FORCE_REVERSE_CAS_MISMATCH", message);
+    this.name = "MaterializedViewForceReverseCasError";
   }
 }
 
@@ -158,6 +172,41 @@ export interface MaterializedViewPromoteInput {
   readonly updatedAt: number;
 }
 
+/**
+ * Break-glass reverse to a retained (retired) predecessor generation. The
+ * retained generation must be strictly older than the expected active one;
+ * the expectation is required and never null.
+ */
+export interface MaterializedViewForceReverseInput {
+  readonly serviceId: string;
+  readonly viewId: string;
+  readonly retainedGeneration: number;
+  readonly expectedActiveGeneration: number;
+  /** Operator reason; trimmed, 1..1024 characters, no control characters. */
+  readonly reason: string;
+  readonly updatedAt: number;
+}
+
+/** How the active pointer last moved. `legacy` means written before migration 0010. */
+export type MaterializedViewSwitchKind = "ordinary" | "forced" | "legacy";
+
+/** Upper bound for a trimmed force-reverse reason, matching the heartbeat switch reason. */
+const MAX_FORCE_REVERSE_REASON_LENGTH = 1_024;
+
+/**
+ * Trimmed force-reverse reason, or `undefined` when the value is not a
+ * string, is empty after trimming, exceeds 1024 characters, or contains a
+ * C0/C1 control character.
+ */
+export function normalizeMaterializedViewForceReverseReason(reason: unknown): string | undefined {
+  if (typeof reason !== "string") return undefined;
+  const trimmed = reason.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_FORCE_REVERSE_REASON_LENGTH) return undefined;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(trimmed)) return undefined;
+  return trimmed;
+}
+
 export interface MaterializedViewQueryOptions {
   readonly generation?: number;
   readonly indexId?: string;
@@ -215,6 +264,16 @@ export interface MaterializedViewStatusFacts {
   readonly openOrderingQuarantine: boolean;
   readonly rebuildVerifiedAt: number | null;
   readonly rebuildSourceEventCount: number | null;
+  /**
+   * Active-pointer switch audit (SDT-G152). Always populated by
+   * `D1MaterializedViewStore.readStatusFacts`; `null` only when the view has
+   * no active pointer. Optional so externally constructed facts stay valid.
+   */
+  readonly switchKind?: MaterializedViewSwitchKind | null;
+  readonly switchReason?: string | null;
+  readonly switchedAt?: number | null;
+  /** An open ordering quarantine exists for this view on a non-active generation. */
+  readonly nonActiveOpenOrderingQuarantine?: boolean;
 }
 
 export type MaterializedViewOrderingQuarantineClassification = "LATE_LOWER_SUID" | "ORDER_VIOLATION";
@@ -357,6 +416,11 @@ export class D1MaterializedViewStore {
     await this.database.prepare("SELECT 1 FROM mv_atomic_guards LIMIT 1").all();
     await this.database.prepare("SELECT 1 FROM mv_checkpoint_ahead_findings LIMIT 1").all();
     await this.database.prepare("SELECT 1 FROM mv_ordering_quarantines LIMIT 1").all();
+    // Migration 0010 (switch audit) is required: fail closed here rather than
+    // mid-switch. switch_kind is NOT NULL, so the first row satisfies LIMIT 1.
+    await this.database.prepare(
+      "SELECT 1 FROM mv_active_generations WHERE switch_kind IS NOT NULL OR switch_reason IS NOT NULL OR switched_at IS NOT NULL LIMIT 1",
+    ).all();
     this.initialized = true;
   }
 
@@ -374,9 +438,10 @@ export class D1MaterializedViewStore {
            VALUES (?, ?, ?, 'active', ?, ?, ?)`,
         ).bind(input.serviceId, input.viewId, generation, lastSuid, input.definitionVersion, input.updatedAt),
         this.database.prepare(
-          `INSERT INTO mv_active_generations (service_id, view_id, generation, updated_at)
-           VALUES (?, ?, ?, ?)`,
-        ).bind(input.serviceId, input.viewId, generation, input.updatedAt),
+          `INSERT INTO mv_active_generations
+             (service_id, view_id, generation, updated_at, switch_kind, switch_reason, switched_at)
+           VALUES (?, ?, ?, ?, 'ordinary', NULL, ?)`,
+        ).bind(input.serviceId, input.viewId, generation, input.updatedAt, input.updatedAt),
       ]);
     } catch (error) {
       throw new MaterializedViewStoreError("create-active", "MV_INSTANCE_EXISTS", `Active materialized view already exists: ${String(error)}`, { cause: error });
@@ -805,6 +870,14 @@ export class D1MaterializedViewStore {
               instance.last_suid, instance.definition_version, instance.rebuild_verified_at,
               instance.rebuild_source_event_count,
               CASE WHEN active.generation = instance.generation THEN 1 ELSE 0 END AS active_pointer,
+              active.switch_kind, active.switch_reason, active.switched_at,
+              CASE WHEN EXISTS (
+                SELECT 1 FROM mv_ordering_quarantines leaving
+                 WHERE leaving.service_id = instance.service_id
+                   AND leaving.view_id = instance.view_id
+                   AND leaving.generation <> active.generation
+                   AND leaving.status = 'open'
+              ) THEN 1 ELSE 0 END AS non_active_open_ordering_quarantine,
               CASE WHEN EXISTS (
                 SELECT 1 FROM mv_checkpoint_ahead_findings finding
                  WHERE finding.service_id = instance.service_id
@@ -842,6 +915,11 @@ export class D1MaterializedViewStore {
     if (status !== "active" && status !== "candidate" && status !== "retired") {
       throw new MaterializedViewStoreError("initialize", "MV_STORE_OPERATION_FAILED", "Materialized-view status facts were invalid");
     }
+    const switchKind = row.switch_kind;
+    // `legacy` is reported as stored; an unknown value is never coerced.
+    if (switchKind !== null && switchKind !== undefined && switchKind !== "ordinary" && switchKind !== "forced" && switchKind !== "legacy") {
+      throw new MaterializedViewStoreError("initialize", "MV_STORE_OPERATION_FAILED", "Materialized-view status facts were invalid");
+    }
     return {
       serviceId: asString(row.service_id, "status_facts.service_id"),
       viewId: asString(row.view_id, "status_facts.view_id"),
@@ -860,6 +938,14 @@ export class D1MaterializedViewStore {
       rebuildSourceEventCount: row.rebuild_source_event_count === null || row.rebuild_source_event_count === undefined
         ? null
         : asInteger(row.rebuild_source_event_count, "status_facts.rebuild_source_event_count"),
+      switchKind: switchKind ?? null,
+      switchReason: row.switch_reason === null || row.switch_reason === undefined
+        ? null
+        : asString(row.switch_reason, "status_facts.switch_reason"),
+      switchedAt: row.switched_at === null || row.switched_at === undefined
+        ? null
+        : asInteger(row.switched_at, "status_facts.switched_at"),
+      nonActiveOpenOrderingQuarantine: asInteger(row.non_active_open_ordering_quarantine, "status_facts.non_active_open_ordering_quarantine") === 1,
     };
   }
 
@@ -1381,10 +1467,12 @@ export class D1MaterializedViewStore {
           WHERE service_id = ? AND view_id = ? AND generation = ?`,
       ).bind(input.updatedAt, input.serviceId, input.viewId, input.candidateGeneration),
       this.database.prepare(
-        `INSERT INTO mv_active_generations (service_id, view_id, generation, updated_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT (service_id, view_id) DO UPDATE SET generation = excluded.generation, updated_at = excluded.updated_at`,
-      ).bind(input.serviceId, input.viewId, input.candidateGeneration, input.updatedAt),
+        `INSERT INTO mv_active_generations
+           (service_id, view_id, generation, updated_at, switch_kind, switch_reason, switched_at)
+         VALUES (?, ?, ?, ?, 'ordinary', NULL, ?)
+         ON CONFLICT (service_id, view_id) DO UPDATE SET generation = excluded.generation, updated_at = excluded.updated_at,
+           switch_kind = excluded.switch_kind, switch_reason = excluded.switch_reason, switched_at = excluded.switched_at`,
+      ).bind(input.serviceId, input.viewId, input.candidateGeneration, input.updatedAt, input.updatedAt),
       // A successful rebuild/promotion is the explicit recovery action for an
       // open ordering quarantine. The active-generation pointer changes in the
       // same batch, so a safe read never observes a cleared gate on the old
@@ -1418,6 +1506,105 @@ export class D1MaterializedViewStore {
     }
     const active = await this.readActive(input.serviceId, input.viewId);
     if (active === undefined) throw new MaterializedViewStoreError("promote", "MV_INSTANCE_MISSING", "Active generation disappeared after promotion");
+    return active;
+  }
+
+  /**
+   * Break-glass reverse-only switch back to a retained (retired) predecessor.
+   * It needs no rebuild proof, but it refuses a retained generation with
+   * ordering-quarantine history (open or resolved) and never mutates
+   * quarantine rows. One D1
+   * batch fences the retained status, the active pointer, and the pointed
+   * active row; the current active is retired before the retained generation
+   * is activated so the one-active-per-view index never sees two actives.
+   */
+  async forceReverseGeneration(input: MaterializedViewForceReverseInput): Promise<MaterializedViewInstance> {
+    this.ready("force-reverse");
+    this.validateGeneration(input.retainedGeneration, "force-reverse");
+    this.validateGeneration(input.expectedActiveGeneration, "force-reverse");
+    if (input.retainedGeneration >= input.expectedActiveGeneration) {
+      throw new MaterializedViewStoreError("force-reverse", "MV_GENERATION_INVALID", "Materialized-view force-reverse must target an older retained generation");
+    }
+    const reason = normalizeMaterializedViewForceReverseReason(input.reason);
+    if (reason === undefined) {
+      throw new MaterializedViewStoreError("force-reverse", "MV_VALUE_INVALID", "Materialized-view force-reverse reason is invalid");
+    }
+    const retained = await this.readInstance(input.serviceId, input.viewId, input.retainedGeneration);
+    if (retained === undefined || retained.status !== "retired") {
+      throw new MaterializedViewStoreError("force-reverse", "MV_FORCE_REVERSE_REJECTED", "Materialized-view force-reverse requires a retired retained generation");
+    }
+    const history = await this.database.prepare(
+      `SELECT 1 AS present FROM mv_ordering_quarantines
+        WHERE service_id = ? AND view_id = ? AND generation = ? LIMIT 1`,
+    ).bind(input.serviceId, input.viewId, input.retainedGeneration).first<D1Row>();
+    if (history !== null && history !== undefined) {
+      throw new MaterializedViewStoreError("force-reverse", "MV_FORCE_REVERSE_REJECTED", "Materialized-view force-reverse refuses a generation with ordering-quarantine history");
+    }
+    const operation = operationId();
+    const statements: D1PreparedStatement[] = [
+      this.database.prepare(
+        `INSERT INTO mv_atomic_guards (operation_id, checkpoint_match)
+         SELECT ?, CASE WHEN EXISTS (
+           SELECT 1 FROM mv_instances retained
+            WHERE retained.service_id = ? AND retained.view_id = ?
+              AND retained.generation = ? AND retained.status = 'retired'
+              AND NOT EXISTS (
+                SELECT 1 FROM mv_ordering_quarantines retained_history
+                 WHERE retained_history.service_id = retained.service_id
+                   AND retained_history.view_id = retained.view_id
+                   AND retained_history.generation = retained.generation
+              )
+         ) AND EXISTS (
+           SELECT 1 FROM mv_active_generations pointer
+             JOIN mv_instances current
+               ON current.service_id = pointer.service_id
+              AND current.view_id = pointer.view_id
+              AND current.generation = pointer.generation
+            WHERE pointer.service_id = ? AND pointer.view_id = ?
+              AND pointer.generation = ? AND current.status = 'active'
+         ) THEN 1 ELSE NULL END`,
+      ).bind(
+        operation,
+        input.serviceId,
+        input.viewId,
+        input.retainedGeneration,
+        input.serviceId,
+        input.viewId,
+        input.expectedActiveGeneration,
+      ),
+      this.database.prepare(
+        `UPDATE mv_instances SET status = 'retired', updated_at = ?
+          WHERE service_id = ? AND view_id = ? AND generation = ? AND status = 'active'`,
+      ).bind(input.updatedAt, input.serviceId, input.viewId, input.expectedActiveGeneration),
+      // The retained checkpoint timestamp is kept: the late-lower detector
+      // must still see arrivals from the window while it was retired.
+      this.database.prepare(
+        `UPDATE mv_instances SET status = 'active'
+          WHERE service_id = ? AND view_id = ? AND generation = ? AND status = 'retired'`,
+      ).bind(input.serviceId, input.viewId, input.retainedGeneration),
+      this.database.prepare(
+        `UPDATE mv_active_generations
+            SET generation = ?, updated_at = ?, switch_kind = 'forced', switch_reason = ?, switched_at = ?
+          WHERE service_id = ? AND view_id = ? AND generation = ?`,
+      ).bind(
+        input.retainedGeneration,
+        input.updatedAt,
+        reason,
+        input.updatedAt,
+        input.serviceId,
+        input.viewId,
+        input.expectedActiveGeneration,
+      ),
+      this.database.prepare("DELETE FROM mv_atomic_guards WHERE operation_id = ?").bind(operation),
+    ];
+    try {
+      await this.database.batch(statements);
+    } catch (error) {
+      if (isCasFailure(error)) throw new MaterializedViewForceReverseCasError();
+      throw new MaterializedViewStoreError("force-reverse", "MV_STORE_OPERATION_FAILED", `Materialized-view force-reverse failed: ${String(error)}`, { cause: error });
+    }
+    const active = await this.readActive(input.serviceId, input.viewId);
+    if (active === undefined) throw new MaterializedViewStoreError("force-reverse", "MV_INSTANCE_MISSING", "Active generation disappeared after force-reverse");
     return active;
   }
 

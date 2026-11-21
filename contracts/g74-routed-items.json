@@ -481,6 +481,34 @@
       "diffIds": [
         "@sekiban/dcb-runtime::G42JournalProbeRequest"
       ]
+    },
+    {
+      "marker": "contract",
+      "key": "materialized-view-force-reverse-declarations",
+      "routedItem": "break-glass materialized-view force-reverse declarations and switch audit status members",
+      "kind": "added-member",
+      "diffIds": [
+        "@sekiban/dcb-runtime::D1MaterializedViewStore",
+        "@sekiban/dcb-runtime::MaterializedViewCatchUpRuntime",
+        "@sekiban/dcb-runtime::MaterializedViewRuntimeStatus",
+        "@sekiban/dcb-runtime::MaterializedViewStoreErrorCode",
+        "@sekiban/dcb-runtime::MaterializedViewStoreOperation",
+        "@sekiban/dcb-runtime::MaterializedViewStatusFacts",
+        "@sekiban/dcb-runtime::MaterializedViewForceReverseInput",
+        "@sekiban/dcb-runtime::MaterializedViewSwitchKind"
+      ]
+    },
+    {
+      "marker": "contract",
+      "key": "materialized-view-force-reverse",
+      "routedItem": "reverse-only retired-generation force reverse, quarantine-history refusal, and required 0010 switch audit",
+      "kind": "behavioural",
+      "evidence": "test/g152-mv-force-reverse.spec.ts",
+      "diffIds": [
+        "@sekiban/dcb-runtime::D1MaterializedViewStore",
+        "@sekiban/dcb-runtime::MaterializedViewStoreErrorCode",
+        "@sekiban/dcb-runtime::MaterializedViewForceReverseInput"
+      ]
     }
   ],
   "receiptModelHash": "86beb8c78d357deabcd3df9b969adc895ff6665e779f1b918a3db371e22b2831",

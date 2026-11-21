@@ -23,6 +23,8 @@ import mv0007 from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
 import mv0008 from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import mv0009 from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import mv0010 from "../migrations/mv/0010_g152_force_reverse_audit.sql?raw";
 
 import { defineRowMaterializer, type MaterializedViewRowMaterializer } from "@sekiban/dcb-core";
 import { composeFetch, SERIALIZED_PATHS } from "../packages/dcb-cloudflare/src/compose";
@@ -74,6 +76,10 @@ const DTO_MEMBERS = [
   "generationStatus",
   "rebuildRequired",
   "isFresh",
+  "switchKind",
+  "switchReason",
+  "switchedAt",
+  "leavingGenerationQuarantineOpen",
 ];
 
 type Worker = ExportedHandler<never>;
@@ -253,7 +259,7 @@ describe("SDT-G151 authenticated materialized-view actions", () => {
     await applyG44D1Migration(d1());
     if (!(await tableExists(d1(), "dcb_projection_statuses"))) await d1().batch(statements(d1(), d1StatusMigration as string));
     if (!(await tableExists(mvDatabase(), "mv_instances"))) {
-      for (const migration of [mv0001, mv0002, mv0003, mv0004, mv0005, mv0006, mv0007, mv0008, mv0009]) {
+      for (const migration of [mv0001, mv0002, mv0003, mv0004, mv0005, mv0006, mv0007, mv0008, mv0009, mv0010]) {
         await mvDatabase().batch(statements(mvDatabase(), migration as string));
       }
     }
@@ -321,7 +327,6 @@ describe("SDT-G151 authenticated materialized-view actions", () => {
       const notFound = [
         ["GET", path(viewId, "refresh")],
         ["POST", path(viewId, "status")],
-        ["POST", path(viewId, "force-reverse")],
         ["POST", path(viewId, "deactivate")],
         ["POST", `${path(viewId, "refresh")}/extra`],
         ["POST", `${MATERIALIZED_VIEW_ACTIONS_PREFIX}/${viewId}`],
@@ -805,6 +810,10 @@ describe("SDT-G151 authenticated materialized-view actions", () => {
       generationStatus: null,
       rebuildRequired: false,
       isFresh: false,
+      switchKind: null,
+      switchReason: null,
+      switchedAt: null,
+      leavingGenerationQuarantineOpen: false,
     });
     expect((await call(target, liveEnv(), "POST", path(viewId, "ensure-started"))).status).toBe(200);
     const raw = await heartbeatFor(service, viewId, 1);
@@ -839,6 +848,10 @@ describe("SDT-G151 authenticated materialized-view actions", () => {
       generationStatus: "active",
       rebuildRequired: false,
       isFresh: true,
+      switchKind: "ordinary",
+      switchReason: null,
+      switchedAt: formatProjectionStatusUtc(instanceBefore!.updatedAt),
+      leavingGenerationQuarantineOpen: false,
     });
     // GET is observation only: no heartbeat or target writes.
     expect(log.some((sql) => /^\s*(INSERT|UPDATE|DELETE)/i.test(sql))).toBe(false);

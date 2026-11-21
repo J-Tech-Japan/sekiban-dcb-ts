@@ -21,6 +21,8 @@ import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quar
 import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 // @ts-expect-error Vite raw asset import
 import rebuildProofMigration from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
+// @ts-expect-error Vite raw asset import
+import forceReverseAuditMigration from "../migrations/mv/0010_g152_force_reverse_audit.sql?raw";
 
 import {
   defineListQuery,
@@ -638,6 +640,7 @@ beforeAll(async () => {
       orderingQuarantineMigration,
       rebuildVerificationMigration,
       rebuildProofMigration,
+      forceReverseAuditMigration,
     ].flatMap((migration) => statements(migration as string));
     await views.batch(mvSql.map((statement) => views.prepare(statement)));
   }

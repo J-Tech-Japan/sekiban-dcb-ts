@@ -30782,7 +30782,7 @@
             {
               "file": "dist/mv/MaterializedViewStore.d.ts",
               "kind": "class",
-              "text": "export declare class D1MaterializedViewStore { private readonly database; private initialized; private readonly unsafe; constructor(database: D1Database); initialize(): Promise<void>; createActive(input: MaterializedViewCreateInput): Promise<MaterializedViewInstance>; createCandidate(input: MaterializedViewCandidateInput): Promise<MaterializedViewInstance>; beginRebuild(input: Omit<MaterializedViewCandidateInput, \"generation\"> & { readonly generation?: number; }): Promise<MaterializedViewInstance>; nextGeneration(serviceId: string, viewId: string): Promise<number>; readInstance(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewInstance | undefined>; readActive(serviceId: string, viewId: string): Promise<MaterializedViewInstance | undefined>; readRows(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewRow[]>; readIndexEntries(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewIndexEntry[]>; queryRows(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<MaterializedViewRow[]>; queryRowsWithTotal(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<UnsafeComposedPage>; readListPage(serviceId: string, viewId: string, options?: MaterializedViewListOptions): Promise<MaterializedViewListPage>; scanRows(serviceId: string, viewId: string, options: MaterializedViewRawScanOptions): Promise<MaterializedViewRawScan>; unsafeWindow(): UnsafeWindowMaterializedViewStore; collectUnsafeGarbage(serviceId: string, viewId: string, generation: number, definitionVersion: number, safeHead: string): Promise<number>; hasTargetReceipt(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>; readWaitForState(serviceId: string, viewId: string, target: { readonly eventId?: string; readonly suid: string; }): Promise<MaterializedViewWaitForState>; readStatusFacts(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewStatusFacts | undefined>; recordUnsafeFailureFinding(input: { readonly serviceId: string; readonly viewId: string; readonly generation?: number; readonly eventId: string; readonly suid: string; readonly observedAt: number; }): Promise<void>; recordCheckpointAhead(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly storeMaxSuid: string; readonly observedAt: number; }): Promise<void>; hasCheckpointAheadFinding(serviceId: string, viewId: string): Promise<boolean>; readOrderingQuarantine(serviceId: string, viewId: string): Promise<MaterializedViewOrderingQuarantine | undefined>; readActiveGeneration(serviceId: string, viewId: string): Promise<number | undefined>; recordOrderingQuarantine(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly lateSuid: string; readonly eventId: string; readonly classification: MaterializedViewOrderingQuarantineClassification; readonly observedAt: number; }): Promise<void>; markGenerationRebuilt(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly verifiedAt: number; readonly rebuildId: string; readonly sourceEventCount: number; readonly sourceEventIds: readonly string[]; readonly sourceSuids: readonly string[]; readonly sourceMaxSuid: string; readonly sourceHistoryDigest: string; }): Promise<void>; applyMutationsAndAdvanceCheckpoint(input: MaterializedViewApplyInput): Promise<MaterializedViewApplyResult>; promoteGeneration(input: MaterializedViewPromoteInput): Promise<MaterializedViewInstance>; readonly apply: (input: MaterializedViewApplyInput) => Promise<MaterializedViewApplyResult>; readonly promote: (input: MaterializedViewPromoteInput) => Promise<MaterializedViewInstance>; private rowFrom; private indexFrom; private validateGeneration; private ready; }",
+              "text": "export declare class D1MaterializedViewStore { private readonly database; private initialized; private readonly unsafe; constructor(database: D1Database); initialize(): Promise<void>; createActive(input: MaterializedViewCreateInput): Promise<MaterializedViewInstance>; createCandidate(input: MaterializedViewCandidateInput): Promise<MaterializedViewInstance>; beginRebuild(input: Omit<MaterializedViewCandidateInput, \"generation\"> & { readonly generation?: number; }): Promise<MaterializedViewInstance>; nextGeneration(serviceId: string, viewId: string): Promise<number>; readInstance(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewInstance | undefined>; readActive(serviceId: string, viewId: string): Promise<MaterializedViewInstance | undefined>; readRows(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewRow[]>; readIndexEntries(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewIndexEntry[]>; queryRows(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<MaterializedViewRow[]>; queryRowsWithTotal(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<UnsafeComposedPage>; readListPage(serviceId: string, viewId: string, options?: MaterializedViewListOptions): Promise<MaterializedViewListPage>; scanRows(serviceId: string, viewId: string, options: MaterializedViewRawScanOptions): Promise<MaterializedViewRawScan>; unsafeWindow(): UnsafeWindowMaterializedViewStore; collectUnsafeGarbage(serviceId: string, viewId: string, generation: number, definitionVersion: number, safeHead: string): Promise<number>; hasTargetReceipt(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>; readWaitForState(serviceId: string, viewId: string, target: { readonly eventId?: string; readonly suid: string; }): Promise<MaterializedViewWaitForState>; readStatusFacts(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewStatusFacts | undefined>; recordUnsafeFailureFinding(input: { readonly serviceId: string; readonly viewId: string; readonly generation?: number; readonly eventId: string; readonly suid: string; readonly observedAt: number; }): Promise<void>; recordCheckpointAhead(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly storeMaxSuid: string; readonly observedAt: number; }): Promise<void>; hasCheckpointAheadFinding(serviceId: string, viewId: string): Promise<boolean>; readOrderingQuarantine(serviceId: string, viewId: string): Promise<MaterializedViewOrderingQuarantine | undefined>; readActiveGeneration(serviceId: string, viewId: string): Promise<number | undefined>; recordOrderingQuarantine(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly lateSuid: string; readonly eventId: string; readonly classification: MaterializedViewOrderingQuarantineClassification; readonly observedAt: number; }): Promise<void>; markGenerationRebuilt(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly verifiedAt: number; readonly rebuildId: string; readonly sourceEventCount: number; readonly sourceEventIds: readonly string[]; readonly sourceSuids: readonly string[]; readonly sourceMaxSuid: string; readonly sourceHistoryDigest: string; }): Promise<void>; applyMutationsAndAdvanceCheckpoint(input: MaterializedViewApplyInput): Promise<MaterializedViewApplyResult>; promoteGeneration(input: MaterializedViewPromoteInput): Promise<MaterializedViewInstance>; forceReverseGeneration(input: MaterializedViewForceReverseInput): Promise<MaterializedViewInstance>; readonly apply: (input: MaterializedViewApplyInput) => Promise<MaterializedViewApplyResult>; readonly promote: (input: MaterializedViewPromoteInput) => Promise<MaterializedViewInstance>; private rowFrom; private indexFrom; private validateGeneration; private ready; }",
               "typeParameters": []
             }
           ],
@@ -30984,6 +30984,12 @@
               "optional": false,
               "readonly": false,
               "type": "(input: MaterializedViewPromoteInput) => Promise<MaterializedViewInstance>"
+            },
+            {
+              "name": "forceReverseGeneration",
+              "optional": false,
+              "readonly": false,
+              "type": "(input: MaterializedViewForceReverseInput) => Promise<MaterializedViewInstance>"
             },
             {
               "name": "apply",
@@ -40890,7 +40896,7 @@
             {
               "file": "dist/mv/MaterializedViewActions.d.ts",
               "kind": "interface",
-              "text": "export interface MaterializedViewRuntimeStatus { readonly serviceId: string; readonly viewName: string; readonly viewVersion: number | null; readonly started: boolean; readonly catchUpInProgress: boolean; readonly isCatchUpActive: boolean; readonly subscriptionActive: false; readonly bufferedEventCount: 0; readonly currentPosition: string | null; readonly lastReceivedSortableUniqueId: string | null; readonly lastError: string | null; readonly lastCatchUpStartedAt: null; readonly lastCatchUpCompletedAt: string | null; readonly lastCatchUpAttemptAt: string | null; readonly consecutiveEmptyBatches: 0; readonly lastProgressSortableUniqueId: string | null; readonly needsImmediateCatchUp: boolean; readonly catchUpBatchSkipCount: 0; readonly catchUpHalted: boolean; readonly generation: number | null; readonly generationStatus: MaterializedViewInstance[\"status\"] | null; readonly rebuildRequired: boolean; readonly isFresh: boolean; }",
+              "text": "export interface MaterializedViewRuntimeStatus { readonly serviceId: string; readonly viewName: string; readonly viewVersion: number | null; readonly started: boolean; readonly catchUpInProgress: boolean; readonly isCatchUpActive: boolean; readonly subscriptionActive: false; readonly bufferedEventCount: 0; readonly currentPosition: string | null; readonly lastReceivedSortableUniqueId: string | null; readonly lastError: string | null; readonly lastCatchUpStartedAt: null; readonly lastCatchUpCompletedAt: string | null; readonly lastCatchUpAttemptAt: string | null; readonly consecutiveEmptyBatches: 0; readonly lastProgressSortableUniqueId: string | null; readonly needsImmediateCatchUp: boolean; readonly catchUpBatchSkipCount: 0; readonly catchUpHalted: boolean; readonly generation: number | null; readonly generationStatus: MaterializedViewInstance[\"status\"] | null; readonly rebuildRequired: boolean; readonly isFresh: boolean; readonly switchKind: MaterializedViewSwitchKind | null; readonly switchReason: string | null; readonly switchedAt: string | null; readonly leavingGenerationQuarantineOpen: boolean; }",
               "typeParameters": []
             }
           ],
@@ -41034,6 +41040,30 @@
             },
             {
               "name": "isFresh",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "switchKind",
+              "optional": false,
+              "readonly": true,
+              "type": "MaterializedViewSwitchKind | null"
+            },
+            {
+              "name": "switchReason",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "switchedAt",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "leavingGenerationQuarantineOpen",
               "optional": false,
               "readonly": true,
               "type": "boolean"
@@ -41335,11 +41365,11 @@
             {
               "file": "dist/mv/MaterializedViewStore.d.ts",
               "kind": "type",
-              "text": "export type MaterializedViewStoreErrorCode = \"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\";",
+              "text": "export type MaterializedViewStoreErrorCode = \"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_REJECTED\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\";",
               "typeParameters": []
             }
           ],
-          "type": "\"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\"",
+          "type": "\"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_REJECTED\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\"",
           "signatures": {
             "call": [],
             "construct": []
@@ -41671,11 +41701,11 @@
             {
               "file": "dist/mv/MaterializedViewStore.d.ts",
               "kind": "type",
-              "text": "export type MaterializedViewStoreOperation = \"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\";",
+              "text": "export type MaterializedViewStoreOperation = \"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\" | \"force-reverse\";",
               "typeParameters": []
             }
           ],
-          "type": "\"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\"",
+          "type": "\"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\" | \"force-reverse\"",
           "signatures": {
             "call": [],
             "construct": []
@@ -64283,7 +64313,7 @@
             {
               "file": "dist/mv/MaterializedViewActions.d.ts",
               "kind": "interface",
-              "text": "export interface MaterializedViewRuntimeStatus { readonly serviceId: string; readonly viewName: string; readonly viewVersion: number | null; readonly started: boolean; readonly catchUpInProgress: boolean; readonly isCatchUpActive: boolean; readonly subscriptionActive: false; readonly bufferedEventCount: 0; readonly currentPosition: string | null; readonly lastReceivedSortableUniqueId: string | null; readonly lastError: string | null; readonly lastCatchUpStartedAt: null; readonly lastCatchUpCompletedAt: string | null; readonly lastCatchUpAttemptAt: string | null; readonly consecutiveEmptyBatches: 0; readonly lastProgressSortableUniqueId: string | null; readonly needsImmediateCatchUp: boolean; readonly catchUpBatchSkipCount: 0; readonly catchUpHalted: boolean; readonly generation: number | null; readonly generationStatus: MaterializedViewInstance[\"status\"] | null; readonly rebuildRequired: boolean; readonly isFresh: boolean; }",
+              "text": "export interface MaterializedViewRuntimeStatus { readonly serviceId: string; readonly viewName: string; readonly viewVersion: number | null; readonly started: boolean; readonly catchUpInProgress: boolean; readonly isCatchUpActive: boolean; readonly subscriptionActive: false; readonly bufferedEventCount: 0; readonly currentPosition: string | null; readonly lastReceivedSortableUniqueId: string | null; readonly lastError: string | null; readonly lastCatchUpStartedAt: null; readonly lastCatchUpCompletedAt: string | null; readonly lastCatchUpAttemptAt: string | null; readonly consecutiveEmptyBatches: 0; readonly lastProgressSortableUniqueId: string | null; readonly needsImmediateCatchUp: boolean; readonly catchUpBatchSkipCount: 0; readonly catchUpHalted: boolean; readonly generation: number | null; readonly generationStatus: MaterializedViewInstance[\"status\"] | null; readonly rebuildRequired: boolean; readonly isFresh: boolean; readonly switchKind: MaterializedViewSwitchKind | null; readonly switchReason: string | null; readonly switchedAt: string | null; readonly leavingGenerationQuarantineOpen: boolean; }",
               "typeParameters": []
             }
           ],
@@ -64427,6 +64457,30 @@
             },
             {
               "name": "isFresh",
+              "optional": false,
+              "readonly": true,
+              "type": "boolean"
+            },
+            {
+              "name": "switchKind",
+              "optional": false,
+              "readonly": true,
+              "type": "MaterializedViewSwitchKind | null"
+            },
+            {
+              "name": "switchReason",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "switchedAt",
+              "optional": false,
+              "readonly": true,
+              "type": "string | null"
+            },
+            {
+              "name": "leavingGenerationQuarantineOpen",
               "optional": false,
               "readonly": true,
               "type": "boolean"
@@ -70802,7 +70856,7 @@
             {
               "file": "dist/mv/MaterializedViewStore.d.ts",
               "kind": "class",
-              "text": "export declare class D1MaterializedViewStore { private readonly database; private initialized; private readonly unsafe; constructor(database: D1Database); initialize(): Promise<void>; createActive(input: MaterializedViewCreateInput): Promise<MaterializedViewInstance>; createCandidate(input: MaterializedViewCandidateInput): Promise<MaterializedViewInstance>; beginRebuild(input: Omit<MaterializedViewCandidateInput, \"generation\"> & { readonly generation?: number; }): Promise<MaterializedViewInstance>; nextGeneration(serviceId: string, viewId: string): Promise<number>; readInstance(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewInstance | undefined>; readActive(serviceId: string, viewId: string): Promise<MaterializedViewInstance | undefined>; readRows(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewRow[]>; readIndexEntries(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewIndexEntry[]>; queryRows(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<MaterializedViewRow[]>; queryRowsWithTotal(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<UnsafeComposedPage>; readListPage(serviceId: string, viewId: string, options?: MaterializedViewListOptions): Promise<MaterializedViewListPage>; scanRows(serviceId: string, viewId: string, options: MaterializedViewRawScanOptions): Promise<MaterializedViewRawScan>; unsafeWindow(): UnsafeWindowMaterializedViewStore; collectUnsafeGarbage(serviceId: string, viewId: string, generation: number, definitionVersion: number, safeHead: string): Promise<number>; hasTargetReceipt(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>; readWaitForState(serviceId: string, viewId: string, target: { readonly eventId?: string; readonly suid: string; }): Promise<MaterializedViewWaitForState>; readStatusFacts(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewStatusFacts | undefined>; recordUnsafeFailureFinding(input: { readonly serviceId: string; readonly viewId: string; readonly generation?: number; readonly eventId: string; readonly suid: string; readonly observedAt: number; }): Promise<void>; recordCheckpointAhead(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly storeMaxSuid: string; readonly observedAt: number; }): Promise<void>; hasCheckpointAheadFinding(serviceId: string, viewId: string): Promise<boolean>; readOrderingQuarantine(serviceId: string, viewId: string): Promise<MaterializedViewOrderingQuarantine | undefined>; readActiveGeneration(serviceId: string, viewId: string): Promise<number | undefined>; recordOrderingQuarantine(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly lateSuid: string; readonly eventId: string; readonly classification: MaterializedViewOrderingQuarantineClassification; readonly observedAt: number; }): Promise<void>; markGenerationRebuilt(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly verifiedAt: number; readonly rebuildId: string; readonly sourceEventCount: number; readonly sourceEventIds: readonly string[]; readonly sourceSuids: readonly string[]; readonly sourceMaxSuid: string; readonly sourceHistoryDigest: string; }): Promise<void>; applyMutationsAndAdvanceCheckpoint(input: MaterializedViewApplyInput): Promise<MaterializedViewApplyResult>; promoteGeneration(input: MaterializedViewPromoteInput): Promise<MaterializedViewInstance>; readonly apply: (input: MaterializedViewApplyInput) => Promise<MaterializedViewApplyResult>; readonly promote: (input: MaterializedViewPromoteInput) => Promise<MaterializedViewInstance>; private rowFrom; private indexFrom; private validateGeneration; private ready; }",
+              "text": "export declare class D1MaterializedViewStore { private readonly database; private initialized; private readonly unsafe; constructor(database: D1Database); initialize(): Promise<void>; createActive(input: MaterializedViewCreateInput): Promise<MaterializedViewInstance>; createCandidate(input: MaterializedViewCandidateInput): Promise<MaterializedViewInstance>; beginRebuild(input: Omit<MaterializedViewCandidateInput, \"generation\"> & { readonly generation?: number; }): Promise<MaterializedViewInstance>; nextGeneration(serviceId: string, viewId: string): Promise<number>; readInstance(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewInstance | undefined>; readActive(serviceId: string, viewId: string): Promise<MaterializedViewInstance | undefined>; readRows(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewRow[]>; readIndexEntries(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewIndexEntry[]>; queryRows(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<MaterializedViewRow[]>; queryRowsWithTotal(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<UnsafeComposedPage>; readListPage(serviceId: string, viewId: string, options?: MaterializedViewListOptions): Promise<MaterializedViewListPage>; scanRows(serviceId: string, viewId: string, options: MaterializedViewRawScanOptions): Promise<MaterializedViewRawScan>; unsafeWindow(): UnsafeWindowMaterializedViewStore; collectUnsafeGarbage(serviceId: string, viewId: string, generation: number, definitionVersion: number, safeHead: string): Promise<number>; hasTargetReceipt(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>; readWaitForState(serviceId: string, viewId: string, target: { readonly eventId?: string; readonly suid: string; }): Promise<MaterializedViewWaitForState>; readStatusFacts(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewStatusFacts | undefined>; recordUnsafeFailureFinding(input: { readonly serviceId: string; readonly viewId: string; readonly generation?: number; readonly eventId: string; readonly suid: string; readonly observedAt: number; }): Promise<void>; recordCheckpointAhead(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly storeMaxSuid: string; readonly observedAt: number; }): Promise<void>; hasCheckpointAheadFinding(serviceId: string, viewId: string): Promise<boolean>; readOrderingQuarantine(serviceId: string, viewId: string): Promise<MaterializedViewOrderingQuarantine | undefined>; readActiveGeneration(serviceId: string, viewId: string): Promise<number | undefined>; recordOrderingQuarantine(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly lateSuid: string; readonly eventId: string; readonly classification: MaterializedViewOrderingQuarantineClassification; readonly observedAt: number; }): Promise<void>; markGenerationRebuilt(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly verifiedAt: number; readonly rebuildId: string; readonly sourceEventCount: number; readonly sourceEventIds: readonly string[]; readonly sourceSuids: readonly string[]; readonly sourceMaxSuid: string; readonly sourceHistoryDigest: string; }): Promise<void>; applyMutationsAndAdvanceCheckpoint(input: MaterializedViewApplyInput): Promise<MaterializedViewApplyResult>; promoteGeneration(input: MaterializedViewPromoteInput): Promise<MaterializedViewInstance>; forceReverseGeneration(input: MaterializedViewForceReverseInput): Promise<MaterializedViewInstance>; readonly apply: (input: MaterializedViewApplyInput) => Promise<MaterializedViewApplyResult>; readonly promote: (input: MaterializedViewPromoteInput) => Promise<MaterializedViewInstance>; private rowFrom; private indexFrom; private validateGeneration; private ready; }",
               "typeParameters": []
             }
           ],
@@ -71004,6 +71058,12 @@
               "optional": false,
               "readonly": false,
               "type": "(input: MaterializedViewPromoteInput) => Promise<MaterializedViewInstance>"
+            },
+            {
+              "name": "forceReverseGeneration",
+              "optional": false,
+              "readonly": false,
+              "type": "(input: MaterializedViewForceReverseInput) => Promise<MaterializedViewInstance>"
             },
             {
               "name": "apply",
@@ -73171,11 +73231,11 @@
             {
               "file": "dist/mv/MaterializedViewStore.d.ts",
               "kind": "type",
-              "text": "export type MaterializedViewStoreErrorCode = \"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\";",
+              "text": "export type MaterializedViewStoreErrorCode = \"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_REJECTED\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\";",
               "typeParameters": []
             }
           ],
-          "type": "\"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\"",
+          "type": "\"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_REJECTED\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\"",
           "signatures": {
             "call": [],
             "construct": []
@@ -73507,11 +73567,11 @@
             {
               "file": "dist/mv/MaterializedViewStore.d.ts",
               "kind": "type",
-              "text": "export type MaterializedViewStoreOperation = \"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\";",
+              "text": "export type MaterializedViewStoreOperation = \"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\" | \"force-reverse\";",
               "typeParameters": []
             }
           ],
-          "type": "\"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\"",
+          "type": "\"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\" | \"force-reverse\"",
           "signatures": {
             "call": [],
             "construct": []
@@ -74090,7 +74150,7 @@
             {
               "file": "dist/mv/MaterializedViewStore.d.ts",
               "kind": "class",
-              "text": "export declare class D1MaterializedViewStore { private readonly database; private initialized; private readonly unsafe; constructor(database: D1Database); initialize(): Promise<void>; createActive(input: MaterializedViewCreateInput): Promise<MaterializedViewInstance>; createCandidate(input: MaterializedViewCandidateInput): Promise<MaterializedViewInstance>; beginRebuild(input: Omit<MaterializedViewCandidateInput, \"generation\"> & { readonly generation?: number; }): Promise<MaterializedViewInstance>; nextGeneration(serviceId: string, viewId: string): Promise<number>; readInstance(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewInstance | undefined>; readActive(serviceId: string, viewId: string): Promise<MaterializedViewInstance | undefined>; readRows(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewRow[]>; readIndexEntries(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewIndexEntry[]>; queryRows(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<MaterializedViewRow[]>; queryRowsWithTotal(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<UnsafeComposedPage>; readListPage(serviceId: string, viewId: string, options?: MaterializedViewListOptions): Promise<MaterializedViewListPage>; scanRows(serviceId: string, viewId: string, options: MaterializedViewRawScanOptions): Promise<MaterializedViewRawScan>; unsafeWindow(): UnsafeWindowMaterializedViewStore; collectUnsafeGarbage(serviceId: string, viewId: string, generation: number, definitionVersion: number, safeHead: string): Promise<number>; hasTargetReceipt(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>; readWaitForState(serviceId: string, viewId: string, target: { readonly eventId?: string; readonly suid: string; }): Promise<MaterializedViewWaitForState>; readStatusFacts(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewStatusFacts | undefined>; recordUnsafeFailureFinding(input: { readonly serviceId: string; readonly viewId: string; readonly generation?: number; readonly eventId: string; readonly suid: string; readonly observedAt: number; }): Promise<void>; recordCheckpointAhead(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly storeMaxSuid: string; readonly observedAt: number; }): Promise<void>; hasCheckpointAheadFinding(serviceId: string, viewId: string): Promise<boolean>; readOrderingQuarantine(serviceId: string, viewId: string): Promise<MaterializedViewOrderingQuarantine | undefined>; readActiveGeneration(serviceId: string, viewId: string): Promise<number | undefined>; recordOrderingQuarantine(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly lateSuid: string; readonly eventId: string; readonly classification: MaterializedViewOrderingQuarantineClassification; readonly observedAt: number; }): Promise<void>; markGenerationRebuilt(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly verifiedAt: number; readonly rebuildId: string; readonly sourceEventCount: number; readonly sourceEventIds: readonly string[]; readonly sourceSuids: readonly string[]; readonly sourceMaxSuid: string; readonly sourceHistoryDigest: string; }): Promise<void>; applyMutationsAndAdvanceCheckpoint(input: MaterializedViewApplyInput): Promise<MaterializedViewApplyResult>; promoteGeneration(input: MaterializedViewPromoteInput): Promise<MaterializedViewInstance>; readonly apply: (input: MaterializedViewApplyInput) => Promise<MaterializedViewApplyResult>; readonly promote: (input: MaterializedViewPromoteInput) => Promise<MaterializedViewInstance>; private rowFrom; private indexFrom; private validateGeneration; private ready; }",
+              "text": "export declare class D1MaterializedViewStore { private readonly database; private initialized; private readonly unsafe; constructor(database: D1Database); initialize(): Promise<void>; createActive(input: MaterializedViewCreateInput): Promise<MaterializedViewInstance>; createCandidate(input: MaterializedViewCandidateInput): Promise<MaterializedViewInstance>; beginRebuild(input: Omit<MaterializedViewCandidateInput, \"generation\"> & { readonly generation?: number; }): Promise<MaterializedViewInstance>; nextGeneration(serviceId: string, viewId: string): Promise<number>; readInstance(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewInstance | undefined>; readActive(serviceId: string, viewId: string): Promise<MaterializedViewInstance | undefined>; readRows(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewRow[]>; readIndexEntries(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewIndexEntry[]>; queryRows(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<MaterializedViewRow[]>; queryRowsWithTotal(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<UnsafeComposedPage>; readListPage(serviceId: string, viewId: string, options?: MaterializedViewListOptions): Promise<MaterializedViewListPage>; scanRows(serviceId: string, viewId: string, options: MaterializedViewRawScanOptions): Promise<MaterializedViewRawScan>; unsafeWindow(): UnsafeWindowMaterializedViewStore; collectUnsafeGarbage(serviceId: string, viewId: string, generation: number, definitionVersion: number, safeHead: string): Promise<number>; hasTargetReceipt(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>; readWaitForState(serviceId: string, viewId: string, target: { readonly eventId?: string; readonly suid: string; }): Promise<MaterializedViewWaitForState>; readStatusFacts(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewStatusFacts | undefined>; recordUnsafeFailureFinding(input: { readonly serviceId: string; readonly viewId: string; readonly generation?: number; readonly eventId: string; readonly suid: string; readonly observedAt: number; }): Promise<void>; recordCheckpointAhead(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly storeMaxSuid: string; readonly observedAt: number; }): Promise<void>; hasCheckpointAheadFinding(serviceId: string, viewId: string): Promise<boolean>; readOrderingQuarantine(serviceId: string, viewId: string): Promise<MaterializedViewOrderingQuarantine | undefined>; readActiveGeneration(serviceId: string, viewId: string): Promise<number | undefined>; recordOrderingQuarantine(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly lateSuid: string; readonly eventId: string; readonly classification: MaterializedViewOrderingQuarantineClassification; readonly observedAt: number; }): Promise<void>; markGenerationRebuilt(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly verifiedAt: number; readonly rebuildId: string; readonly sourceEventCount: number; readonly sourceEventIds: readonly string[]; readonly sourceSuids: readonly string[]; readonly sourceMaxSuid: string; readonly sourceHistoryDigest: string; }): Promise<void>; applyMutationsAndAdvanceCheckpoint(input: MaterializedViewApplyInput): Promise<MaterializedViewApplyResult>; promoteGeneration(input: MaterializedViewPromoteInput): Promise<MaterializedViewInstance>; forceReverseGeneration(input: MaterializedViewForceReverseInput): Promise<MaterializedViewInstance>; readonly apply: (input: MaterializedViewApplyInput) => Promise<MaterializedViewApplyResult>; readonly promote: (input: MaterializedViewPromoteInput) => Promise<MaterializedViewInstance>; private rowFrom; private indexFrom; private validateGeneration; private ready; }",
               "typeParameters": []
             }
           ],
@@ -74292,6 +74352,12 @@
               "optional": false,
               "readonly": false,
               "type": "(input: MaterializedViewPromoteInput) => Promise<MaterializedViewInstance>"
+            },
+            {
+              "name": "forceReverseGeneration",
+              "optional": false,
+              "readonly": false,
+              "type": "(input: MaterializedViewForceReverseInput) => Promise<MaterializedViewInstance>"
             },
             {
               "name": "apply",
@@ -75208,7 +75274,7 @@
             {
               "file": "dist/mv/MaterializedViewCatchUp.d.ts",
               "kind": "class",
-              "text": "export declare class MaterializedViewCatchUpRuntime { private readonly source; private readonly materializedViews; private readonly context; constructor(source: ProjectionStore, materializedViews: D1MaterializedViewStore, context?: MaterializedViewCatchUpRuntimeContext); build<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; follow<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; rebuild<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, rebuildId?: string, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult & { readonly candidateGeneration: number; readonly rebuildId?: string; }>; promote(serviceId: string, materializer: MaterializedViewRowMaterializer, candidateGeneration: number, nowMs: number, options?: MaterializedViewPromoteOptions): Promise<MaterializedViewInstance>; read(serviceId: string, materializer: MaterializedViewRowMaterializer): Promise<{ readonly instance: MaterializedViewInstance; readonly rows: Awaited<ReturnType<D1MaterializedViewStore[\"readRows\"]>>; } | undefined>; private followGeneration; private publishProjectionStatusBestEffort; private writeProjectionStatusHeartbeat; private writeObservedHeartbeat; private writeHeartbeat; private detectLateLowerSuid; private assertSourceBatchOrder; }",
+              "text": "export declare class MaterializedViewCatchUpRuntime { private readonly source; private readonly materializedViews; private readonly context; constructor(source: ProjectionStore, materializedViews: D1MaterializedViewStore, context?: MaterializedViewCatchUpRuntimeContext); build<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; follow<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; rebuild<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, rebuildId?: string, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult & { readonly candidateGeneration: number; readonly rebuildId?: string; }>; promote(serviceId: string, materializer: MaterializedViewRowMaterializer, candidateGeneration: number, nowMs: number, options?: MaterializedViewPromoteOptions): Promise<MaterializedViewInstance>; read(serviceId: string, materializer: MaterializedViewRowMaterializer): Promise<{ readonly instance: MaterializedViewInstance; readonly rows: Awaited<ReturnType<D1MaterializedViewStore[\"readRows\"]>>; } | undefined>; forceReverse(serviceId: string, materializer: MaterializedViewRowMaterializer, retainedGeneration: number, expectedActiveGeneration: number, reason: string, nowMs: number): Promise<MaterializedViewInstance>; private followGeneration; private publishProjectionStatusBestEffort; private writeProjectionStatusHeartbeat; private writeObservedHeartbeat; private writeHeartbeat; private detectLateLowerSuid; private assertSourceBatchOrder; }",
               "typeParameters": []
             }
           ],
@@ -75290,6 +75356,12 @@
               "optional": false,
               "readonly": false,
               "type": "(serviceId: string, materializer: MaterializedViewRowMaterializer) => Promise<{ readonly instance: MaterializedViewInstance; readonly rows: Awaited<ReturnType<D1MaterializedViewStore[\"readRows\"]>>; } | undefined>"
+            },
+            {
+              "name": "forceReverse",
+              "optional": false,
+              "readonly": false,
+              "type": "(serviceId: string, materializer: MaterializedViewRowMaterializer, retainedGeneration: number, expectedActiveGeneration: number, reason: string, nowMs: number) => Promise<MaterializedViewInstance>"
             },
             {
               "name": "followGeneration",
@@ -77192,11 +77264,11 @@
             {
               "file": "dist/mv/MaterializedViewStore.d.ts",
               "kind": "type",
-              "text": "export type MaterializedViewStoreErrorCode = \"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\";",
+              "text": "export type MaterializedViewStoreErrorCode = \"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_REJECTED\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\";",
               "typeParameters": []
             }
           ],
-          "type": "\"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\"",
+          "type": "\"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_REJECTED\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\"",
           "signatures": {
             "call": [],
             "construct": []
@@ -77528,11 +77600,11 @@
             {
               "file": "dist/mv/MaterializedViewStore.d.ts",
               "kind": "type",
-              "text": "export type MaterializedViewStoreOperation = \"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\";",
+              "text": "export type MaterializedViewStoreOperation = \"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\" | \"force-reverse\";",
               "typeParameters": []
             }
           ],
-          "type": "\"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\"",
+          "type": "\"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\" | \"force-reverse\"",
           "signatures": {
             "call": [],
             "construct": []
@@ -79460,7 +79532,7 @@
             {
               "file": "dist/mv/MaterializedViewStore.d.ts",
               "kind": "class",
-              "text": "export declare class D1MaterializedViewStore { private readonly database; private initialized; private readonly unsafe; constructor(database: D1Database); initialize(): Promise<void>; createActive(input: MaterializedViewCreateInput): Promise<MaterializedViewInstance>; createCandidate(input: MaterializedViewCandidateInput): Promise<MaterializedViewInstance>; beginRebuild(input: Omit<MaterializedViewCandidateInput, \"generation\"> & { readonly generation?: number; }): Promise<MaterializedViewInstance>; nextGeneration(serviceId: string, viewId: string): Promise<number>; readInstance(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewInstance | undefined>; readActive(serviceId: string, viewId: string): Promise<MaterializedViewInstance | undefined>; readRows(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewRow[]>; readIndexEntries(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewIndexEntry[]>; queryRows(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<MaterializedViewRow[]>; queryRowsWithTotal(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<UnsafeComposedPage>; readListPage(serviceId: string, viewId: string, options?: MaterializedViewListOptions): Promise<MaterializedViewListPage>; scanRows(serviceId: string, viewId: string, options: MaterializedViewRawScanOptions): Promise<MaterializedViewRawScan>; unsafeWindow(): UnsafeWindowMaterializedViewStore; collectUnsafeGarbage(serviceId: string, viewId: string, generation: number, definitionVersion: number, safeHead: string): Promise<number>; hasTargetReceipt(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>; readWaitForState(serviceId: string, viewId: string, target: { readonly eventId?: string; readonly suid: string; }): Promise<MaterializedViewWaitForState>; readStatusFacts(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewStatusFacts | undefined>; recordUnsafeFailureFinding(input: { readonly serviceId: string; readonly viewId: string; readonly generation?: number; readonly eventId: string; readonly suid: string; readonly observedAt: number; }): Promise<void>; recordCheckpointAhead(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly storeMaxSuid: string; readonly observedAt: number; }): Promise<void>; hasCheckpointAheadFinding(serviceId: string, viewId: string): Promise<boolean>; readOrderingQuarantine(serviceId: string, viewId: string): Promise<MaterializedViewOrderingQuarantine | undefined>; readActiveGeneration(serviceId: string, viewId: string): Promise<number | undefined>; recordOrderingQuarantine(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly lateSuid: string; readonly eventId: string; readonly classification: MaterializedViewOrderingQuarantineClassification; readonly observedAt: number; }): Promise<void>; markGenerationRebuilt(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly verifiedAt: number; readonly rebuildId: string; readonly sourceEventCount: number; readonly sourceEventIds: readonly string[]; readonly sourceSuids: readonly string[]; readonly sourceMaxSuid: string; readonly sourceHistoryDigest: string; }): Promise<void>; applyMutationsAndAdvanceCheckpoint(input: MaterializedViewApplyInput): Promise<MaterializedViewApplyResult>; promoteGeneration(input: MaterializedViewPromoteInput): Promise<MaterializedViewInstance>; readonly apply: (input: MaterializedViewApplyInput) => Promise<MaterializedViewApplyResult>; readonly promote: (input: MaterializedViewPromoteInput) => Promise<MaterializedViewInstance>; private rowFrom; private indexFrom; private validateGeneration; private ready; }",
+              "text": "export declare class D1MaterializedViewStore { private readonly database; private initialized; private readonly unsafe; constructor(database: D1Database); initialize(): Promise<void>; createActive(input: MaterializedViewCreateInput): Promise<MaterializedViewInstance>; createCandidate(input: MaterializedViewCandidateInput): Promise<MaterializedViewInstance>; beginRebuild(input: Omit<MaterializedViewCandidateInput, \"generation\"> & { readonly generation?: number; }): Promise<MaterializedViewInstance>; nextGeneration(serviceId: string, viewId: string): Promise<number>; readInstance(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewInstance | undefined>; readActive(serviceId: string, viewId: string): Promise<MaterializedViewInstance | undefined>; readRows(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewRow[]>; readIndexEntries(serviceId: string, viewId: string, generation?: number): Promise<MaterializedViewIndexEntry[]>; queryRows(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<MaterializedViewRow[]>; queryRowsWithTotal(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<UnsafeComposedPage>; readListPage(serviceId: string, viewId: string, options?: MaterializedViewListOptions): Promise<MaterializedViewListPage>; scanRows(serviceId: string, viewId: string, options: MaterializedViewRawScanOptions): Promise<MaterializedViewRawScan>; unsafeWindow(): UnsafeWindowMaterializedViewStore; collectUnsafeGarbage(serviceId: string, viewId: string, generation: number, definitionVersion: number, safeHead: string): Promise<number>; hasTargetReceipt(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>; readWaitForState(serviceId: string, viewId: string, target: { readonly eventId?: string; readonly suid: string; }): Promise<MaterializedViewWaitForState>; readStatusFacts(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewStatusFacts | undefined>; recordUnsafeFailureFinding(input: { readonly serviceId: string; readonly viewId: string; readonly generation?: number; readonly eventId: string; readonly suid: string; readonly observedAt: number; }): Promise<void>; recordCheckpointAhead(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly storeMaxSuid: string; readonly observedAt: number; }): Promise<void>; hasCheckpointAheadFinding(serviceId: string, viewId: string): Promise<boolean>; readOrderingQuarantine(serviceId: string, viewId: string): Promise<MaterializedViewOrderingQuarantine | undefined>; readActiveGeneration(serviceId: string, viewId: string): Promise<number | undefined>; recordOrderingQuarantine(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly checkpointSuid: string; readonly lateSuid: string; readonly eventId: string; readonly classification: MaterializedViewOrderingQuarantineClassification; readonly observedAt: number; }): Promise<void>; markGenerationRebuilt(input: { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly verifiedAt: number; readonly rebuildId: string; readonly sourceEventCount: number; readonly sourceEventIds: readonly string[]; readonly sourceSuids: readonly string[]; readonly sourceMaxSuid: string; readonly sourceHistoryDigest: string; }): Promise<void>; applyMutationsAndAdvanceCheckpoint(input: MaterializedViewApplyInput): Promise<MaterializedViewApplyResult>; promoteGeneration(input: MaterializedViewPromoteInput): Promise<MaterializedViewInstance>; forceReverseGeneration(input: MaterializedViewForceReverseInput): Promise<MaterializedViewInstance>; readonly apply: (input: MaterializedViewApplyInput) => Promise<MaterializedViewApplyResult>; readonly promote: (input: MaterializedViewPromoteInput) => Promise<MaterializedViewInstance>; private rowFrom; private indexFrom; private validateGeneration; private ready; }",
               "typeParameters": []
             }
           ],
@@ -79662,6 +79734,12 @@
               "optional": false,
               "readonly": false,
               "type": "(input: MaterializedViewPromoteInput) => Promise<MaterializedViewInstance>"
+            },
+            {
+              "name": "forceReverseGeneration",
+              "optional": false,
+              "readonly": false,
+              "type": "(input: MaterializedViewForceReverseInput) => Promise<MaterializedViewInstance>"
             },
             {
               "name": "apply",
@@ -80236,7 +80314,7 @@
             {
               "file": "dist/mv/MaterializedViewCatchUp.d.ts",
               "kind": "class",
-              "text": "export declare class MaterializedViewCatchUpRuntime { private readonly source; private readonly materializedViews; private readonly context; constructor(source: ProjectionStore, materializedViews: D1MaterializedViewStore, context?: MaterializedViewCatchUpRuntimeContext); build<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; follow<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; rebuild<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, rebuildId?: string, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult & { readonly candidateGeneration: number; readonly rebuildId?: string; }>; promote(serviceId: string, materializer: MaterializedViewRowMaterializer, candidateGeneration: number, nowMs: number, options?: MaterializedViewPromoteOptions): Promise<MaterializedViewInstance>; read(serviceId: string, materializer: MaterializedViewRowMaterializer): Promise<{ readonly instance: MaterializedViewInstance; readonly rows: Awaited<ReturnType<D1MaterializedViewStore[\"readRows\"]>>; } | undefined>; private followGeneration; private publishProjectionStatusBestEffort; private writeProjectionStatusHeartbeat; private writeObservedHeartbeat; private writeHeartbeat; private detectLateLowerSuid; private assertSourceBatchOrder; }",
+              "text": "export declare class MaterializedViewCatchUpRuntime { private readonly source; private readonly materializedViews; private readonly context; constructor(source: ProjectionStore, materializedViews: D1MaterializedViewStore, context?: MaterializedViewCatchUpRuntimeContext); build<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; follow<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult>; rebuild<TEvent = StoredEvent>(serviceId: string, materializer: MaterializedViewRowMaterializer<TEvent>, nowMs: number, rebuildId?: string, hooks?: MaterializedViewCatchUpHooks, options?: MaterializedViewCatchUpOptions): Promise<MaterializedViewCatchUpResult & { readonly candidateGeneration: number; readonly rebuildId?: string; }>; promote(serviceId: string, materializer: MaterializedViewRowMaterializer, candidateGeneration: number, nowMs: number, options?: MaterializedViewPromoteOptions): Promise<MaterializedViewInstance>; read(serviceId: string, materializer: MaterializedViewRowMaterializer): Promise<{ readonly instance: MaterializedViewInstance; readonly rows: Awaited<ReturnType<D1MaterializedViewStore[\"readRows\"]>>; } | undefined>; forceReverse(serviceId: string, materializer: MaterializedViewRowMaterializer, retainedGeneration: number, expectedActiveGeneration: number, reason: string, nowMs: number): Promise<MaterializedViewInstance>; private followGeneration; private publishProjectionStatusBestEffort; private writeProjectionStatusHeartbeat; private writeObservedHeartbeat; private writeHeartbeat; private detectLateLowerSuid; private assertSourceBatchOrder; }",
               "typeParameters": []
             }
           ],
@@ -80318,6 +80396,12 @@
               "optional": false,
               "readonly": false,
               "type": "(serviceId: string, materializer: MaterializedViewRowMaterializer) => Promise<{ readonly instance: MaterializedViewInstance; readonly rows: Awaited<ReturnType<D1MaterializedViewStore[\"readRows\"]>>; } | undefined>"
+            },
+            {
+              "name": "forceReverse",
+              "optional": false,
+              "readonly": false,
+              "type": "(serviceId: string, materializer: MaterializedViewRowMaterializer, retainedGeneration: number, expectedActiveGeneration: number, reason: string, nowMs: number) => Promise<MaterializedViewInstance>"
             },
             {
               "name": "followGeneration",
@@ -83066,11 +83150,11 @@
             {
               "file": "dist/mv/MaterializedViewStore.d.ts",
               "kind": "type",
-              "text": "export type MaterializedViewStoreErrorCode = \"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\";",
+              "text": "export type MaterializedViewStoreErrorCode = \"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_REJECTED\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\";",
               "typeParameters": []
             }
           ],
-          "type": "\"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\"",
+          "type": "\"MV_STORE_NOT_INITIALIZED\" | \"MV_INSTANCE_EXISTS\" | \"MV_INSTANCE_MISSING\" | \"MV_CAS_MISMATCH\" | \"MV_PROMOTION_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_CAS_MISMATCH\" | \"MV_FORCE_REVERSE_REJECTED\" | \"MV_GENERATION_INVALID\" | \"MV_PATCH_ROW_MISSING\" | \"MV_VALUE_INVALID\" | \"MV_ORDERING_QUARANTINED\" | \"MV_REBUILD_NOT_VERIFIED\" | \"MV_STORE_OPERATION_FAILED\"",
           "signatures": {
             "call": [],
             "construct": []
@@ -83402,11 +83486,11 @@
             {
               "file": "dist/mv/MaterializedViewStore.d.ts",
               "kind": "type",
-              "text": "export type MaterializedViewStoreOperation = \"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\";",
+              "text": "export type MaterializedViewStoreOperation = \"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\" | \"force-reverse\";",
               "typeParameters": []
             }
           ],
-          "type": "\"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\"",
+          "type": "\"initialize\" | \"create-active\" | \"create-candidate\" | \"apply\" | \"promote\" | \"force-reverse\"",
           "signatures": {
             "call": [],
             "construct": []
@@ -87112,6 +87196,13 @@
     {
       "package": "@sekiban/dcb-runtime",
       "file": "dist/mv/MaterializedViewStore.d.ts",
+      "name": "MaterializedViewForceReverseInput",
+      "kind": "interface",
+      "text": "export interface MaterializedViewForceReverseInput { readonly serviceId: string; readonly viewId: string; readonly retainedGeneration: number; readonly expectedActiveGeneration: number; readonly reason: string; readonly updatedAt: number; }"
+    },
+    {
+      "package": "@sekiban/dcb-runtime",
+      "file": "dist/mv/MaterializedViewStore.d.ts",
       "name": "MaterializedViewRawScan",
       "kind": "interface",
       "text": "export interface MaterializedViewRawScan { readonly rows: readonly RawMaterializedViewCandidate[]; readonly readHead: string; }"
@@ -87128,7 +87219,14 @@
       "file": "dist/mv/MaterializedViewStore.d.ts",
       "name": "MaterializedViewStatusFacts",
       "kind": "interface",
-      "text": "export interface MaterializedViewStatusFacts { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly definitionVersion: number; readonly status: MaterializedViewInstance[\"status\"]; readonly lastSuid: string; readonly activePointer: boolean; readonly rebuildRequired: boolean; readonly checkpointAhead: boolean; readonly targetPoison: boolean; readonly openOrderingQuarantine: boolean; readonly rebuildVerifiedAt: number | null; readonly rebuildSourceEventCount: number | null; }"
+      "text": "export interface MaterializedViewStatusFacts { readonly serviceId: string; readonly viewId: string; readonly generation: number; readonly definitionVersion: number; readonly status: MaterializedViewInstance[\"status\"]; readonly lastSuid: string; readonly activePointer: boolean; readonly rebuildRequired: boolean; readonly checkpointAhead: boolean; readonly targetPoison: boolean; readonly openOrderingQuarantine: boolean; readonly rebuildVerifiedAt: number | null; readonly rebuildSourceEventCount: number | null; readonly switchKind?: MaterializedViewSwitchKind | null; readonly switchReason?: string | null; readonly switchedAt?: number | null; readonly nonActiveOpenOrderingQuarantine?: boolean; }"
+    },
+    {
+      "package": "@sekiban/dcb-runtime",
+      "file": "dist/mv/MaterializedViewStore.d.ts",
+      "name": "MaterializedViewSwitchKind",
+      "kind": "type",
+      "text": "export type MaterializedViewSwitchKind = \"ordinary\" | \"forced\" | \"legacy\";"
     },
     {
       "package": "@sekiban/dcb-runtime",
@@ -88168,5 +88266,5 @@
       "materializedViewId"
     ]
   },
-  "publicSurfaceHash": "4fb276b44adcea41074e334d1d991b536bd1a5410a7e995cb429d5d63a8a3787"
+  "publicSurfaceHash": "1df0f8755fbd689ba7eb63a01fb40d59c41b6528d72a263ae54bd91ef07da090"
 }

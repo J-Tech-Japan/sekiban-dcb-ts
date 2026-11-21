@@ -23,6 +23,8 @@ import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quar
 import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import rebuildProofMigration from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import forceReverseAuditMigration from "../migrations/mv/0010_g152_force_reverse_audit.sql?raw";
 
 import { defineRowMaterializer, type MaterializedViewRowMaterializer } from "@sekiban/dcb-core";
 import {
@@ -208,7 +210,7 @@ const STORED_MATERIALIZER: MaterializedViewRowMaterializer<StoredEvent> = define
 
 describe("SDT-G19 D1 materialized-view store", () => {
   beforeAll(async () => {
-    const statements = [migration as string, unsafeMigration as string, hardeningMigration as string, unsafeFailureMigration as string, g31WaitReceiptMigration as string, g31WaitPoisonMigration as string, orderingQuarantineMigration as string, rebuildVerificationMigration as string, rebuildProofMigration as string].flatMap((migrationText) => migrationText.replace(/^\s*--.*$/gm, "")
+    const statements = [migration as string, unsafeMigration as string, hardeningMigration as string, unsafeFailureMigration as string, g31WaitReceiptMigration as string, g31WaitPoisonMigration as string, orderingQuarantineMigration as string, rebuildVerificationMigration as string, rebuildProofMigration as string, forceReverseAuditMigration as string].flatMap((migrationText) => migrationText.replace(/^\s*--.*$/gm, "")
       .split(";")
       .map((statement) => statement.trim())
       .filter((statement) => statement.length > 0));

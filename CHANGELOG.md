@@ -15,6 +15,13 @@
   generation), runtime status, and a one-shot received check. A follow now
   refuses a generation built with a different definition version; after a
   version bump, prepare the new generation and switch promptly.
+- `POST /operator/materialized-views/:viewId/force-reverse` re-serves a
+  retired predecessor generation behind an expected active generation, with a
+  required operator reason. It is reverse-only, refuses generations with
+  ordering-quarantine history, and records a `forced` switch audit shown in
+  runtime status. Migration `migrations/mv/0010_g152_force_reverse_audit.sql`
+  is a required upgrade for every D1 materialized-view deployment;
+  `D1MaterializedViewStore.initialize()` fails without it.
 
 ## @sekiban/dcb-domain 0.3.0 (matched release)
 

@@ -12,6 +12,16 @@ rows in `D1_MV`; they are not copied into PipelineStore. The schema is applied
 by the versioned `migrations/mv/0001_materialized_views.sql` migration. Runtime
 code never executes DDL.
 
+Apply every file in `migrations/mv` in order. Migration
+`0010_g152_force_reverse_audit.sql` is a required upgrade for every D1 MV
+deployment, whether or not the force-reverse route is mounted: it adds the
+`switch_kind`, `switch_reason`, and `switched_at` audit columns to
+`mv_active_generations`, and start, switch, and force reverse all write them.
+`D1MaterializedViewStore.initialize()` reads those columns and fails when the
+migration is missing, so a skipped upgrade stops at startup instead of in the
+middle of a switch. Pointer rows written before 0010 read as `legacy` until
+the next start, switch, or force reverse rewrites them.
+
 ## Materializer and atomic apply
 
 `@sekiban/dcb-core` exposes `defineRowMaterializer`. A materializer declares a
@@ -114,6 +124,7 @@ service identity provider.
 | `POST /operator/materialized-views/:viewId/refresh` | empty body or `{}` | `follow` once | `{ "result", "status" }` |
 | `POST /operator/materialized-views/:viewId/prepare` | empty body, `{}`, or `{ "rebuildId": "..." }` | `rebuild` once | `result.candidateGeneration`, `result.rebuildId`; serving pointer unchanged |
 | `POST /operator/materialized-views/:viewId/switch` | `{ "candidateGeneration": 1, "expectedActiveGeneration": 0 }` | `promote` with that expectation | `result` is the new active instance |
+| `POST /operator/materialized-views/:viewId/force-reverse` | `{ "retainedGeneration": 0, "expectedActiveGeneration": 1, "reason": "..." }` | break-glass reverse; see [Force reverse](#force-reverse) | `result` is the re-served active instance |
 | `GET /operator/materialized-views/:viewId/status` | none | read active instance, target facts, heartbeat | runtime status object |
 | `GET /operator/materialized-views/:viewId/received?sortableUniqueId=...` | one sortable unique id | one source and one target point read | `true` or `false` |
 
@@ -133,6 +144,8 @@ segment. A view id containing `/` cannot be addressed.
 | 409 | `materialized_view_not_started` | refresh without an active generation |
 | 409 | `materialized_view_definition_version_mismatch` | registered version differs from the serving generation |
 | 409 | `materialized_view_switch_conflict` | expected active generation or candidate state did not match |
+| 409 | `materialized_view_force_reverse_conflict` | force reverse lost its fence: the active pointer or retained state changed |
+| 409 | `materialized_view_force_reverse_rejected` | the retained generation is not retired, is missing, or has quarantine history |
 | 409 | `materialized_view_action_conflict` | catch-up did not converge or the candidate is not promotable |
 | 501 | `materialized_view_action_unsupported` | the event source lacks status or point-read support |
 | 503 | `materialized_view_action_unavailable` | `D1_MV`, migrations, or a fact read is unavailable |
@@ -162,8 +175,8 @@ or failed prepare never moves the active pointer. Two switches with the same
 expectation race on the store's atomic promotion guard; one returns 200 and the
 other 409. The caller decides whether to retry with a new expectation.
 
-Reverting to a retired generation and request-driven deactivation are not
-offered. Prepare and switch a new generation instead.
+To roll back a bad switch to the retained predecessor, use
+[Force reverse](#force-reverse). Request-driven deactivation is not offered.
 
 ### Mounting behind composeFetch
 
@@ -182,6 +195,68 @@ composeFetch({
   },
 });
 ```
+
+## Force reverse
+
+`POST /operator/materialized-views/:viewId/force-reverse` is a break-glass
+rollback. It re-serves a retained predecessor generation after an ordinary
+switch went wrong. It uses the same bearer, registry, and fail-closed order as
+the other actions, and it is mounted only through the same `extraPrefixes`
+opt-in.
+
+```json
+{ "retainedGeneration": 0, "expectedActiveGeneration": 1, "reason": "roll back bad switch" }
+```
+
+The body has exactly these three members:
+
+- `retainedGeneration` and `expectedActiveGeneration` are non-negative safe
+  integers. `expectedActiveGeneration` is required and never `null`.
+- The reverse is backwards only: `retainedGeneration` must be strictly less
+  than `expectedActiveGeneration`. Anything else is a 400.
+- `reason` is trimmed and must then be 1 to 1024 characters with no control
+  characters. It is stored on the active pointer and is never echoed in an
+  error.
+
+The retained generation must be `retired`, the state a generation enters when
+an ordinary switch replaces it. A candidate, the current active generation, or
+a missing generation returns 409 `materialized_view_force_reverse_rejected`.
+`switch` still accepts only candidates, so it cannot move backwards.
+
+One D1 batch fences the whole move. It checks that the retained generation is
+still retired, the active pointer still names `expectedActiveGeneration`, and
+that generation is still active. It then retires the current active
+generation, activates the retained one, and moves the pointer. If any check
+fails, nothing changes and the response is 409
+`materialized_view_force_reverse_conflict`. Two concurrent reverses with the
+same expectation produce one 200 and one 409.
+
+Force reverse needs no rebuild proof. It does refuse a retained generation
+that has any ordering-quarantine row, open or resolved. A switch resolves the
+leaving generation's quarantine only because that generation stopped serving,
+not because it was repaired, so re-serving it would expose known-bad rows.
+Force reverse never creates, resolves, reopens, or deletes quarantine rows.
+If the generation you reverse away from has an open quarantine, that row stays
+open. It no longer gates safe reads, because the gate follows the active
+generation. It still blocks a later ordinary switch to an unproven candidate,
+and `prepare` still targets it for the rebuild proof. Status reports it as
+`leavingGenerationQuarantineOpen: true`.
+
+The pointer records `switchKind: "forced"`, the trimmed reason, and the switch
+time. Start and switch record `ordinary` and clear the reason. The heartbeat
+for the re-served definition version records the same forced switch. Response
+bodies match `switch`: `{ "result", "status" }`.
+
+Force reverse does not rewrite `definition_version`. If the retained
+generation was built by an older materializer than the one registered now,
+`refresh` and scheduled catch-up fail with
+`materialized_view_definition_version_mismatch`. Redeploy the materializer
+version that matches the re-served generation, or prepare and switch a new
+candidate.
+
+Force reverse relies on retired generations being kept. Nothing removes them
+today. Any future cleanup of retired generations must keep a reverse-eligible
+predecessor, or must not run while force reverse is in use.
 
 ## Materialized-view runtime status
 
@@ -210,6 +285,10 @@ heartbeat is best-effort evidence for that definition version.
 | `generation`, `generationStatus` | active generation and its status |
 | `rebuildRequired` | active generation needs a rebuild |
 | `isFresh` | fresh heartbeat without a conflicting cluster |
+| `switchKind` | how the active pointer last moved: `ordinary`, `forced`, or `legacy` (written before migration 0010); `null` before start |
+| `switchReason` | operator reason of a forced switch; otherwise `null` |
+| `switchedAt` | pointer switch time in UTC; `null` before start or for `legacy` rows |
+| `leavingGenerationQuarantineOpen` | an open ordering quarantine remains on a generation that is not active |
 
 A missing, stale, expired, or conflicting heartbeat never reports activity or
 `needsImmediateCatchUp`. Missing heartbeat fields are `null`. The heartbeat key

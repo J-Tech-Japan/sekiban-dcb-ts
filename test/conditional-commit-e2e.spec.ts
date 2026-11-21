@@ -40,6 +40,8 @@ import mv0007 from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
 import mv0008 from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 // @ts-expect-error Vite raw asset import
 import mv0009 from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
+// @ts-expect-error Vite raw asset import
+import mv0010 from "../migrations/mv/0010_g152_force_reverse_audit.sql?raw";
 
 export const conditionalFixtureEvent = defineEvent<{ readonly sku: string }>("FixtureEvent");
 const domain = { events: [conditionalFixtureEvent] };
@@ -277,7 +279,7 @@ if (!skipE2eEntry) {
     beforeAll(async () => {
       await applySql(database("D1"), d1Migration as string);
       await applyG44D1Migration(database("D1"));
-      for (const migration of [mv0001, mv0002, mv0003, mv0004, mv0005, mv0006, mv0007, mv0008, mv0009]) {
+      for (const migration of [mv0001, mv0002, mv0003, mv0004, mv0005, mv0006, mv0007, mv0008, mv0009, mv0010]) {
         await applySql(database("D1_MV"), migration as string);
       }
     });

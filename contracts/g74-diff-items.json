@@ -92,6 +92,11 @@
     { "id": "@sekiban/dcb-runtime::MaterializedViewDefinitionVersionMismatchError", "kind": "added" },
     { "id": "@sekiban/dcb-runtime::MaterializedViewRuntimeStatus", "kind": "added" },
     { "id": "@sekiban/dcb-runtime::MaterializedViewCatchUpRuntimeContext", "kind": "added" },
-    { "id": "@sekiban/dcb-runtime::MaterializedViewPromoteOptions", "kind": "added" }
+    { "id": "@sekiban/dcb-runtime::MaterializedViewPromoteOptions", "kind": "added" },
+    { "id": "@sekiban/dcb-runtime::MaterializedViewStoreErrorCode", "kind": "changed" },
+    { "id": "@sekiban/dcb-runtime::MaterializedViewStoreOperation", "kind": "changed" },
+    { "id": "@sekiban/dcb-runtime::MaterializedViewStatusFacts", "kind": "changed" },
+    { "id": "@sekiban/dcb-runtime::MaterializedViewForceReverseInput", "kind": "added" },
+    { "id": "@sekiban/dcb-runtime::MaterializedViewSwitchKind", "kind": "added" }
   ]
 }

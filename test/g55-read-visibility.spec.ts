@@ -18,6 +18,8 @@ import migration0007 from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw
 import migration0008 from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import migration0009 from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import migration0010 from "../migrations/mv/0010_g152_force_reverse_audit.sql?raw";
 import { defineRowMaterializer } from "@sekiban/dcb-core";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1-mv";
 import type { MaterializedViewQueryPort } from "../packages/dcb-runtime/src/query/ProjectionQueryStore";
@@ -94,6 +96,7 @@ describe("SDT-G55 D1 list read visibility", () => {
       migration0007,
       migration0008,
       migration0009,
+      migration0010,
     ].flatMap((migration) => migrationStatements(migration as string)));
   });
 

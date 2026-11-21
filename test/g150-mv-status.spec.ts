@@ -21,6 +21,8 @@ import mv0008 from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import mv0009 from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
 // @ts-expect-error Vite raw migration imports.
+import mv0010 from "../migrations/mv/0010_g152_force_reverse_audit.sql?raw";
+// @ts-expect-error Vite raw migration imports.
 import d1StatusMigration from "../migrations/d1/g32/0022_g150_projection_statuses.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import postgresStatusMigration from "../migrations/postgres/0001_g150_projection_statuses.sql?raw";
@@ -373,7 +375,7 @@ describe("passive materialized-view projection status", () => {
     }
     const viewTables = await materializedViewDatabase().prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mv_instances'").first<{ name: string }>();
     if (viewTables === null || viewTables === undefined) {
-      const statements = [mv0001, mv0002, mv0003, mv0004, mv0005, mv0006, mv0007, mv0008, mv0009]
+      const statements = [mv0001, mv0002, mv0003, mv0004, mv0005, mv0006, mv0007, mv0008, mv0009, mv0010]
         .flatMap((source) => sqlStatements(source as string));
       await materializedViewDatabase().batch(statements.map((statement) => materializedViewDatabase().prepare(statement)));
     }
