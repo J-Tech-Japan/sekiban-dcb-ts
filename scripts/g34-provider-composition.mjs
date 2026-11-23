@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  assertClosedObject,
   assertUniqueBy,
   canonicalJson,
   compareExactOrdered,
@@ -16,6 +17,12 @@ export const mappingPath = "contracts/provider-composition.local-mapping.json";
 export const generatedPath = "samples/meeting-room/src/generated/provider-composition.ts";
 export const sharedCorePath = "scripts/lib/offline-provider-validation.mjs";
 export const templateCorePath = "packages/create-dcb/template/scripts/offline-provider-validation.mjs";
+export const postgresManifestPath = "contracts/provider-composition.meeting-room-postgres.json";
+export const postgresMappingPath = "contracts/provider-composition.meeting-room-postgres.local-mapping.json";
+export const PROFILE_REGISTRY = Object.freeze([
+  Object.freeze({ profileId: "meeting-room-cloudflare", manifestPath, mappingPath }),
+  Object.freeze({ profileId: "meeting-room-postgres", manifestPath: postgresManifestPath, mappingPath: postgresMappingPath }),
+]);
 export const DOMAIN = "sekiban-dcb-ts/provider-composition-manifest/v1";
 export const CANONICALIZATION_VERSION = "rfc8785";
 
@@ -68,6 +75,7 @@ const DIAGNOSTIC_REASONS = new Set([
   "new-fail-legacy-pass", "queues-forbidden", "raw-binding", "resource-identity-mismatch", "same-resource",
   "scope-proof-unavailable", "second-manifest", "second-producer", "second-shard", "unknown-input",
   "unresolved-kept-var", "missing-config", "digest-mismatch", "invocation-count", "retarget-producer",
+  "named-environment-forbidden", "local-connection-string", "forbidden-binding",
 ]);
 
 export class CompositionDiagnostic extends Error {
@@ -148,6 +156,7 @@ function bindingNames(config) {
     ...(config?.durable_objects?.bindings ?? []).map((entry) => entry.name),
     ...(config?.queues?.producers ?? []).map((entry) => entry.binding),
     ...(config?.services ?? []).map((entry) => entry.binding),
+    ...(config?.hyperdrive ?? []).map((entry) => entry.binding),
   ];
 }
 
@@ -179,6 +188,7 @@ function assertConfigIdentities(config) {
     [config?.queues?.consumers ?? [], (entry) => entry?.queue, "queues.consumers.queue"],
     [config?.durable_objects?.bindings ?? [], (entry) => entry?.name, "durable_objects.bindings.name"],
     [config?.durable_objects?.bindings ?? [], (entry) => entry?.class_name, "durable_objects.bindings.class_name"],
+    [config?.hyperdrive ?? [], (entry) => entry?.binding, "hyperdrive.binding"],
     [config?.migrations ?? [], (entry) => entry?.tag, "migrations.tag"],
   ]) assertUniqueBy(entries, identity, path, (value) => fail("CARDINALITY", value.path, "cardinality"));
 }
@@ -216,8 +226,8 @@ export function checkGenerated(manifest = loadManifest(), source = readFileSync(
   return expected;
 }
 
-export function rawBindingHits(text) {
-  const alt = REQUIRED_BINDINGS.slice().sort((left, right) => right.length - left.length).join("|");
+export function rawBindingHits(text, bindings = REQUIRED_BINDINGS) {
+  const alt = bindings.slice().sort((left, right) => right.length - left.length).join("|");
   return [
     new RegExp(`\\benv\\s*\\?\\.\\s*(${alt})\\b`),
     new RegExp(`\\benv\\.(${alt})\\b`),
@@ -241,15 +251,25 @@ export function scanSampleBindingReads() {
   return hits;
 }
 
-function publishedManifestFiles() {
+function compositionContractFiles() {
   return readdirSync(join(root, "contracts"))
-    .filter((name) => name.startsWith("provider-composition") && name.endsWith(".json") && !name.includes("local-mapping"))
+    .filter((name) => name.startsWith("provider-composition") && name.endsWith(".json"))
     .map((name) => `contracts/${name}`)
     .sort();
 }
 
-export function assertSingleSource(files = publishedManifestFiles()) {
-  if (files.length !== 1 || files[0] !== manifestPath) fail("SECOND_MANIFEST", files.find((file) => file !== manifestPath) ?? manifestPath, "second-manifest");
+// The listing only refuses files; the closed registry alone selects what is validated.
+export function assertRegistry(files = compositionContractFiles(), registry = PROFILE_REGISTRY) {
+  assertUniqueBy(registry, (entry) => entry?.profileId, "registry.profileId", (value) => fail("CARDINALITY", value.path, "cardinality"));
+  const registered = new Set(registry.flatMap((entry) => [entry.manifestPath, entry.mappingPath]));
+  const rogue = [...files].sort().find((file) => !registered.has(file));
+  if (rogue !== undefined) fail("SECOND_MANIFEST", rogue, "second-manifest");
+  const listed = new Set(files);
+  for (const entry of registry) for (const path of [entry.manifestPath, entry.mappingPath]) if (!listed.has(path)) fail("MISSING_CONFIG", path, "missing-config");
+}
+
+export function assertRegisteredProfile(entry, manifest) {
+  if (manifest?.profileId !== entry.profileId) fail("CARDINALITY", "profileId", "cardinality");
 }
 
 function requireMappingEntries(mapping) {
@@ -348,6 +368,8 @@ function assertEntrypointSource(source, receiverSource) {
 }
 
 export function validateConfig(manifest, component, config, mapping, source = readFileSync(join(root, "samples/meeting-room/src/worker.cloudflare-only.ts"), "utf8"), receiverSource = readFileSync(join(root, "samples/meeting-room/src/worker.g38-receiver.ts"), "utf8")) {
+  // The binding comparison de-duplicates names, so a Hyperdrive row named D1 would hide behind it.
+  if (config?.hyperdrive !== undefined && !(Array.isArray(config.hyperdrive) && config.hyperdrive.length === 0)) fail("CARDINALITY", `${component.id}.bindings`, "cardinality");
   assertConfigIdentities(config);
   requireMappingEntries(mapping);
   if (config.name !== component.workerName) fail("CARDINALITY", `${component.id}.workerName`, "cardinality");
@@ -384,13 +406,278 @@ export function validateQueueTopology(consumers) {
 }
 
 export function validateProfile(manifest = loadManifest(), mapping = loadMapping(), configs) {
-  assertSingleSource();
+  assertRegistry();
+  assertRegisteredProfile(PROFILE_REGISTRY[0], manifest);
   validateManifest(manifest, mapping);
   const loaded = configs ?? Object.fromEntries(manifest.components.map((component) => [component.id, loadJson(component.config)]));
   for (const component of manifest.components) validateConfig(manifest, component, loaded[component.id], mapping);
   scanSampleBindingReads();
   checkGenerated(manifest);
   return manifestDigest(manifest);
+}
+
+// meeting-room-postgres: the checked-in Hyperdrive / Postgres sample (samples/meeting-room/wrangler.jsonc).
+// Its tables are separate from the cloudflare-only tables above, which feed the generated descriptor.
+export const POSTGRES_PROFILE_ID = "meeting-room-postgres";
+export const POSTGRES_DIGEST = "5a557856334e199ed86a623ebc293df50c05a8d731f38a119bcf5c2d8b54ef34";
+const POSTGRES_TENANT_REF = "tnrf-b2f5a80ec001ba54891f";
+const POSTGRES_CONFIG_PATH = "samples/meeting-room/wrangler.jsonc";
+const POSTGRES_WORKER_SOURCE_PATH = "samples/meeting-room/src/worker.ts";
+const POSTGRES_WORKER_NAME = "sekiban-dcb-meeting-room";
+const POSTGRES_CONFIG_BINDINGS = ["ALLOCATOR", "DOWNSTREAM_QUEUE", "HYPERDRIVE", "JOURNAL", "RUNTIME", "TAG", "TAG_STATE"];
+const POSTGRES_RAW_BINDINGS = ["ALLOCATOR", "DOWNSTREAM_QUEUE", "HYPERDRIVE", "JOURNAL", "TAG", "TAG_STATE"];
+const POSTGRES_FORBIDDEN_NAMES = ["BOOTSTRAP", "D1", "D1_MV", "DOWNSTREAM_DOORBELL", "POSTGRES_URL"];
+const POSTGRES_FORBIDDEN_PREFIX = "COSMOS_";
+const POSTGRES_DO_BINDINGS = ["ALLOCATOR", "JOURNAL", "TAG", "TAG_STATE"];
+const POSTGRES_DO_MIGRATION_CLASSES = {
+  v1: ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"],
+  v2: ["TagStateDurableObject"],
+};
+const POSTGRES_SOURCE_EXPORTS = ["runtime", "AllocatorDurableObject", "JournalDurableObject", "TagDurableObject", "TagStateDurableObject"];
+const POSTGRES_TOP_LEVEL_KEYS = ["name", "main", "compatibility_date", "vars", "assets", "triggers", "services", "hyperdrive", "queues", "durable_objects", "migrations", "env"];
+const POSTGRES_MANIFEST_KEYS = ["schemaVersion", "profileId", "canonicalizationVersion", "tenantRef", "scopeAxes", "components", "resources", "edges", "cardinalities", "migrationDomains", "durableObjectClasses"];
+const POSTGRES_COMPONENT_KEYS = ["id", "workerName", "config", "logicalServiceScope", "deploymentComponentScope", "providerTenantScope", "physicalResourceScope", "entrypoints"];
+const POSTGRES_FORBIDDEN_ENTRYPOINT_BINDINGS = ["BOOTSTRAP", "D1", "D1_MV", "DOWNSTREAM_DOORBELL", "POSTGRES_URL"];
+const POSTGRES_ENTRYPOINTS = [
+  { kind: "default", operation: "fetch", requiredBindings: POSTGRES_CONFIG_BINDINGS, forbiddenBindings: POSTGRES_FORBIDDEN_ENTRYPOINT_BINDINGS },
+  { kind: "named", name: "runtime", operation: "fetch", requiredBindings: POSTGRES_RAW_BINDINGS, forbiddenBindings: POSTGRES_FORBIDDEN_ENTRYPOINT_BINDINGS },
+];
+const POSTGRES_RESOURCE_REFS = {
+  "pipeline-hyperdrive": "rref-dd3d86e19942d3b54248",
+  "work-queue": "rref-adf533d496da5c50acc6",
+  "allocator-do": "rref-e9995a62bf88f5afab7c",
+  "journal-do": "rref-ed1dfc4ce97b932cde44",
+  "tag-do": "rref-d43ae027c8d23340aaf7",
+  "tag-state-do": "rref-dca9f6c4e054bf6a28da",
+};
+const postgresDurableObjectResource = (id) => ({ id, kind: "physical-resource", providerKind: "durable-object", role: "durable-object", owner: "worker", scriptName: null, resourceRef: POSTGRES_RESOURCE_REFS[id] });
+const POSTGRES_RESOURCES = [
+  { id: "pipeline-hyperdrive", kind: "physical-resource", providerKind: "hyperdrive", role: "pipeline-Postgres", resourceRef: POSTGRES_RESOURCE_REFS["pipeline-hyperdrive"] },
+  { id: "work-queue", kind: "physical-resource", providerKind: "queue", role: "work-queue", resourceRef: POSTGRES_RESOURCE_REFS["work-queue"] },
+  postgresDurableObjectResource("allocator-do"),
+  postgresDurableObjectResource("journal-do"),
+  postgresDurableObjectResource("tag-do"),
+  postgresDurableObjectResource("tag-state-do"),
+];
+const POSTGRES_EDGES = [
+  { id: "worker-pipeline", kind: "physical-resource", from: "worker", to: "pipeline-hyperdrive", binding: "HYPERDRIVE" },
+  { id: "worker-producer", kind: "producer-binding", from: "worker", to: "work-queue", binding: "DOWNSTREAM_QUEUE" },
+  { id: "worker-consumer", kind: "consumer-attachment", from: "worker", to: "work-queue" },
+  { id: "worker-allocator", kind: "durable-object-binding", from: "worker", to: "allocator-do", binding: "ALLOCATOR" },
+  { id: "worker-journal", kind: "durable-object-binding", from: "worker", to: "journal-do", binding: "JOURNAL" },
+  { id: "worker-tag", kind: "durable-object-binding", from: "worker", to: "tag-do", binding: "TAG" },
+  { id: "worker-tag-state", kind: "durable-object-binding", from: "worker", to: "tag-state-do", binding: "TAG_STATE" },
+  { id: "worker-runtime", kind: "service-binding", from: "worker", to: "worker", binding: "RUNTIME", entrypoint: "runtime" },
+];
+const POSTGRES_CARDINALITIES = {
+  worker: { "producer-binding": 1, "consumer-attachment": 1, "dlq-target": 0, "service-binding": 1, "embedded-entrypoint": 0, "physical-resource": 1, "durable-object-binding": 4 },
+};
+const POSTGRES_MIGRATION_DOMAINS = { "durable-object": { worker: { owner: "worker", sequence: ["v1", "v2"] } } };
+const POSTGRES_DO_CLASSES = ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject", "TagStateDurableObject"];
+const POSTGRES_MAPPING_KEYS = ["HYPERDRIVE", "DOWNSTREAM_QUEUE", "ALLOCATOR", "JOURNAL", "TAG", "TAG_STATE"];
+const POSTGRES_MAPPING_VALUES = {
+  HYPERDRIVE: { id: "REPLACE_WITH_SAMPLE_HYPERDRIVE_ID", resourceRef: POSTGRES_RESOURCE_REFS["pipeline-hyperdrive"] },
+  DOWNSTREAM_QUEUE: { queue: "serialized-dcb-v1-downstream", consumerQueue: "serialized-dcb-v1-downstream", resourceRef: POSTGRES_RESOURCE_REFS["work-queue"] },
+  ALLOCATOR: { class_name: "AllocatorDurableObject", resourceRef: POSTGRES_RESOURCE_REFS["allocator-do"] },
+  JOURNAL: { class_name: "JournalDurableObject", resourceRef: POSTGRES_RESOURCE_REFS["journal-do"] },
+  TAG: { class_name: "TagDurableObject", resourceRef: POSTGRES_RESOURCE_REFS["tag-do"] },
+  TAG_STATE: { class_name: "TagStateDurableObject", resourceRef: POSTGRES_RESOURCE_REFS["tag-state-do"] },
+};
+const POSTGRES_MAPPING_RESOURCES = { HYPERDRIVE: "pipeline-hyperdrive", DOWNSTREAM_QUEUE: "work-queue", ALLOCATOR: "allocator-do", JOURNAL: "journal-do", TAG: "tag-do", TAG_STATE: "tag-state-do" };
+const POSTGRES_ROW_KEYS = {
+  services: ["binding", "entrypoint", "service"],
+  hyperdrive: ["binding", "id"],
+  queues: ["consumers", "producers"],
+  producers: ["binding", "queue"],
+  consumers: ["queue"],
+  durable_objects: ["bindings"],
+  doBindings: ["class_name", "name"],
+};
+
+const cardinality = (value) => fail("CARDINALITY", value.path, "cardinality");
+const sortedKeys = (value) => (value !== null && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).sort() : null);
+const asArray = (value) => (Array.isArray(value) ? value : []);
+
+export function loadPostgresManifest() { return loadJson(postgresManifestPath); }
+export function loadPostgresMapping() { return loadJson(postgresMappingPath); }
+
+function requirePostgresMapping(mapping) {
+  assertClosedObject(mapping, "mapping", ["resources"], () => fail("CARDINALITY", "mapping.keys", "cardinality"));
+  const resources = mapping.resources;
+  if (resources === null || typeof resources !== "object" || Array.isArray(resources)) fail("SCOPE_PROOF_UNAVAILABLE", postgresMappingPath, "scope-proof-unavailable");
+  assertExact(Object.keys(resources), POSTGRES_MAPPING_KEYS, "CARDINALITY", "resources", "cardinality");
+  for (const key of POSTGRES_MAPPING_KEYS) {
+    assertExact(sortedKeys(resources[key]), Object.keys(POSTGRES_MAPPING_VALUES[key]).sort(), "CARDINALITY", `resources.${key}`, "cardinality");
+    for (const [field, value] of Object.entries(POSTGRES_MAPPING_VALUES[key])) {
+      if (resources[key][field] !== value) fail("RESOURCE_MISMATCH", `resources.${key}.${field}`, "resource-identity-mismatch");
+    }
+  }
+}
+
+export function validatePostgresManifest(manifest, mapping) {
+  assertClosedObject(manifest, "manifest", POSTGRES_MANIFEST_KEYS, () => fail("CARDINALITY", "manifest.keys", "cardinality"));
+  assertManifestIdentities(manifest);
+  requirePostgresMapping(mapping);
+  if (manifest.schemaVersion !== 1 || manifest.canonicalizationVersion !== CANONICALIZATION_VERSION || manifest.profileId !== POSTGRES_PROFILE_ID) fail("CARDINALITY", "profileId", "cardinality");
+  if (manifest.tenantRef !== POSTGRES_TENANT_REF) fail("SCOPE_PROOF_UNAVAILABLE", "tenantRef", "scope-proof-unavailable");
+  assertExact(manifest.scopeAxes, ["logicalServiceScope", "deploymentComponentScope", "providerTenantScope", "physicalResourceScope"], "CARDINALITY", "scopeAxes", "cardinality");
+  assertExact(asArray(manifest.components).map((component) => component?.id), ["worker"], "CARDINALITY", "components", "cardinality");
+  const component = manifest.components[0];
+  assertClosedObject(component, "worker", POSTGRES_COMPONENT_KEYS, () => fail("CARDINALITY", "worker.keys", "cardinality"));
+  for (const [key, value] of Object.entries({ workerName: POSTGRES_WORKER_NAME, config: POSTGRES_CONFIG_PATH, deploymentComponentScope: "worker", physicalResourceScope: "opaque-ref" })) {
+    if (component[key] !== value) fail("CARDINALITY", `worker.${key}`, "cardinality");
+  }
+  assertExact(component.logicalServiceScope, { sharing: "exclusive", serviceIdSource: "deploy-var" }, "SCOPE_PROOF_UNAVAILABLE", "worker.scope", "scope-proof-unavailable");
+  assertExact(component.providerTenantScope, { tenantRef: manifest.tenantRef }, "SCOPE_PROOF_UNAVAILABLE", "worker.scope", "scope-proof-unavailable");
+  assertExact(component.entrypoints, POSTGRES_ENTRYPOINTS, "CARDINALITY", "worker.entrypoints", "cardinality");
+  if (asArray(manifest.resources).filter((resource) => resource?.role === "pipeline-Postgres").length !== 1) fail("SECOND_SHARD", "resources.pipeline-Postgres", "second-shard");
+  assertExact(manifest.resources.map((resource) => resource.id), POSTGRES_RESOURCES.map((resource) => resource.id), "CARDINALITY", "resources", "cardinality");
+  for (const [index, resource] of manifest.resources.entries()) {
+    if (resource.resourceRef !== POSTGRES_RESOURCE_REFS[resource.id]) fail("RESOURCE_MISMATCH", resource.id, "resource-identity-mismatch");
+    if (resource.providerKind === "durable-object" && (resource.owner !== "worker" || resource.scriptName !== null)) fail("DO_MIGRATION_OWNER", resource.id, "do-migration-owner");
+    assertExact(resource, POSTGRES_RESOURCES[index], "CARDINALITY", `resources.${resource.id}`, "cardinality");
+  }
+  assertExact(asArray(manifest.edges).map((edge) => edge?.id), POSTGRES_EDGES.map((edge) => edge.id), "CARDINALITY", "edges", "cardinality");
+  for (const [index, edge] of manifest.edges.entries()) assertExact(edge, POSTGRES_EDGES[index], "CARDINALITY", `edges.${edge.id}`, "cardinality");
+  assertExact(sortedKeys(manifest.cardinalities), ["worker"], "CARDINALITY", "cardinalities", "cardinality");
+  assertExact(manifest.cardinalities.worker, POSTGRES_CARDINALITIES.worker, "CARDINALITY", "worker.cardinality", "cardinality");
+  if (manifest.migrationDomains?.["durable-object"]?.worker?.owner !== "worker") fail("DO_MIGRATION_OWNER", "worker.durable-object", "do-migration-owner");
+  assertExact(manifest.migrationDomains, POSTGRES_MIGRATION_DOMAINS, "MIGRATION_ORDER", "migrationDomains", "migration-order");
+  assertExact(manifest.durableObjectClasses, POSTGRES_DO_CLASSES, "CARDINALITY", "durableObjectClasses", "cardinality");
+  for (const [binding, resourceId] of Object.entries(POSTGRES_MAPPING_RESOURCES)) {
+    if (mapping.resources[binding].resourceRef !== resourceById(manifest, resourceId).resourceRef) fail("RESOURCE_MISMATCH", binding, "resource-identity-mismatch");
+  }
+  const envelope = manifestDigest(manifest);
+  if (envelope.digest !== POSTGRES_DIGEST) fail("DIGEST_MISMATCH", "digest", "digest-mismatch");
+  return envelope;
+}
+
+function postgresDeclaredNames(config) {
+  return [...bindingNames(config), ...Object.keys(config?.vars ?? {})];
+}
+
+function stripBlockComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, " ");
+}
+
+function exportedNames(source) {
+  const text = stripBlockComments(source);
+  const names = new Set();
+  for (const match of text.matchAll(/^export\s*(?:type\s+)?\{([^}]*)\}/gm)) {
+    for (const part of match[1].split(",")) {
+      const name = part.trim().split(/\s+as\s+/).pop()?.trim();
+      if (name) names.add(name);
+    }
+  }
+  for (const match of text.matchAll(/^export\s+(?:declare\s+)?(?:abstract\s+)?(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/gm)) names.add(match[1]);
+  return names;
+}
+
+function assertPostgresSource(source) {
+  const names = exportedNames(source);
+  for (const name of POSTGRES_SOURCE_EXPORTS) if (!names.has(name)) fail("ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#${name}`, "entrypoint-missing");
+  const code = stripBlockComments(source).replace(/^\s*\/\/.*$/gm, "");
+  if (!/\benv\s*(?:\?\.|\.)\s*RUNTIME\b/.test(code)) fail("ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#RUNTIME`, "entrypoint-missing");
+}
+
+export function loadSampleSources() {
+  return Object.fromEntries(walkTs(join(root, "samples/meeting-room/src")).sort().map((file) => [file, readFileSync(join(root, file), "utf8")]));
+}
+
+export function scanPostgresBindingReads(files = loadSampleSources()) {
+  const hits = Object.keys(files).sort().filter((file) => file !== generatedPath).filter((file) => rawBindingHits(files[file], POSTGRES_RAW_BINDINGS));
+  if (hits.length !== 0) fail("RAW_BINDING", hits[0], "raw-binding");
+  return hits;
+}
+
+// Checks the raw top-level configuration (no environment selection), in the documented row order.
+export function validatePostgresConfig(
+  manifest,
+  mapping,
+  configText = readFileSync(join(root, POSTGRES_CONFIG_PATH), "utf8"),
+  source = readFileSync(join(root, POSTGRES_WORKER_SOURCE_PATH), "utf8"),
+  files = loadSampleSources(),
+) {
+  const component = manifest.components[0];
+  const config = parseJsonc(configText, component.config, cardinality);
+  if (config === null || typeof config !== "object" || Array.isArray(config)) fail("CARDINALITY", "worker.keys", "cardinality");
+  // 1. named environment overlays
+  if (Object.prototype.hasOwnProperty.call(config, "env") && JSON.stringify(sortedKeys(config.env)) !== "[]") fail("NAMED_ENVIRONMENT_FORBIDDEN", "worker.env", "named-environment-forbidden");
+  // 2. a local connection string never belongs in the checked-in file
+  if (asArray(config.hyperdrive).some((entry) => entry !== null && typeof entry === "object" && Object.prototype.hasOwnProperty.call(entry, "localConnectionString"))) fail("LOCAL_CONNECTION_STRING", "worker.hyperdrive.localConnectionString", "local-connection-string");
+  // 3. forbidden binding or var names (paths are constants, never configured values)
+  const declared = postgresDeclaredNames(config);
+  for (const name of POSTGRES_FORBIDDEN_NAMES) if (declared.includes(name)) fail("FORBIDDEN_BINDING", `worker.${name}`, "forbidden-binding");
+  if (declared.some((name) => typeof name === "string" && name.startsWith(POSTGRES_FORBIDDEN_PREFIX))) fail("FORBIDDEN_BINDING", "worker.COSMOS", "forbidden-binding");
+  // 4. closed top-level keys
+  if (Object.keys(config).some((key) => !POSTGRES_TOP_LEVEL_KEYS.includes(key))) fail("CARDINALITY", "worker.keys", "cardinality");
+  // 5. duplicate identities
+  assertConfigIdentities(config);
+  assertUniqueBy(asArray(config.services), (entry) => entry?.binding, "services.binding", cardinality);
+  // 6. worker identity
+  if (config.name !== component.workerName) fail("CARDINALITY", `${component.id}.workerName`, "cardinality");
+  if (config.main !== "src/worker.ts") fail("CARDINALITY", `${component.id}.main`, "cardinality");
+  // 7. exact binding multiset; a var may not shadow a required binding
+  assertExact(bindingNames(config).sort(), POSTGRES_CONFIG_BINDINGS, "CARDINALITY", `${component.id}.bindings`, "cardinality");
+  if (Object.keys(config.vars ?? {}).some((key) => POSTGRES_CONFIG_BINDINGS.includes(key))) fail("CARDINALITY", `${component.id}.vars`, "cardinality");
+  // 8. Hyperdrive identity
+  if (asArray(config.hyperdrive).find((entry) => entry?.binding === "HYPERDRIVE")?.id !== mapping.resources.HYPERDRIVE.id) fail("RESOURCE_MISMATCH", `${component.id}.hyperdrive`, "resource-identity-mismatch");
+  // 9. RUNTIME service attachment
+  const runtimeEdge = edgeById(manifest, "worker-runtime");
+  const service = asArray(config.services).find((entry) => entry?.binding === runtimeEdge.binding);
+  if (service?.service !== component.workerName) fail("RESOURCE_MISMATCH", `${component.id}.RUNTIME.service`, "resource-identity-mismatch");
+  if (service?.entrypoint !== runtimeEdge.entrypoint) fail("RESOURCE_MISMATCH", `${component.id}.RUNTIME.entrypoint`, "resource-identity-mismatch");
+  // 10. queue cardinality
+  const producers = asArray(config.queues?.producers);
+  const consumers = asArray(config.queues?.consumers);
+  if (producers.length !== manifest.cardinalities.worker["producer-binding"]) fail("CARDINALITY", `${component.id}.producer-binding`, "cardinality");
+  if (consumers.length !== manifest.cardinalities.worker["consumer-attachment"]) fail("CARDINALITY", `${component.id}.consumer-attachment`, "cardinality");
+  // 11. no dead-letter queue in this profile
+  if ([...producers, ...consumers].some((entry) => Object.prototype.hasOwnProperty.call(entry ?? {}, "dead_letter_queue"))) fail("CARDINALITY", `${component.id}.dlq-target`, "cardinality");
+  // 12. queue identity
+  if (producers[0]?.binding !== "DOWNSTREAM_QUEUE" || producers[0]?.queue !== mapping.resources.DOWNSTREAM_QUEUE.queue) fail("RESOURCE_MISMATCH", `${component.id}.producer`, "resource-identity-mismatch");
+  if (consumers[0]?.queue !== mapping.resources.DOWNSTREAM_QUEUE.consumerQueue) fail("RESOURCE_MISMATCH", `${component.id}.consumer`, "resource-identity-mismatch");
+  // 13-14. Durable Objects are owned by this Worker and bind the mapped classes
+  const doBindings = asArray(config.durable_objects?.bindings);
+  for (const binding of POSTGRES_DO_BINDINGS) {
+    const actual = doBindings.find((entry) => entry?.name === binding);
+    if (Object.prototype.hasOwnProperty.call(actual ?? {}, "script_name")) fail("DO_MIGRATION_OWNER", `${component.id}.${binding}`, "do-migration-owner");
+  }
+  for (const binding of POSTGRES_DO_BINDINGS) {
+    const actual = doBindings.find((entry) => entry?.name === binding);
+    if (actual?.class_name !== mapping.resources[binding].class_name) fail("RESOURCE_MISMATCH", `${component.id}.${binding}.class_name`, "resource-identity-mismatch");
+  }
+  // 15. binding rows carry only the checked-in keys
+  const rowShapes = [
+    ...asArray(config.services).map((row) => [row, POSTGRES_ROW_KEYS.services]),
+    ...asArray(config.hyperdrive).map((row) => [row, POSTGRES_ROW_KEYS.hyperdrive]),
+    [config.queues, POSTGRES_ROW_KEYS.queues],
+    ...producers.map((row) => [row, POSTGRES_ROW_KEYS.producers]),
+    ...consumers.map((row) => [row, POSTGRES_ROW_KEYS.consumers]),
+    [config.durable_objects, POSTGRES_ROW_KEYS.durable_objects],
+    ...doBindings.map((row) => [row, POSTGRES_ROW_KEYS.doBindings]),
+  ];
+  for (const [row, keys] of rowShapes) if (JSON.stringify(sortedKeys(row)) !== JSON.stringify(keys)) fail("CARDINALITY", `${component.id}.rows`, "cardinality");
+  // 16-17. Durable Object migrations
+  const migrations = asArray(config.migrations);
+  assertExact(migrations.map((entry) => entry?.tag), manifest.migrationDomains["durable-object"].worker.sequence, "MIGRATION_ORDER", `${component.id}.durable-object`, "migration-order");
+  for (const entry of migrations) {
+    if (JSON.stringify(sortedKeys(entry)) !== JSON.stringify(["new_sqlite_classes", "tag"]) || !Array.isArray(entry.new_sqlite_classes)) fail("DO_MIGRATION_OWNER", `${component.id}.${entry.tag}`, "do-migration-owner");
+    assertExact([...entry.new_sqlite_classes].sort(), [...POSTGRES_DO_MIGRATION_CLASSES[entry.tag]].sort(), "DO_MIGRATION_OWNER", `${component.id}.${entry.tag}`, "do-migration-owner");
+  }
+  // 18. Worker exports and the RUNTIME read
+  assertPostgresSource(source);
+  // 19. raw binding reads (RUNTIME and SDT_SERVICE_ID direct reads are allowed)
+  scanPostgresBindingReads(files);
+  return config;
+}
+
+export function validatePostgresProfile(manifest = loadPostgresManifest(), mapping = loadPostgresMapping(), options = {}) {
+  assertRegistry();
+  assertRegisteredProfile(PROFILE_REGISTRY[1], manifest);
+  const envelope = validatePostgresManifest(manifest, mapping);
+  validatePostgresConfig(manifest, mapping, options.configText, options.source, options.files);
+  return envelope;
 }
 
 const KNOWN_INPUT_KEYS = new Set(["config", "environment", "cliOverrides", "keepVars"]);
@@ -453,7 +740,7 @@ export function runSelfTest() {
   expect("duplicate-manifest-resource", () => validateManifest({ ...manifest, resources: [...manifest.resources, { ...manifest.resources[0] }] }, mapping), "CARDINALITY", "resources[9]", "cardinality");
   expect("duplicate-config-binding", () => validateConfig(manifest, manifest.components[0], { ...worker, d1_databases: [...worker.d1_databases, { ...worker.d1_databases[0] }] }, mapping), "CARDINALITY", "d1_databases.binding[2]", "cardinality");
   expect("second-shard", () => validateManifest({ ...manifest, resources: [...manifest.resources, { ...manifest.resources[0], id: "pipeline-d1-b" }] }, mapping), "SECOND_SHARD", "resources.pipeline-D1", "second-shard");
-  expect("second-manifest", () => assertSingleSource([manifestPath, "contracts/provider-composition.copy.json"]), "SECOND_MANIFEST", "contracts/provider-composition.copy.json", "second-manifest");
+  expect("second-manifest", () => assertRegistry([manifestPath, "contracts/provider-composition.copy.json"]), "SECOND_MANIFEST", "contracts/provider-composition.copy.json", "second-manifest");
   const committed = readFileSync(join(root, generatedPath), "utf8");
   const core = readFileSync(join(root, sharedCorePath));
   expect("core-byte-drift", () => checkTemplateCore(core, Buffer.concat([core, Buffer.from("\n")])), "GENERATED_DRIFT", templateCorePath, "generated-drift");
@@ -506,7 +793,115 @@ export function runSelfTest() {
     if (!renderedDiagnostic.includes("resource-identity-mismatch") || renderedDiagnostic.includes("CANARY-SECRET-VALUE")) throw new Error("canary leaked or was not redacted");
   }
   const rendered = JSON.stringify(envelope) + JSON.stringify(publishedPayload(manifest)); if (rendered.includes(mapping.resources.D1.database_id) || rendered.includes("CANARY-SECRET-VALUE")) throw new Error("published digest leaked a raw identity");
-  return { result: "g34-provider-composition-self-test-passed", digest: envelope.digest, mutations };
+  const postgres = runPostgresSelfTest(expect, mapping, worker, manifest);
+  return { result: "g34-provider-composition-self-test-passed", digest: envelope.digest, mutations, profiles: { [manifest.profileId]: envelope.digest, [POSTGRES_PROFILE_ID]: postgres.digest } };
+}
+
+function replaceOnce(text, anchor, replacement, label) {
+  const count = text.split(anchor).length - 1;
+  if (count !== 1) throw new Error(`${label} anchor matched ${count} times`);
+  return text.replace(anchor, replacement);
+}
+
+function runPostgresSelfTest(expect, cloudflareMapping, cloudflareWorker, cloudflareManifest) {
+  const manifest = loadPostgresManifest();
+  const mapping = loadPostgresMapping();
+  const configText = readFileSync(join(root, POSTGRES_CONFIG_PATH), "utf8");
+  const source = readFileSync(join(root, POSTGRES_WORKER_SOURCE_PATH), "utf8");
+  const files = loadSampleSources();
+  const envelope = validatePostgresProfile(manifest, mapping, { configText, source, files });
+  if (envelope.digest !== POSTGRES_DIGEST) throw new Error("postgres digest drifted");
+  const config = parseJsonc(configText, POSTGRES_CONFIG_PATH, cardinality);
+  const run = (mutated, mutatedSource = source, mutatedFiles = files) => validatePostgresConfig(manifest, mapping, JSON.stringify(mutated), mutatedSource, mutatedFiles);
+  const withConfig = (edit) => () => { const mutated = structuredClone(config); edit(mutated); run(mutated); };
+  const withManifest = (edit, mutatedMapping = mapping) => () => { const mutated = structuredClone(manifest); edit(mutated); validatePostgresManifest(mutated, mutatedMapping); };
+  run(config);
+
+  const registered = PROFILE_REGISTRY.flatMap((entry) => [entry.manifestPath, entry.mappingPath]);
+  assertRegistry(registered);
+  expect("registry-rogue-manifest", () => assertRegistry([...registered, "contracts/provider-composition.rogue.json"]), "SECOND_MANIFEST", "contracts/provider-composition.rogue.json", "second-manifest");
+  expect("registry-rogue-local-mapping", () => assertRegistry([...registered, "contracts/provider-composition.rogue.local-mapping.json"]), "SECOND_MANIFEST", "contracts/provider-composition.rogue.local-mapping.json", "second-manifest");
+  expect("registry-missing-manifest", () => assertRegistry(registered.filter((path) => path !== postgresManifestPath)), "MISSING_CONFIG", postgresManifestPath, "missing-config");
+  expect("registry-missing-mapping", () => assertRegistry(registered.filter((path) => path !== postgresMappingPath)), "MISSING_CONFIG", postgresMappingPath, "missing-config");
+  expect("registry-duplicate-profile-id", () => assertRegistry(registered, [PROFILE_REGISTRY[0], { ...PROFILE_REGISTRY[1], profileId: PROFILE_REGISTRY[0].profileId }]), "CARDINALITY", "registry.profileId[1]", "cardinality");
+  expect("registry-profile-id-mismatch", () => assertRegisteredProfile(PROFILE_REGISTRY[1], { ...manifest, profileId: PROFILE_REGISTRY[0].profileId }), "CARDINALITY", "profileId", "cardinality");
+
+  expect("postgres-manifest-unknown-key", withManifest((mutated) => { mutated.extra = true; }), "CARDINALITY", "manifest.keys", "cardinality");
+  expect("postgres-second-pipeline", withManifest((mutated) => { mutated.resources.push({ ...mutated.resources[0], id: "pipeline-hyperdrive-b" }); }), "SECOND_SHARD", "resources.pipeline-Postgres", "second-shard");
+  const reusedMapping = structuredClone(mapping); reusedMapping.resources.HYPERDRIVE.resourceRef = cloudflareMapping.resources.D1.resourceRef;
+  expect("postgres-cloudflare-ref-reused", withManifest((mutated) => { mutated.resources[0].resourceRef = cloudflareMapping.resources.D1.resourceRef; }, reusedMapping), "RESOURCE_MISMATCH", "resources.HYPERDRIVE.resourceRef", "resource-identity-mismatch");
+  expect("postgres-cloudflare-ref-in-manifest", withManifest((mutated) => { mutated.resources[0].resourceRef = cloudflareMapping.resources.D1.resourceRef; }), "RESOURCE_MISMATCH", "pipeline-hyperdrive", "resource-identity-mismatch");
+  expect("postgres-mapping-of-other-profile", () => validatePostgresManifest(manifest, cloudflareMapping), "CARDINALITY", "resources", "cardinality");
+  expect("postgres-tenant-ref", withManifest((mutated) => { mutated.tenantRef = cloudflareManifest.tenantRef; }), "SCOPE_PROOF_UNAVAILABLE", "tenantRef", "scope-proof-unavailable");
+  expect("postgres-invented-dlq-edge", withManifest((mutated) => { mutated.edges.push({ id: "worker-dlq", kind: "dlq-target", from: "worker-consumer", to: "dlq-queue" }); }), "CARDINALITY", "edges", "cardinality");
+  expect("postgres-retargeted-service-edge", withManifest((mutated) => { mutated.edges.find((edge) => edge.id === "worker-runtime").to = "other-worker"; }), "CARDINALITY", "edges.worker-runtime", "cardinality");
+
+  expect("postgres-duplicate-json-key", () => validatePostgresConfig(manifest, mapping, replaceOnce(configText, '"main": "src/worker.ts",', '"main": "src/worker.ts",\n  "main": "src/worker.ts",', "duplicate-json-key"), source, files), "CARDINALITY", "$", "cardinality");
+  expect("postgres-duplicate-hyperdrive", withConfig((mutated) => { mutated.hyperdrive.push({ ...mutated.hyperdrive[0] }); }), "CARDINALITY", "hyperdrive.binding[1]", "cardinality");
+  expect("postgres-dropped-hyperdrive", withConfig((mutated) => { delete mutated.hyperdrive; }), "CARDINALITY", "worker.bindings", "cardinality");
+  expect("postgres-renamed-hyperdrive", withConfig((mutated) => { mutated.hyperdrive[0].binding = "PIPELINE_POSTGRES"; }), "CARDINALITY", "worker.bindings", "cardinality");
+  const canaries = { hyperdriveId: "CANARY-HYPERDRIVE-ID-7f3a", localConnectionString: "postgres://canary-user:canary-secret@canary-host:5432/canary", postgresUrl: "postgres://canary-url-user:canary-url-secret@canary-url-host/db" };
+  const canaryCases = [
+    ["postgres-wrong-hyperdrive-id", withConfig((mutated) => { mutated.hyperdrive[0].id = canaries.hyperdriveId; }), "RESOURCE_MISMATCH", "worker.hyperdrive", "resource-identity-mismatch"],
+    ["postgres-local-connection-string", withConfig((mutated) => { mutated.hyperdrive[0].localConnectionString = canaries.localConnectionString; }), "LOCAL_CONNECTION_STRING", "worker.hyperdrive.localConnectionString", "local-connection-string"],
+    ["postgres-url-var", withConfig((mutated) => { mutated.vars.POSTGRES_URL = canaries.postgresUrl; }), "FORBIDDEN_BINDING", "worker.POSTGRES_URL", "forbidden-binding"],
+  ];
+  for (const [name, fn, code, path, reason] of canaryCases) expect(name, fn, code, path, reason);
+  expect("postgres-env-preview-hides-d1", withConfig((mutated) => { mutated.env = { preview: { d1_databases: [{ binding: "D1", database_name: "preview", database_id: "preview" }] } }; }), "NAMED_ENVIRONMENT_FORBIDDEN", "worker.env", "named-environment-forbidden");
+  run({ ...config, env: {} });
+  expect("postgres-d1", withConfig((mutated) => { mutated.d1_databases = [{ binding: "D1", database_name: "pipeline", database_id: "pipeline" }]; }), "FORBIDDEN_BINDING", "worker.D1", "forbidden-binding");
+  expect("postgres-d1-mv", withConfig((mutated) => { mutated.d1_databases = [{ binding: "D1_MV", database_name: "mv", database_id: "mv" }]; }), "FORBIDDEN_BINDING", "worker.D1_MV", "forbidden-binding");
+  expect("postgres-bootstrap", withConfig((mutated) => { mutated.durable_objects.bindings.push({ name: "BOOTSTRAP", class_name: "BootstrapCoordinatorDurableObject" }); }), "FORBIDDEN_BINDING", "worker.BOOTSTRAP", "forbidden-binding");
+  expect("postgres-doorbell", withConfig((mutated) => { mutated.services.push({ binding: "DOWNSTREAM_DOORBELL", service: "sekiban-dcb-meeting-room", entrypoint: "MeetingRoomDownstreamDoorbell" }); }), "FORBIDDEN_BINDING", "worker.DOWNSTREAM_DOORBELL", "forbidden-binding");
+  expect("postgres-cosmos-binding", withConfig((mutated) => { mutated.services.push({ binding: "COSMOS_STORE", service: "cosmos-store", entrypoint: "store" }); }), "FORBIDDEN_BINDING", "worker.COSMOS", "forbidden-binding");
+  expect("postgres-cosmos-var", withConfig((mutated) => { mutated.vars.COSMOS_DATABASE = "meeting-room"; }), "FORBIDDEN_BINDING", "worker.COSMOS", "forbidden-binding");
+  expect("postgres-unknown-top-level-key", withConfig((mutated) => { mutated.kv_namespaces = []; }), "CARDINALITY", "worker.keys", "cardinality");
+  expect("postgres-var-shadows-binding", withConfig((mutated) => { mutated.vars.HYPERDRIVE = "shadow"; }), "CARDINALITY", "worker.vars", "cardinality");
+  expect("postgres-missing-runtime", withConfig((mutated) => { mutated.services = []; }), "CARDINALITY", "worker.bindings", "cardinality");
+  expect("postgres-retargeted-service", withConfig((mutated) => { mutated.services[0].service = "other-worker"; }), "RESOURCE_MISMATCH", "worker.RUNTIME.service", "resource-identity-mismatch");
+  expect("postgres-wrong-entrypoint", withConfig((mutated) => { mutated.services[0].entrypoint = "default"; }), "RESOURCE_MISMATCH", "worker.RUNTIME.entrypoint", "resource-identity-mismatch");
+  expect("postgres-service-row-key", withConfig((mutated) => { mutated.services[0].environment = "preview"; }), "CARDINALITY", "worker.rows", "cardinality");
+  expect("postgres-second-producer", withConfig((mutated) => { mutated.queues.producers.push({ binding: "SECOND_QUEUE", queue: "serialized-dcb-v1-second" }); }), "CARDINALITY", "worker.bindings", "cardinality");
+  expect("postgres-second-consumer", withConfig((mutated) => { mutated.queues.consumers.push({ queue: "serialized-dcb-v1-second" }); }), "CARDINALITY", "worker.consumer-attachment", "cardinality");
+  expect("postgres-consumer-dlq", withConfig((mutated) => { mutated.queues.consumers[0].dead_letter_queue = "serialized-dcb-v1-downstream-dlq"; }), "CARDINALITY", "worker.dlq-target", "cardinality");
+  expect("postgres-wrong-queue", withConfig((mutated) => { mutated.queues.producers[0].queue = "serialized-dcb-v1-other"; }), "RESOURCE_MISMATCH", "worker.producer", "resource-identity-mismatch");
+  expect("postgres-script-name", withConfig((mutated) => { mutated.durable_objects.bindings[0].script_name = "other-worker"; }), "DO_MIGRATION_OWNER", "worker.ALLOCATOR", "do-migration-owner");
+  expect("postgres-wrong-class", withConfig((mutated) => { mutated.durable_objects.bindings[0].class_name = "OtherAllocatorDurableObject"; }), "RESOURCE_MISMATCH", "worker.ALLOCATOR.class_name", "resource-identity-mismatch");
+  expect("postgres-reordered-migrations", withConfig((mutated) => { mutated.migrations.reverse(); }), "MIGRATION_ORDER", "worker.durable-object", "migration-order");
+  expect("postgres-moved-class", withConfig((mutated) => { mutated.migrations[0].new_sqlite_classes = ["AllocatorDurableObject", "JournalDurableObject"]; mutated.migrations[1].new_sqlite_classes = ["TagDurableObject", "TagStateDurableObject"]; }), "DO_MIGRATION_OWNER", "worker.v1", "do-migration-owner");
+
+  const sourceCase = (mutatedSource) => () => run(config, mutatedSource);
+  expect("postgres-missing-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
+  expect("postgres-commented-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "// export { runtime };\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
+  expect("postgres-block-commented-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "/*\nexport { runtime };\n*/\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
+  const classExport = `export { ${POSTGRES_DO_CLASSES.join(", ")} };`;
+  for (const name of POSTGRES_DO_CLASSES) {
+    const without = `export { ${POSTGRES_DO_CLASSES.filter((entry) => entry !== name).join(", ")} };`;
+    expect(`postgres-missing-export-${name}`, sourceCase(replaceOnce(source, classExport, without, `class-export-${name}`)), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#${name}`, "entrypoint-missing");
+  }
+  expect("postgres-missing-runtime-read", sourceCase(replaceOnce(source, "return env.RUNTIME ??", "return undefined ??", "runtime-read")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#RUNTIME`, "entrypoint-missing");
+  const probePath = "samples/meeting-room/src/self-test-probe.ts";
+  expect("postgres-raw-hyperdrive-read", () => run(config, source, { ...files, [probePath]: "export const probe = (env: { HYPERDRIVE: unknown }) => env.HYPERDRIVE;\n" }), "RAW_BINDING", probePath, "raw-binding");
+  expect("postgres-raw-queue-read", () => run(config, source, { ...files, [probePath]: "export const probe = (env: { DOWNSTREAM_QUEUE: Queue }) => env.DOWNSTREAM_QUEUE.send({});\n" }), "RAW_BINDING", probePath, "raw-binding");
+  run(config, source, { ...files, [probePath]: "export const probe = (env: { RUNTIME: Fetcher; SDT_SERVICE_ID: string }) => [env.RUNTIME, env.SDT_SERVICE_ID];\n" });
+
+  const cloudflareComponent = cloudflareManifest.components[0];
+  expect("cloudflare-hyperdrive-added", () => validateConfig(cloudflareManifest, cloudflareComponent, { ...cloudflareWorker, hyperdrive: [{ binding: "HYPERDRIVE", id: "REPLACE_WITH_SAMPLE_HYPERDRIVE_ID" }] }, cloudflareMapping), "CARDINALITY", "worker.bindings", "cardinality");
+  expect("cloudflare-hyperdrive-shadows-d1", () => validateConfig(cloudflareManifest, cloudflareComponent, { ...cloudflareWorker, hyperdrive: [{ binding: "D1", id: "REPLACE_WITH_SAMPLE_HYPERDRIVE_ID" }] }, cloudflareMapping), "CARDINALITY", "worker.bindings", "cardinality");
+
+  const mappingCanary = structuredClone(mapping); mappingCanary.resources.HYPERDRIVE.id = canaries.hyperdriveId;
+  expect("postgres-mapping-hyperdrive-id", () => validatePostgresManifest(manifest, mappingCanary), "RESOURCE_MISMATCH", "resources.HYPERDRIVE.id", "resource-identity-mismatch");
+  const rendered = [];
+  for (const fn of [...canaryCases.map(([, caseFn]) => caseFn), () => validatePostgresManifest(manifest, mappingCanary)]) {
+    try { fn(); throw new Error("canary unexpectedly passed"); } catch (error) {
+      if (!(error instanceof CompositionDiagnostic)) throw error;
+      rendered.push(JSON.stringify(error.diagnostic), error.message, String(error.stack));
+    }
+  }
+  rendered.push(JSON.stringify(envelope), JSON.stringify(publishedPayload(manifest)), jcs(publishedPayload(manifest)));
+  const text = rendered.join("\n");
+  for (const value of [...Object.values(canaries), mapping.resources.HYPERDRIVE.id]) if (text.includes(value)) throw new Error("postgres canary or raw identity leaked");
+  return envelope;
 }
 
 function main() {

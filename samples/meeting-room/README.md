@@ -98,7 +98,42 @@ Bundle-only, with no token file and no remote migration, secret, deployment list
 
 `G99_DRY_RUN=1 ./scripts/deploy/npm-consumer-deploy.sh` packs and installs only. It does not provision a secret or deploy.
 
-The offline composition and deploy-gate checks use the repository's shared
-validation core. It checks the checked-in sample authority, local mapping, and
-generated accessors before any deploy continuation; it does not query live
-Cloudflare state or create resources.
+## Offline composition profiles
+
+Two offline provider-composition profiles describe the checked-in Wrangler
+files. Each is validated on its own; the two are never merged.
+
+| Profile | Manifest | Local mapping | Wrangler file |
+| --- | --- | --- | --- |
+| `meeting-room-cloudflare` | `contracts/provider-composition.json` | `contracts/provider-composition.local-mapping.json` | `wrangler.cloudflare-only.jsonc` |
+| `meeting-room-postgres` | `contracts/provider-composition.meeting-room-postgres.json` | `contracts/provider-composition.meeting-room-postgres.local-mapping.json` | `wrangler.jsonc` |
+
+The unsuffixed `contracts/provider-composition.json` filename is historical; it
+is the Cloudflare-only manifest. Those four files are the only
+`provider-composition*.json` contracts the check accepts; any other one fails.
+
+`npm run test:provider:composition` checks both profiles and prints both
+digests. `npm run test:deploy:composition` with no arguments checks the
+Cloudflare-only profile only, as before.
+
+The `meeting-room-postgres` profile mirrors `wrangler.jsonc` exactly:
+`HYPERDRIVE` for the event store, the `RUNTIME` service binding to this
+Worker's `runtime` entrypoint, one Queue producer and consumer, and the
+Allocator, Journal, Tag, and TagState Durable Objects. It has no `D1_MV`, no
+dead-letter queue, and no `BOOTSTRAP` Durable Object; adding any of them, a D1
+binding, a doorbell service, a Cosmos or `POSTGRES_URL` binding or var, a
+Hyperdrive `localConnectionString`, or a named `env` block fails the check
+until the profile is changed deliberately. `SDT_SERVICE_ID` is supplied at
+deploy time and is not required in, or proven by, the offline check.
+
+The check expects the checked-in Hyperdrive placeholder id, so a locally
+substituted id fails it. Do not commit a real Hyperdrive id or connection
+string; local development may still pass a connection through the environment
+outside Wrangler.
+
+Both profiles use the repository's shared validation core. It checks the
+checked-in sample authority, local mapping, Worker exports, and (for the
+Cloudflare-only profile) generated accessors before any deploy continuation; it
+does not query live Cloudflare state or create resources. A green check proves
+the checked-in tree only, not remote state, deploy-time overrides, or applied
+Postgres schema migrations.

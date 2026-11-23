@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Repository
+
+- The meeting-room Postgres / Hyperdrive sample has its own offline
+  provider-composition profile, `meeting-room-postgres`, checked by
+  `npm run test:provider:composition` beside the Cloudflare-only profile. It is
+  offline only: no package, runtime, or Wrangler change, and the no-argument
+  deploy-gate check still covers the Cloudflare-only profile.
+
 ### @sekiban/dcb-runtime
 
 - Materialized views record a passive projection-status heartbeat after

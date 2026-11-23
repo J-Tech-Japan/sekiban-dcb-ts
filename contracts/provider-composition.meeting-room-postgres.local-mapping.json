@@ -1,0 +1,10 @@
+{
+  "resources": {
+    "HYPERDRIVE": { "id": "REPLACE_WITH_SAMPLE_HYPERDRIVE_ID", "resourceRef": "rref-dd3d86e19942d3b54248" },
+    "DOWNSTREAM_QUEUE": { "queue": "serialized-dcb-v1-downstream", "consumerQueue": "serialized-dcb-v1-downstream", "resourceRef": "rref-adf533d496da5c50acc6" },
+    "ALLOCATOR": { "class_name": "AllocatorDurableObject", "resourceRef": "rref-e9995a62bf88f5afab7c" },
+    "JOURNAL": { "class_name": "JournalDurableObject", "resourceRef": "rref-ed1dfc4ce97b932cde44" },
+    "TAG": { "class_name": "TagDurableObject", "resourceRef": "rref-d43ae027c8d23340aaf7" },
+    "TAG_STATE": { "class_name": "TagStateDurableObject", "resourceRef": "rref-dca9f6c4e054bf6a28da" }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "profileId": "meeting-room-postgres",
+  "canonicalizationVersion": "rfc8785",
+  "tenantRef": "tnrf-b2f5a80ec001ba54891f",
+  "scopeAxes": ["logicalServiceScope", "deploymentComponentScope", "providerTenantScope", "physicalResourceScope"],
+  "components": [
+    {
+      "id": "worker",
+      "workerName": "sekiban-dcb-meeting-room",
+      "config": "samples/meeting-room/wrangler.jsonc",
+      "logicalServiceScope": { "sharing": "exclusive", "serviceIdSource": "deploy-var" },
+      "deploymentComponentScope": "worker",
+      "providerTenantScope": { "tenantRef": "tnrf-b2f5a80ec001ba54891f" },
+      "physicalResourceScope": "opaque-ref",
+      "entrypoints": [
+        {
+          "kind": "default",
+          "operation": "fetch",
+          "requiredBindings": ["ALLOCATOR", "DOWNSTREAM_QUEUE", "HYPERDRIVE", "JOURNAL", "RUNTIME", "TAG", "TAG_STATE"],
+          "forbiddenBindings": ["BOOTSTRAP", "D1", "D1_MV", "DOWNSTREAM_DOORBELL", "POSTGRES_URL"]
+        },
+        {
+          "kind": "named",
+          "name": "runtime",
+          "operation": "fetch",
+          "requiredBindings": ["ALLOCATOR", "DOWNSTREAM_QUEUE", "HYPERDRIVE", "JOURNAL", "TAG", "TAG_STATE"],
+          "forbiddenBindings": ["BOOTSTRAP", "D1", "D1_MV", "DOWNSTREAM_DOORBELL", "POSTGRES_URL"]
+        }
+      ]
+    }
+  ],
+  "resources": [
+    { "id": "pipeline-hyperdrive", "kind": "physical-resource", "providerKind": "hyperdrive", "role": "pipeline-Postgres", "resourceRef": "rref-dd3d86e19942d3b54248" },
+    { "id": "work-queue", "kind": "physical-resource", "providerKind": "queue", "role": "work-queue", "resourceRef": "rref-adf533d496da5c50acc6" },
+    { "id": "allocator-do", "kind": "physical-resource", "providerKind": "durable-object", "role": "durable-object", "owner": "worker", "scriptName": null, "resourceRef": "rref-e9995a62bf88f5afab7c" },
+    { "id": "journal-do", "kind": "physical-resource", "providerKind": "durable-object", "role": "durable-object", "owner": "worker", "scriptName": null, "resourceRef": "rref-ed1dfc4ce97b932cde44" },
+    { "id": "tag-do", "kind": "physical-resource", "providerKind": "durable-object", "role": "durable-object", "owner": "worker", "scriptName": null, "resourceRef": "rref-d43ae027c8d23340aaf7" },
+    { "id": "tag-state-do", "kind": "physical-resource", "providerKind": "durable-object", "role": "durable-object", "owner": "worker", "scriptName": null, "resourceRef": "rref-dca9f6c4e054bf6a28da" }
+  ],
+  "edges": [
+    { "id": "worker-pipeline", "kind": "physical-resource", "from": "worker", "to": "pipeline-hyperdrive", "binding": "HYPERDRIVE" },
+    { "id": "worker-producer", "kind": "producer-binding", "from": "worker", "to": "work-queue", "binding": "DOWNSTREAM_QUEUE" },
+    { "id": "worker-consumer", "kind": "consumer-attachment", "from": "worker", "to": "work-queue" },
+    { "id": "worker-allocator", "kind": "durable-object-binding", "from": "worker", "to": "allocator-do", "binding": "ALLOCATOR" },
+    { "id": "worker-journal", "kind": "durable-object-binding", "from": "worker", "to": "journal-do", "binding": "JOURNAL" },
+    { "id": "worker-tag", "kind": "durable-object-binding", "from": "worker", "to": "tag-do", "binding": "TAG" },
+    { "id": "worker-tag-state", "kind": "durable-object-binding", "from": "worker", "to": "tag-state-do", "binding": "TAG_STATE" },
+    { "id": "worker-runtime", "kind": "service-binding", "from": "worker", "to": "worker", "binding": "RUNTIME", "entrypoint": "runtime" }
+  ],
+  "cardinalities": {
+    "worker": { "producer-binding": 1, "consumer-attachment": 1, "dlq-target": 0, "service-binding": 1, "embedded-entrypoint": 0, "physical-resource": 1, "durable-object-binding": 4 }
+  },
+  "migrationDomains": {
+    "durable-object": {
+      "worker": { "owner": "worker", "sequence": ["v1", "v2"] }
+    }
+  },
+  "durableObjectClasses": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject", "TagStateDurableObject"]
+}
