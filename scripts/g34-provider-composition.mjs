@@ -570,17 +570,57 @@ function postgresDeclaredNames(config) {
   ];
 }
 
-function stripBlockComments(source) {
-  return source.replace(/\/\*[\s\S]*?\*\//g, " ");
-}
-
-// Drop comments and string/template literals so export probes only see executable statements.
+// Drop comments and string/template literals (including nested `${...}` templates)
+// so export probes only see executable statements. Not a TypeScript parser.
 function stripNonCode(source) {
-  return stripBlockComments(source)
-    .replace(/^\s*\/\/.*$/gm, " ")
-    .replace(/`(?:\\.|[^`\\])*`/g, " ")
-    .replace(/'(?:\\.|[^'\\])*'/g, " ")
-    .replace(/"(?:\\.|[^"\\])*"/g, " ");
+  let out = "";
+  let i = 0;
+  const stack = ["code"];
+  while (i < source.length) {
+    const state = stack[stack.length - 1];
+    const ch = source[i];
+    const next = source[i + 1];
+    if (state === "code") {
+      if (ch === "/" && next === "/") { stack.push("lineComment"); out += "  "; i += 2; continue; }
+      if (ch === "/" && next === "*") { stack.push("blockComment"); out += "  "; i += 2; continue; }
+      if (ch === "'") { stack.push("single"); out += " "; i += 1; continue; }
+      if (ch === "\"") { stack.push("double"); out += " "; i += 1; continue; }
+      if (ch === "`") { stack.push("template"); out += " "; i += 1; continue; }
+      out += ch; i += 1; continue;
+    }
+    if (state === "lineComment") {
+      if (ch === "\n" || ch === "\r") { stack.pop(); out += ch; i += 1; continue; }
+      out += " "; i += 1; continue;
+    }
+    if (state === "blockComment") {
+      if (ch === "*" && next === "/") { stack.pop(); out += "  "; i += 2; continue; }
+      out += ch === "\n" || ch === "\r" ? ch : " "; i += 1; continue;
+    }
+    if (state === "single" || state === "double") {
+      const quote = state === "single" ? "'" : "\"";
+      if (ch === "\\") { out += "  "; i += 2; continue; }
+      if (ch === quote) { stack.pop(); out += " "; i += 1; continue; }
+      out += ch === "\n" || ch === "\r" ? ch : " "; i += 1; continue;
+    }
+    if (state === "template") {
+      if (ch === "\\") { out += "  "; i += 2; continue; }
+      if (ch === "`") { stack.pop(); out += " "; i += 1; continue; }
+      if (ch === "$" && next === "{") { stack.push("templateExpr"); out += "  "; i += 2; continue; }
+      out += ch === "\n" || ch === "\r" ? ch : " "; i += 1; continue;
+    }
+    if (state === "templateExpr") {
+      if (ch === "/" && next === "/") { stack.push("lineComment"); out += "  "; i += 2; continue; }
+      if (ch === "/" && next === "*") { stack.push("blockComment"); out += "  "; i += 2; continue; }
+      if (ch === "'") { stack.push("single"); out += " "; i += 1; continue; }
+      if (ch === "\"") { stack.push("double"); out += " "; i += 1; continue; }
+      if (ch === "`") { stack.push("template"); out += " "; i += 1; continue; }
+      if (ch === "{") { stack.push("templateExpr"); out += ch; i += 1; continue; }
+      if (ch === "}") { stack.pop(); out += ch; i += 1; continue; }
+      out += ch; i += 1; continue;
+    }
+    out += ch; i += 1;
+  }
+  return out;
 }
 
 function exportedNames(source) {
@@ -588,7 +628,9 @@ function exportedNames(source) {
   const names = new Set();
   for (const match of text.matchAll(/^export\s*\{([^}]*)\}/gm)) {
     for (const part of match[1].split(",")) {
-      const name = part.trim().split(/\s+as\s+/).pop()?.trim();
+      const trimmed = part.trim();
+      if (!trimmed || /^type\b/.test(trimmed)) continue;
+      const name = trimmed.split(/\s+as\s+/).pop()?.trim();
       if (name) names.add(name);
     }
   }
@@ -909,7 +951,9 @@ function runPostgresSelfTest(expect, cloudflareMapping, cloudflareWorker, cloudf
   expect("postgres-commented-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "// export { runtime };\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   expect("postgres-block-commented-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "/*\nexport { runtime };\n*/\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   expect("postgres-type-only-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "export type { runtime };\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
+  expect("postgres-type-aliased-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "export { type runtime as runtime };\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   expect("postgres-template-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "const decoy = `export { runtime };`;\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
+  expect("postgres-nested-template-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "const decoy = `${`\nexport { runtime };\n`}`;\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   const classExport = `export { ${POSTGRES_DO_CLASSES.join(", ")} };`;
   for (const name of POSTGRES_DO_CLASSES) {
     const without = `export { ${POSTGRES_DO_CLASSES.filter((entry) => entry !== name).join(", ")} };`;
