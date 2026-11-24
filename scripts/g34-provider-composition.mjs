@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -265,7 +265,11 @@ export function assertRegistry(files = compositionContractFiles(), registry = PR
   const rogue = [...files].sort().find((file) => !registered.has(file));
   if (rogue !== undefined) fail("SECOND_MANIFEST", rogue, "second-manifest");
   const listed = new Set(files);
-  for (const entry of registry) for (const path of [entry.manifestPath, entry.mappingPath]) if (!listed.has(path)) fail("MISSING_CONFIG", path, "missing-config");
+  for (const entry of registry) {
+    for (const path of [entry.manifestPath, entry.mappingPath]) {
+      if (!listed.has(path) || !existsSync(join(root, path))) fail("MISSING_CONFIG", path, "missing-config");
+    }
+  }
 }
 
 export function assertRegisteredProfile(entry, manifest) {
@@ -405,15 +409,17 @@ export function validateQueueTopology(consumers) {
   fail("CARDINALITY", "queues.consumers", "cardinality");
 }
 
-export function validateProfile(manifest = loadManifest(), mapping = loadMapping(), configs) {
+export function validateProfile(manifest, mapping, configs) {
   assertRegistry();
-  assertRegisteredProfile(PROFILE_REGISTRY[0], manifest);
-  validateManifest(manifest, mapping);
-  const loaded = configs ?? Object.fromEntries(manifest.components.map((component) => [component.id, loadJson(component.config)]));
-  for (const component of manifest.components) validateConfig(manifest, component, loaded[component.id], mapping);
+  const resolvedManifest = manifest ?? loadManifest();
+  const resolvedMapping = mapping ?? loadMapping();
+  assertRegisteredProfile(PROFILE_REGISTRY[0], resolvedManifest);
+  validateManifest(resolvedManifest, resolvedMapping);
+  const loaded = configs ?? Object.fromEntries(resolvedManifest.components.map((component) => [component.id, loadJson(component.config)]));
+  for (const component of resolvedManifest.components) validateConfig(resolvedManifest, component, loaded[component.id], resolvedMapping);
   scanSampleBindingReads();
-  checkGenerated(manifest);
-  return manifestDigest(manifest);
+  checkGenerated(resolvedManifest);
+  return manifestDigest(resolvedManifest);
 }
 
 // meeting-room-postgres: the checked-in Hyperdrive / Postgres sample (samples/meeting-room/wrangler.jsonc).
@@ -485,6 +491,7 @@ const POSTGRES_MAPPING_VALUES = {
 };
 const POSTGRES_MAPPING_RESOURCES = { HYPERDRIVE: "pipeline-hyperdrive", DOWNSTREAM_QUEUE: "work-queue", ALLOCATOR: "allocator-do", JOURNAL: "journal-do", TAG: "tag-do", TAG_STATE: "tag-state-do" };
 const POSTGRES_ROW_KEYS = {
+  assets: ["directory"],
   services: ["binding", "entrypoint", "service"],
   hyperdrive: ["binding", "id"],
   queues: ["consumers", "producers"],
@@ -553,17 +560,33 @@ export function validatePostgresManifest(manifest, mapping) {
 }
 
 function postgresDeclaredNames(config) {
-  return [...bindingNames(config), ...Object.keys(config?.vars ?? {})];
+  const assetsBinding = config?.assets !== null && typeof config?.assets === "object" && !Array.isArray(config.assets)
+    ? config.assets.binding
+    : undefined;
+  return [
+    ...bindingNames(config),
+    ...Object.keys(config?.vars ?? {}),
+    ...(typeof assetsBinding === "string" ? [assetsBinding] : []),
+  ];
 }
 
 function stripBlockComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, " ");
 }
 
+// Drop comments and string/template literals so export probes only see executable statements.
+function stripNonCode(source) {
+  return stripBlockComments(source)
+    .replace(/^\s*\/\/.*$/gm, " ")
+    .replace(/`(?:\\.|[^`\\])*`/g, " ")
+    .replace(/'(?:\\.|[^'\\])*'/g, " ")
+    .replace(/"(?:\\.|[^"\\])*"/g, " ");
+}
+
 function exportedNames(source) {
-  const text = stripBlockComments(source);
+  const text = stripNonCode(source);
   const names = new Set();
-  for (const match of text.matchAll(/^export\s*(?:type\s+)?\{([^}]*)\}/gm)) {
+  for (const match of text.matchAll(/^export\s*\{([^}]*)\}/gm)) {
     for (const part of match[1].split(",")) {
       const name = part.trim().split(/\s+as\s+/).pop()?.trim();
       if (name) names.add(name);
@@ -576,8 +599,7 @@ function exportedNames(source) {
 function assertPostgresSource(source) {
   const names = exportedNames(source);
   for (const name of POSTGRES_SOURCE_EXPORTS) if (!names.has(name)) fail("ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#${name}`, "entrypoint-missing");
-  const code = stripBlockComments(source).replace(/^\s*\/\/.*$/gm, "");
-  if (!/\benv\s*(?:\?\.|\.)\s*RUNTIME\b/.test(code)) fail("ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#RUNTIME`, "entrypoint-missing");
+  if (!/\benv\s*(?:\?\.|\.)\s*RUNTIME\b/.test(stripNonCode(source))) fail("ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#RUNTIME`, "entrypoint-missing");
 }
 
 export function loadSampleSources() {
@@ -647,8 +669,9 @@ export function validatePostgresConfig(
     const actual = doBindings.find((entry) => entry?.name === binding);
     if (actual?.class_name !== mapping.resources[binding].class_name) fail("RESOURCE_MISMATCH", `${component.id}.${binding}.class_name`, "resource-identity-mismatch");
   }
-  // 15. binding rows carry only the checked-in keys
+  // 15. binding rows carry only the checked-in keys (assets is directory-only; no binding)
   const rowShapes = [
+    ...(Object.prototype.hasOwnProperty.call(config, "assets") ? [[config.assets, POSTGRES_ROW_KEYS.assets]] : []),
     ...asArray(config.services).map((row) => [row, POSTGRES_ROW_KEYS.services]),
     ...asArray(config.hyperdrive).map((row) => [row, POSTGRES_ROW_KEYS.hyperdrive]),
     [config.queues, POSTGRES_ROW_KEYS.queues],
@@ -672,11 +695,13 @@ export function validatePostgresConfig(
   return config;
 }
 
-export function validatePostgresProfile(manifest = loadPostgresManifest(), mapping = loadPostgresMapping(), options = {}) {
+export function validatePostgresProfile(manifest, mapping, options = {}) {
   assertRegistry();
-  assertRegisteredProfile(PROFILE_REGISTRY[1], manifest);
-  const envelope = validatePostgresManifest(manifest, mapping);
-  validatePostgresConfig(manifest, mapping, options.configText, options.source, options.files);
+  const resolvedManifest = manifest ?? loadPostgresManifest();
+  const resolvedMapping = mapping ?? loadPostgresMapping();
+  assertRegisteredProfile(PROFILE_REGISTRY[1], resolvedManifest);
+  const envelope = validatePostgresManifest(resolvedManifest, resolvedMapping);
+  validatePostgresConfig(resolvedManifest, resolvedMapping, options.configText, options.source, options.files);
   return envelope;
 }
 
@@ -704,6 +729,7 @@ function expectMutation(mutations, name, fn, expected) {
 }
 
 export function runSelfTest() {
+  assertRegistry();
   const manifest = loadManifest();
   const mapping = loadMapping();
   const envelope = validateProfile(manifest, mapping);
@@ -823,8 +849,16 @@ function runPostgresSelfTest(expect, cloudflareMapping, cloudflareWorker, cloudf
   expect("registry-rogue-local-mapping", () => assertRegistry([...registered, "contracts/provider-composition.rogue.local-mapping.json"]), "SECOND_MANIFEST", "contracts/provider-composition.rogue.local-mapping.json", "second-manifest");
   expect("registry-missing-manifest", () => assertRegistry(registered.filter((path) => path !== postgresManifestPath)), "MISSING_CONFIG", postgresManifestPath, "missing-config");
   expect("registry-missing-mapping", () => assertRegistry(registered.filter((path) => path !== postgresMappingPath)), "MISSING_CONFIG", postgresMappingPath, "missing-config");
+  const missingOnDisk = "contracts/provider-composition.missing-on-disk.json";
+  expect("registry-missing-on-disk", () => assertRegistry(
+    [missingOnDisk, mappingPath, postgresManifestPath, postgresMappingPath],
+    [{ profileId: "meeting-room-cloudflare", manifestPath: missingOnDisk, mappingPath }, PROFILE_REGISTRY[1]],
+  ), "MISSING_CONFIG", missingOnDisk, "missing-config");
   expect("registry-duplicate-profile-id", () => assertRegistry(registered, [PROFILE_REGISTRY[0], { ...PROFILE_REGISTRY[1], profileId: PROFILE_REGISTRY[0].profileId }]), "CARDINALITY", "registry.profileId[1]", "cardinality");
   expect("registry-profile-id-mismatch", () => assertRegisteredProfile(PROFILE_REGISTRY[1], { ...manifest, profileId: PROFILE_REGISTRY[0].profileId }), "CARDINALITY", "profileId", "cardinality");
+  expect("postgres-assets-binding-d1-mv", withConfig((mutated) => { mutated.assets = { directory: "public", binding: "D1_MV" }; }), "FORBIDDEN_BINDING", "worker.D1_MV", "forbidden-binding");
+  expect("postgres-assets-binding-cosmos", withConfig((mutated) => { mutated.assets = { directory: "public", binding: "COSMOS_STORE" }; }), "FORBIDDEN_BINDING", "worker.COSMOS", "forbidden-binding");
+  expect("postgres-assets-binding-row", withConfig((mutated) => { mutated.assets = { directory: "public", binding: "EXTRA_ASSET" }; }), "CARDINALITY", "worker.rows", "cardinality");
 
   expect("postgres-manifest-unknown-key", withManifest((mutated) => { mutated.extra = true; }), "CARDINALITY", "manifest.keys", "cardinality");
   expect("postgres-second-pipeline", withManifest((mutated) => { mutated.resources.push({ ...mutated.resources[0], id: "pipeline-hyperdrive-b" }); }), "SECOND_SHARD", "resources.pipeline-Postgres", "second-shard");
@@ -874,6 +908,8 @@ function runPostgresSelfTest(expect, cloudflareMapping, cloudflareWorker, cloudf
   expect("postgres-missing-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   expect("postgres-commented-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "// export { runtime };\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   expect("postgres-block-commented-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "/*\nexport { runtime };\n*/\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
+  expect("postgres-type-only-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "export type { runtime };\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
+  expect("postgres-template-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "const decoy = `export { runtime };`;\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   const classExport = `export { ${POSTGRES_DO_CLASSES.join(", ")} };`;
   for (const name of POSTGRES_DO_CLASSES) {
     const without = `export { ${POSTGRES_DO_CLASSES.filter((entry) => entry !== name).join(", ")} };`;
