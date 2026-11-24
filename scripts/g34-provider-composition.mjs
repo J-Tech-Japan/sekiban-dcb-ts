@@ -575,6 +575,8 @@ function canStartRegex(out) {
   while (j >= 0 && /\s/.test(out[j])) j -= 1;
   if (j < 0) return true;
   const ch = out[j];
+  // postfix ++ / -- is followed by division, not a regex literal
+  if ((ch === "+" || ch === "-") && j >= 1 && out[j - 1] === ch) return false;
   if ("=([,{;!?:&|+-*%<>~^".includes(ch)) return true;
   const tail = out.slice(Math.max(0, j - 9), j + 1);
   return /\b(?:return|case|throw|typeof|void|delete|new|await|in|of|instanceof|yield)$/.test(tail);
@@ -586,7 +588,14 @@ function stripNonCode(source) {
   let out = "";
   let i = 0;
   const stack = ["code"];
+  // Byte offsets into `out` where each templateExpr frame began (expression-local regex context).
+  const exprStarts = [];
   const blank = (ch) => (ch === "\n" || ch === "\r" ? ch : " ");
+  const regexContext = () => {
+    const state = stack[stack.length - 1];
+    if (state === "templateExpr") return out.slice(exprStarts[exprStarts.length - 1] ?? out.length);
+    return out;
+  };
   while (i < source.length) {
     const state = stack[stack.length - 1];
     const ch = source[i];
@@ -594,12 +603,12 @@ function stripNonCode(source) {
     if (state === "code" || state === "templateExpr") {
       if (ch === "/" && next === "/") { stack.push("lineComment"); out += "  "; i += 2; continue; }
       if (ch === "/" && next === "*") { stack.push("blockComment"); out += "  "; i += 2; continue; }
-      if (ch === "/" && canStartRegex(out)) { stack.push("regex"); out += " "; i += 1; continue; }
+      if (ch === "/" && canStartRegex(regexContext())) { stack.push("regex"); out += " "; i += 1; continue; }
       if (ch === "'") { stack.push("single"); out += " "; i += 1; continue; }
       if (ch === "\"") { stack.push("double"); out += " "; i += 1; continue; }
       if (ch === "`") { stack.push("template"); out += " "; i += 1; continue; }
-      if (state === "templateExpr" && ch === "{") { stack.push("templateExpr"); out += ch; i += 1; continue; }
-      if (state === "templateExpr" && ch === "}") { stack.pop(); out += ch; i += 1; continue; }
+      if (state === "templateExpr" && ch === "{") { stack.push("templateExpr"); exprStarts.push(out.length); out += ch; i += 1; continue; }
+      if (state === "templateExpr" && ch === "}") { stack.pop(); exprStarts.pop(); out += ch; i += 1; continue; }
       out += ch; i += 1; continue;
     }
     if (state === "lineComment") {
@@ -619,7 +628,7 @@ function stripNonCode(source) {
     if (state === "template") {
       if (ch === "\\") { out += "  "; i += Math.min(2, source.length - i); continue; }
       if (ch === "`") { stack.pop(); out += " "; i += 1; continue; }
-      if (ch === "$" && next === "{") { stack.push("templateExpr"); out += "  "; i += 2; continue; }
+      if (ch === "$" && next === "{") { stack.push("templateExpr"); exprStarts.push(out.length); out += "  "; i += 2; continue; }
       out += blank(ch); i += 1; continue;
     }
     if (state === "regex") {
@@ -976,6 +985,8 @@ function runPostgresSelfTest(expect, cloudflareMapping, cloudflareWorker, cloudf
   expect("postgres-template-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "const decoy = `export { runtime };`;\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   expect("postgres-nested-template-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "const decoy = `${`\nexport { runtime };\n`}`;\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   expect("postgres-regex-template-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "const decoy = `${/}/.test(\"}\") ? `\nexport { runtime };\n` : \"\"}`;\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
+  expect("postgres-tagged-regex-template-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "const decoy = String.raw`${/}/.test(\"}\") ? `\nexport { runtime };\n` : \"\"}`;\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
+  expect("postgres-postfix-div-template-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "let i = 0; const q = i++ / 2; const decoy = `\nexport { runtime };\n`;\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   const classExport = `export { ${POSTGRES_DO_CLASSES.join(", ")} };`;
   for (const name of POSTGRES_DO_CLASSES) {
     const without = `export { ${POSTGRES_DO_CLASSES.filter((entry) => entry !== name).join(", ")} };`;
