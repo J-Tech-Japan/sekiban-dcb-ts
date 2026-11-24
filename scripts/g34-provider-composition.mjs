@@ -570,22 +570,36 @@ function postgresDeclaredNames(config) {
   ];
 }
 
-// Drop comments and string/template literals (including nested `${...}` templates)
+function canStartRegex(out) {
+  let j = out.length - 1;
+  while (j >= 0 && /\s/.test(out[j])) j -= 1;
+  if (j < 0) return true;
+  const ch = out[j];
+  if ("=([,{;!?:&|+-*%<>~^".includes(ch)) return true;
+  const tail = out.slice(Math.max(0, j - 9), j + 1);
+  return /\b(?:return|case|throw|typeof|void|delete|new|await|in|of|instanceof|yield)$/.test(tail);
+}
+
+// Drop comments, strings, templates (incl. nested `${...}`), and regex literals
 // so export probes only see executable statements. Not a TypeScript parser.
 function stripNonCode(source) {
   let out = "";
   let i = 0;
   const stack = ["code"];
+  const blank = (ch) => (ch === "\n" || ch === "\r" ? ch : " ");
   while (i < source.length) {
     const state = stack[stack.length - 1];
     const ch = source[i];
     const next = source[i + 1];
-    if (state === "code") {
+    if (state === "code" || state === "templateExpr") {
       if (ch === "/" && next === "/") { stack.push("lineComment"); out += "  "; i += 2; continue; }
       if (ch === "/" && next === "*") { stack.push("blockComment"); out += "  "; i += 2; continue; }
+      if (ch === "/" && canStartRegex(out)) { stack.push("regex"); out += " "; i += 1; continue; }
       if (ch === "'") { stack.push("single"); out += " "; i += 1; continue; }
       if (ch === "\"") { stack.push("double"); out += " "; i += 1; continue; }
       if (ch === "`") { stack.push("template"); out += " "; i += 1; continue; }
+      if (state === "templateExpr" && ch === "{") { stack.push("templateExpr"); out += ch; i += 1; continue; }
+      if (state === "templateExpr" && ch === "}") { stack.pop(); out += ch; i += 1; continue; }
       out += ch; i += 1; continue;
     }
     if (state === "lineComment") {
@@ -594,29 +608,36 @@ function stripNonCode(source) {
     }
     if (state === "blockComment") {
       if (ch === "*" && next === "/") { stack.pop(); out += "  "; i += 2; continue; }
-      out += ch === "\n" || ch === "\r" ? ch : " "; i += 1; continue;
+      out += blank(ch); i += 1; continue;
     }
     if (state === "single" || state === "double") {
       const quote = state === "single" ? "'" : "\"";
-      if (ch === "\\") { out += "  "; i += 2; continue; }
+      if (ch === "\\") { out += "  "; i += Math.min(2, source.length - i); continue; }
       if (ch === quote) { stack.pop(); out += " "; i += 1; continue; }
-      out += ch === "\n" || ch === "\r" ? ch : " "; i += 1; continue;
+      out += blank(ch); i += 1; continue;
     }
     if (state === "template") {
-      if (ch === "\\") { out += "  "; i += 2; continue; }
+      if (ch === "\\") { out += "  "; i += Math.min(2, source.length - i); continue; }
       if (ch === "`") { stack.pop(); out += " "; i += 1; continue; }
       if (ch === "$" && next === "{") { stack.push("templateExpr"); out += "  "; i += 2; continue; }
-      out += ch === "\n" || ch === "\r" ? ch : " "; i += 1; continue;
+      out += blank(ch); i += 1; continue;
     }
-    if (state === "templateExpr") {
-      if (ch === "/" && next === "/") { stack.push("lineComment"); out += "  "; i += 2; continue; }
-      if (ch === "/" && next === "*") { stack.push("blockComment"); out += "  "; i += 2; continue; }
-      if (ch === "'") { stack.push("single"); out += " "; i += 1; continue; }
-      if (ch === "\"") { stack.push("double"); out += " "; i += 1; continue; }
-      if (ch === "`") { stack.push("template"); out += " "; i += 1; continue; }
-      if (ch === "{") { stack.push("templateExpr"); out += ch; i += 1; continue; }
-      if (ch === "}") { stack.pop(); out += ch; i += 1; continue; }
-      out += ch; i += 1; continue;
+    if (state === "regex") {
+      if (ch === "\\") { out += "  "; i += Math.min(2, source.length - i); continue; }
+      if (ch === "[") { stack.push("regexClass"); out += " "; i += 1; continue; }
+      if (ch === "/") {
+        stack.pop();
+        out += " ";
+        i += 1;
+        while (i < source.length && /[a-z]/i.test(source[i])) { out += " "; i += 1; }
+        continue;
+      }
+      out += blank(ch); i += 1; continue;
+    }
+    if (state === "regexClass") {
+      if (ch === "\\") { out += "  "; i += Math.min(2, source.length - i); continue; }
+      if (ch === "]") { stack.pop(); out += " "; i += 1; continue; }
+      out += blank(ch); i += 1; continue;
     }
     out += ch; i += 1;
   }
@@ -954,6 +975,7 @@ function runPostgresSelfTest(expect, cloudflareMapping, cloudflareWorker, cloudf
   expect("postgres-type-aliased-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "export { type runtime as runtime };\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   expect("postgres-template-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "const decoy = `export { runtime };`;\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   expect("postgres-nested-template-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "const decoy = `${`\nexport { runtime };\n`}`;\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
+  expect("postgres-regex-template-runtime-export", sourceCase(replaceOnce(source, "export { runtime };\n", "const decoy = `${/}/.test(\"}\") ? `\nexport { runtime };\n` : \"\"}`;\n", "runtime-export")), "ENTRYPOINT_MISSING", `${POSTGRES_WORKER_SOURCE_PATH}#runtime`, "entrypoint-missing");
   const classExport = `export { ${POSTGRES_DO_CLASSES.join(", ")} };`;
   for (const name of POSTGRES_DO_CLASSES) {
     const without = `export { ${POSTGRES_DO_CLASSES.filter((entry) => entry !== name).join(", ")} };`;
