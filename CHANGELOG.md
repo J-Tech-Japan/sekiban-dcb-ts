@@ -9,6 +9,12 @@
   `npm run test:provider:composition` beside the Cloudflare-only profile. It is
   offline only: no package, runtime, or Wrangler change, and the no-argument
   deploy-gate check still covers the Cloudflare-only profile.
+- The experimental Cosmos store has an offline provider-composition profile,
+  `cosmos-experimental`, checked by `npm run test:provider:composition` beside
+  the two meeting-room profiles. It references `contracts/cosmos-layout.json`
+  by path and digest, and its local mapping never holds a key. It is offline
+  only: no Wrangler file, Worker, runtime default, or package change, and the
+  no-argument deploy-gate check still covers the Cloudflare-only profile.
 
 ### @sekiban/dcb-runtime
 

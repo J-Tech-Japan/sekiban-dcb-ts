@@ -100,20 +100,22 @@ Bundle-only, with no token file and no remote migration, secret, deployment list
 
 ## Offline composition profiles
 
-Two offline provider-composition profiles describe the checked-in Wrangler
-files. Each is validated on its own; the two are never merged.
+Three offline provider-composition profiles describe the checked-in sample
+authorities: the two Wrangler files and the experimental Cosmos layout
+contract. Each is validated on its own; profiles are never merged.
 
 | Profile | Manifest | Local mapping | Wrangler file |
 | --- | --- | --- | --- |
 | `meeting-room-cloudflare` | `contracts/provider-composition.json` | `contracts/provider-composition.local-mapping.json` | `wrangler.cloudflare-only.jsonc` |
 | `meeting-room-postgres` | `contracts/provider-composition.meeting-room-postgres.json` | `contracts/provider-composition.meeting-room-postgres.local-mapping.json` | `wrangler.jsonc` |
+| `cosmos-experimental` | `contracts/provider-composition.cosmos-experimental.json` | `contracts/provider-composition.cosmos-experimental.local-mapping.json` | none (code-composed) |
 
 The unsuffixed `contracts/provider-composition.json` filename is historical; it
-is the Cloudflare-only manifest. Those four files are the only
+is the Cloudflare-only manifest. Those six files are the only
 `provider-composition*.json` contracts the check accepts; any other one fails.
 
-`npm run test:provider:composition` checks both profiles and prints both
-digests. `npm run test:deploy:composition` with no arguments checks the
+`npm run test:provider:composition` checks all three profiles and prints their
+three digests. `npm run test:deploy:composition` with no arguments checks the
 Cloudflare-only profile only, as before.
 
 The `meeting-room-postgres` profile mirrors `wrangler.jsonc` exactly:
@@ -131,9 +133,23 @@ substituted id fails it. Do not commit a real Hyperdrive id or connection
 string; local development may still pass a connection through the environment
 outside Wrangler.
 
-Both profiles use the repository's shared validation core. It checks the
+The `cosmos-experimental` profile describes the experimental Cosmos store
+selected explicitly in code with `createCosmosStoreProvider` and the
+`COSMOS_ENDPOINT`, `COSMOS_DATABASE`, and `COSMOS_KEY` environment role labels.
+Cosmos stays an opt-in; it is not the default runtime. The profile's
+configuration authority is the experimental Cosmos layout contract,
+`contracts/cosmos-layout.json`, referenced by path and digest rather than
+copied; the check screens that file for credential-shaped values before it
+parses or hashes it. The local mapping holds placeholder endpoint and database
+ids and `keyRequired` only; it never holds a key. The profile proves the
+default layout and the environment role labels only: an injected client or a
+`containers` override is refused, not ignored. There is no Cosmos Wrangler
+file, Worker, Queue, or Durable Object, and no deployable Cosmos Worker in this
+sample.
+
+All profiles use the repository's shared validation core. It checks the
 checked-in sample authority, local mapping, Worker exports, and (for the
 Cloudflare-only profile) generated accessors before any deploy continuation; it
-does not query live Cloudflare state or create resources. A green check proves
-the checked-in tree only, not remote state, deploy-time overrides, or applied
-Postgres schema migrations.
+does not query live Cloudflare or Azure state or create resources. A green
+check proves the checked-in tree only, not remote state, deploy-time overrides,
+applied Postgres schema migrations, or Cosmos account and container state.

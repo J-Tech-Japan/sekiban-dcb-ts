@@ -19,9 +19,12 @@ export const sharedCorePath = "scripts/lib/offline-provider-validation.mjs";
 export const templateCorePath = "packages/create-dcb/template/scripts/offline-provider-validation.mjs";
 export const postgresManifestPath = "contracts/provider-composition.meeting-room-postgres.json";
 export const postgresMappingPath = "contracts/provider-composition.meeting-room-postgres.local-mapping.json";
+export const cosmosManifestPath = "contracts/provider-composition.cosmos-experimental.json";
+export const cosmosMappingPath = "contracts/provider-composition.cosmos-experimental.local-mapping.json";
 export const PROFILE_REGISTRY = Object.freeze([
   Object.freeze({ profileId: "meeting-room-cloudflare", manifestPath, mappingPath }),
   Object.freeze({ profileId: "meeting-room-postgres", manifestPath: postgresManifestPath, mappingPath: postgresMappingPath }),
+  Object.freeze({ profileId: "cosmos-experimental", manifestPath: cosmosManifestPath, mappingPath: cosmosMappingPath }),
 ]);
 export const DOMAIN = "sekiban-dcb-ts/provider-composition-manifest/v1";
 export const CANONICALIZATION_VERSION = "rfc8785";
@@ -777,6 +780,142 @@ export function validatePostgresProfile(manifest, mapping, options = {}) {
   return envelope;
 }
 
+// cosmos-experimental: the code-composed experimental Cosmos store (createCosmosStoreProvider with the
+// environment role labels and the default layout). There is no Wrangler file and no Worker; the configuration
+// authority is contracts/cosmos-layout.json, referenced by path and a separate-domain digest. This file keeps no
+// container name table and neither spawns nor imports scripts/cosmos-layout-contract.mjs.
+export const COSMOS_PROFILE_ID = "cosmos-experimental";
+export const COSMOS_DIGEST = "fbce9bbfbb837cf055fa8e4f37ac8f3f37bb46e37d4b51a3a737b86fed80cc78";
+export const COSMOS_LAYOUT_PATH = "contracts/cosmos-layout.json";
+export const COSMOS_LAYOUT_DOMAIN = "sekiban-dcb-ts/cosmos-layout/v1";
+export const COSMOS_LAYOUT_DIGEST = "913a9ad0783c24337ecc028b1d3ed406fa69933b1d0977369c2650df426a76aa";
+const COSMOS_TENANT_REF = "tnrf-e8519435bd00be91b1a6";
+const COSMOS_RESOURCE_REF = "rref-9f235aa1d2875392d152";
+const COSMOS_COMPONENT_ID = "cosmos-store";
+const COSMOS_COMPONENT_KEYS = [...POSTGRES_COMPONENT_KEYS, "layoutContract"];
+const COSMOS_ENTRYPOINTS = [
+  {
+    kind: "named",
+    name: "createCosmosStoreProvider",
+    operation: "create",
+    requiredBindings: ["COSMOS_DATABASE", "COSMOS_ENDPOINT", "COSMOS_KEY"],
+    forbiddenBindings: ["BOOTSTRAP", "D1", "D1_MV", "DOWNSTREAM_DOORBELL", "HYPERDRIVE", "POSTGRES_URL"],
+  },
+];
+const COSMOS_RESOURCES = [
+  { id: "pipeline-cosmos", kind: "physical-resource", providerKind: "cosmos", role: "pipeline-Cosmos", resourceRef: COSMOS_RESOURCE_REF },
+];
+const COSMOS_EDGES = [
+  { id: "cosmos-endpoint", kind: "physical-resource", from: COSMOS_COMPONENT_ID, to: "pipeline-cosmos", binding: "COSMOS_ENDPOINT" },
+  { id: "cosmos-database", kind: "physical-resource", from: COSMOS_COMPONENT_ID, to: "pipeline-cosmos", binding: "COSMOS_DATABASE" },
+  { id: "cosmos-key-presence", kind: "physical-resource", from: COSMOS_COMPONENT_ID, to: "pipeline-cosmos", binding: "COSMOS_KEY" },
+];
+const COSMOS_CARDINALITIES = {
+  [COSMOS_COMPONENT_ID]: { "producer-binding": 0, "consumer-attachment": 0, "dlq-target": 0, "service-binding": 0, "embedded-entrypoint": 0, "physical-resource": 1, "durable-object-binding": 0 },
+};
+const COSMOS_MAPPING_KEYS = ["COSMOS_ENDPOINT", "COSMOS_DATABASE", "COSMOS_KEY"];
+// Placeholders prove offline shape only, never remote identity. COSMOS_KEY carries presence, never a key.
+const COSMOS_MAPPING_VALUES = {
+  COSMOS_ENDPOINT: { id: "REPLACE_WITH_COSMOS_ENDPOINT_HOST", resourceRef: COSMOS_RESOURCE_REF },
+  COSMOS_DATABASE: { id: "REPLACE_WITH_COSMOS_DATABASE_NAME", resourceRef: COSMOS_RESOURCE_REF },
+  COSMOS_KEY: { keyRequired: true, resourceRef: COSMOS_RESOURCE_REF },
+};
+const COSMOS_LAYOUT_KEYS = ["schemaVersion", "stability", "provider", "logicalEventContract", "bindings", "containers"];
+const COSMOS_LAYOUT_BINDING_EDGES = { endpoint: "cosmos-endpoint", database: "cosmos-database", key: "cosmos-key-presence" };
+const COSMOS_LAYOUT_CONTAINER_KEYS = ["events", "lagEstimates", "pendingArrivals", "findings", "checkpoints"];
+// Raw-text screen run before the layout is parsed or hashed: a key-shaped value (the layout checker's shape),
+// an AccountKey= / AccountEndpoint= connection-string marker, or an Azure Cosmos account host.
+const COSMOS_CREDENTIAL_PATTERNS = [
+  /(?:COSMOS_KEY|["']key["'])\s*[:=]\s*["'][A-Za-z0-9+/]{20,}={0,2}["']/,
+  /Account(?:Key|Endpoint)\s*=/i,
+  /https:\/\/[^\s"'/]*\.documents\.azure\.com/i,
+];
+
+export function loadCosmosManifest() { return loadJson(cosmosManifestPath); }
+export function loadCosmosMapping() { return loadJson(cosmosMappingPath); }
+export function loadCosmosLayoutText() { return readFileSync(join(root, COSMOS_LAYOUT_PATH), "utf8"); }
+
+function requireCosmosMapping(mapping) {
+  assertClosedObject(mapping, "mapping", ["resources"], () => fail("CARDINALITY", "mapping.keys", "cardinality"));
+  const resources = mapping.resources;
+  if (resources === null || typeof resources !== "object" || Array.isArray(resources)) fail("CARDINALITY", "resources", "cardinality");
+  assertExact(Object.keys(resources), COSMOS_MAPPING_KEYS, "CARDINALITY", "resources", "cardinality");
+  for (const key of COSMOS_MAPPING_KEYS) {
+    assertExact(sortedKeys(resources[key]), Object.keys(COSMOS_MAPPING_VALUES[key]).sort(), "CARDINALITY", `resources.${key}`, "cardinality");
+    for (const [field, value] of Object.entries(COSMOS_MAPPING_VALUES[key])) {
+      if (resources[key][field] !== value) fail("RESOURCE_MISMATCH", `resources.${key}.${field}`, "resource-identity-mismatch");
+    }
+  }
+}
+
+export function validateCosmosManifest(manifest, mapping) {
+  assertClosedObject(manifest, "manifest", POSTGRES_MANIFEST_KEYS, () => fail("CARDINALITY", "manifest.keys", "cardinality"));
+  assertManifestIdentities(manifest);
+  requireCosmosMapping(mapping);
+  if (manifest.schemaVersion !== 1 || manifest.canonicalizationVersion !== CANONICALIZATION_VERSION || manifest.profileId !== COSMOS_PROFILE_ID) fail("CARDINALITY", "profileId", "cardinality");
+  if (manifest.tenantRef !== COSMOS_TENANT_REF) fail("SCOPE_PROOF_UNAVAILABLE", "tenantRef", "scope-proof-unavailable");
+  assertExact(manifest.scopeAxes, ["logicalServiceScope", "deploymentComponentScope", "providerTenantScope", "physicalResourceScope"], "CARDINALITY", "scopeAxes", "cardinality");
+  assertExact(asArray(manifest.components).map((component) => component?.id), [COSMOS_COMPONENT_ID], "CARDINALITY", "components", "cardinality");
+  const component = manifest.components[0];
+  // A client or containers override on the component is refused here, not ignored.
+  assertClosedObject(component, "component", COSMOS_COMPONENT_KEYS, () => fail("CARDINALITY", "component.keys", "cardinality"));
+  for (const [key, value] of Object.entries({ workerName: null, config: COSMOS_LAYOUT_PATH, deploymentComponentScope: COSMOS_COMPONENT_ID, physicalResourceScope: "opaque-ref" })) {
+    if (component[key] !== value) fail("CARDINALITY", `component.${key}`, "cardinality");
+  }
+  assertExact(component.logicalServiceScope, { sharing: "exclusive", serviceIdSource: "deploy-var" }, "SCOPE_PROOF_UNAVAILABLE", "component.scope", "scope-proof-unavailable");
+  assertExact(component.providerTenantScope, { tenantRef: manifest.tenantRef }, "SCOPE_PROOF_UNAVAILABLE", "component.scope", "scope-proof-unavailable");
+  assertExact(component.entrypoints, COSMOS_ENTRYPOINTS, "CARDINALITY", "component.entrypoints", "cardinality");
+  assertClosedObject(component.layoutContract, "layoutContract", ["path", "digest"], () => fail("CARDINALITY", "component.layoutContract", "cardinality"));
+  if (component.layoutContract.path !== COSMOS_LAYOUT_PATH) fail("CARDINALITY", "layoutContract.path", "cardinality");
+  if (asArray(manifest.resources).filter((resource) => resource?.role === "pipeline-Cosmos").length !== 1) fail("SECOND_SHARD", "resources.pipeline-Cosmos", "second-shard");
+  assertExact(manifest.resources.map((resource) => resource?.id), COSMOS_RESOURCES.map((resource) => resource.id), "CARDINALITY", "resources", "cardinality");
+  for (const [index, resource] of manifest.resources.entries()) {
+    if (resource.resourceRef !== COSMOS_RESOURCE_REF) fail("RESOURCE_MISMATCH", resource.id, "resource-identity-mismatch");
+    assertExact(resource, COSMOS_RESOURCES[index], "CARDINALITY", `resources.${resource.id}`, "cardinality");
+  }
+  assertExact(asArray(manifest.edges).map((edge) => edge?.id), COSMOS_EDGES.map((edge) => edge.id), "CARDINALITY", "edges", "cardinality");
+  for (const [index, edge] of manifest.edges.entries()) assertExact(edge, COSMOS_EDGES[index], "CARDINALITY", `edges.${edge.id}`, "cardinality");
+  assertExact(sortedKeys(manifest.cardinalities), [COSMOS_COMPONENT_ID], "CARDINALITY", "cardinalities", "cardinality");
+  assertExact(manifest.cardinalities[COSMOS_COMPONENT_ID], COSMOS_CARDINALITIES[COSMOS_COMPONENT_ID], "CARDINALITY", "component.cardinality", "cardinality");
+  // Migration semantics are declared empty: the Cosmos layout has no ordered migration domain.
+  assertExact(manifest.migrationDomains, {}, "MIGRATION_ORDER", "migrationDomains", "migration-order");
+  assertExact(manifest.durableObjectClasses, [], "CARDINALITY", "durableObjectClasses", "cardinality");
+  const pipelineRef = resourceById(manifest, "pipeline-cosmos").resourceRef;
+  for (const binding of COSMOS_MAPPING_KEYS) {
+    if (mapping.resources[binding].resourceRef !== pipelineRef) fail("RESOURCE_MISMATCH", binding, "resource-identity-mismatch");
+  }
+}
+
+// Screen the raw layout text first; nothing is parsed or hashed before it. Values never reach a diagnostic.
+export function validateCosmosLayout(manifest, layoutText) {
+  if (typeof layoutText !== "string") fail("MISSING_CONFIG", COSMOS_LAYOUT_PATH, "missing-config");
+  if (COSMOS_CREDENTIAL_PATTERNS.some((pattern) => pattern.test(layoutText))) fail("CREDENTIAL_REDACTED", "layout.text", "credential-redacted");
+  const layout = parseJsonc(layoutText, COSMOS_LAYOUT_PATH, cardinality);
+  assertClosedObject(layout, "layout", COSMOS_LAYOUT_KEYS, () => fail("CARDINALITY", "layout.keys", "cardinality"));
+  if (layout.stability !== "experimental") fail("CARDINALITY", "layout.stability", "cardinality");
+  assertClosedObject(layout.bindings, "layout.bindings", Object.keys(COSMOS_LAYOUT_BINDING_EDGES), () => fail("CARDINALITY", "layout.bindings", "cardinality"));
+  for (const [role, edgeId] of Object.entries(COSMOS_LAYOUT_BINDING_EDGES)) {
+    if (layout.bindings[role] !== edgeById(manifest, edgeId)?.binding) fail("CARDINALITY", "layout.bindings", "cardinality");
+  }
+  // Container keys only; the container names and the rest of each row are covered by the layout digest.
+  assertExact(sortedKeys(layout.containers) === null ? null : Object.keys(layout.containers), COSMOS_LAYOUT_CONTAINER_KEYS, "CARDINALITY", "layout.containers", "cardinality");
+  const digest = domainSeparatedSha256(layout, COSMOS_LAYOUT_DOMAIN);
+  if (digest !== COSMOS_LAYOUT_DIGEST || digest !== manifest.components[0].layoutContract.digest) fail("DIGEST_MISMATCH", "layoutContract.digest", "digest-mismatch");
+  return digest;
+}
+
+export function validateCosmosProfile(manifest, mapping, options = {}) {
+  assertRegistry();
+  const resolvedManifest = manifest ?? loadCosmosManifest();
+  const resolvedMapping = mapping ?? loadCosmosMapping();
+  assertRegisteredProfile(PROFILE_REGISTRY[2], resolvedManifest);
+  validateCosmosManifest(resolvedManifest, resolvedMapping);
+  validateCosmosLayout(resolvedManifest, options.layoutText ?? loadCosmosLayoutText());
+  const envelope = manifestDigest(resolvedManifest);
+  if (envelope.digest !== COSMOS_DIGEST) fail("DIGEST_MISMATCH", "digest", "digest-mismatch");
+  return envelope;
+}
+
 const KNOWN_INPUT_KEYS = new Set(["config", "environment", "cliOverrides", "keepVars"]);
 export function resolveCompositionInput(invocation) {
   if (Object.prototype.hasOwnProperty.call(invocation, "deepMerge")) fail("DEEP_MERGE_FORBIDDEN", "deepMerge", "deep-merge-forbidden");
@@ -892,7 +1031,8 @@ export function runSelfTest() {
   }
   const rendered = JSON.stringify(envelope) + JSON.stringify(publishedPayload(manifest)); if (rendered.includes(mapping.resources.D1.database_id) || rendered.includes("CANARY-SECRET-VALUE")) throw new Error("published digest leaked a raw identity");
   const postgres = runPostgresSelfTest(expect, mapping, worker, manifest);
-  return { result: "g34-provider-composition-self-test-passed", digest: envelope.digest, mutations, profiles: { [manifest.profileId]: envelope.digest, [POSTGRES_PROFILE_ID]: postgres.digest } };
+  const cosmos = runCosmosSelfTest(expect, manifest, mapping);
+  return { result: "g34-provider-composition-self-test-passed", digest: envelope.digest, mutations, profiles: { [manifest.profileId]: envelope.digest, [POSTGRES_PROFILE_ID]: postgres.digest, [COSMOS_PROFILE_ID]: cosmos.digest } };
 }
 
 function replaceOnce(text, anchor, replacement, label) {
@@ -1014,6 +1154,129 @@ function runPostgresSelfTest(expect, cloudflareMapping, cloudflareWorker, cloudf
   rendered.push(JSON.stringify(envelope), JSON.stringify(publishedPayload(manifest)), jcs(publishedPayload(manifest)));
   const text = rendered.join("\n");
   for (const value of [...Object.values(canaries), mapping.resources.HYPERDRIVE.id]) if (text.includes(value)) throw new Error("postgres canary or raw identity leaked");
+  return envelope;
+}
+
+// Canary constants: none may appear in a diagnostic, message, stack, stdout, stderr, published payload, or digest input.
+const COSMOS_CANARIES = Object.freeze({
+  manifestTenant: "tnrf-canary-cosmos-tenant-4b7e",
+  manifestWorker: "canary-cosmos-worker-4b7e",
+  mappingEndpoint: "canary-cosmos-endpoint-host-4b7e",
+  mappingKey: `CanaryCosmosMappingKey${"4b7e".repeat(6)}`,
+  layoutKey: `CanaryCosmosLayoutKey${"9d2c".repeat(6)}`,
+  layoutEndpoint: "https://canary-cosmos-acct-9d2c.documents.azure.com:443/",
+  layoutConnection: "AccountEndpoint=canary-cosmos-conn-9d2c",
+});
+
+function runCosmosSelfTest(expect, cloudflareManifest, cloudflareMapping) {
+  const manifest = loadCosmosManifest();
+  const mapping = loadCosmosMapping();
+  const layoutText = loadCosmosLayoutText();
+  const postgresManifest = loadPostgresManifest();
+  const postgresMapping = loadPostgresMapping();
+  const run = (mutatedManifest = manifest, mutatedMapping = mapping, mutatedLayoutText = layoutText) =>
+    validateCosmosProfile(mutatedManifest, mutatedMapping, { layoutText: mutatedLayoutText });
+  const envelope = run();
+  if (envelope.digest !== COSMOS_DIGEST) throw new Error("cosmos digest drifted");
+  if (domainSeparatedSha256(parseJsonc(layoutText, COSMOS_LAYOUT_PATH, cardinality), COSMOS_LAYOUT_DOMAIN) !== COSMOS_LAYOUT_DIGEST) throw new Error("cosmos layout digest drifted");
+  const withManifest = (edit) => () => { const mutated = structuredClone(manifest); edit(mutated); run(mutated); };
+  const withMapping = (edit) => () => { const mutated = structuredClone(mapping); edit(mutated); run(manifest, mutated); };
+  const parsedLayout = parseJsonc(layoutText, COSMOS_LAYOUT_PATH, cardinality);
+  const withLayout = (edit) => () => { const mutated = structuredClone(parsedLayout); edit(mutated); run(manifest, mapping, `${JSON.stringify(mutated, null, 2)}\n`); };
+  const withLayoutText = (anchor, replacement, label, mutatedManifest = manifest) => () => run(mutatedManifest, mapping, replaceOnce(layoutText, anchor, replacement, label));
+
+  // Registry: the listing only refuses files; the closed registry selects the profile.
+  const registered = PROFILE_REGISTRY.flatMap((entry) => [entry.manifestPath, entry.mappingPath]);
+  if (PROFILE_REGISTRY.map((entry) => entry.profileId).join(",") !== "meeting-room-cloudflare,meeting-room-postgres,cosmos-experimental") throw new Error("profile registry drifted");
+  assertRegistry(registered);
+  expect("registry-cosmos-missing-manifest", () => assertRegistry(registered.filter((path) => path !== cosmosManifestPath)), "MISSING_CONFIG", cosmosManifestPath, "missing-config");
+  expect("registry-cosmos-missing-mapping", () => assertRegistry(registered.filter((path) => path !== cosmosMappingPath)), "MISSING_CONFIG", cosmosMappingPath, "missing-config");
+  expect("registry-cosmos-profile-id-mismatch", withManifest((mutated) => { mutated.profileId = POSTGRES_PROFILE_ID; }), "CARDINALITY", "profileId", "cardinality");
+  expect("registry-cosmos-rogue-manifest", () => assertRegistry([...registered, "contracts/provider-composition.cosmos-rogue.json"]), "SECOND_MANIFEST", "contracts/provider-composition.cosmos-rogue.json", "second-manifest");
+
+  // Manifest.
+  expect("cosmos-manifest-unknown-key", withManifest((mutated) => { mutated.extra = true; }), "CARDINALITY", "manifest.keys", "cardinality");
+  expect("cosmos-manifest-containers", withManifest((mutated) => { mutated.containers = structuredClone(parsedLayout.containers); }), "CARDINALITY", "manifest.keys", "cardinality");
+  expect("cosmos-component-client", withManifest((mutated) => { mutated.components[0].client = { kind: "injected" }; }), "CARDINALITY", "component.keys", "cardinality");
+  expect("cosmos-component-containers", withManifest((mutated) => { mutated.components[0].containers = { events: "override-events" }; }), "CARDINALITY", "component.keys", "cardinality");
+  expect("cosmos-component-worker-name", withManifest((mutated) => { mutated.components[0].workerName = "sekiban-dcb-meeting-room"; }), "CARDINALITY", "component.workerName", "cardinality");
+  expect("cosmos-component-config", withManifest((mutated) => { mutated.components[0].config = "packages/create-dcb/template/cosmos.experimental.json"; }), "CARDINALITY", "component.config", "cardinality");
+  expect("cosmos-layout-contract-extra-key", withManifest((mutated) => { mutated.components[0].layoutContract.domain = COSMOS_LAYOUT_DOMAIN; }), "CARDINALITY", "component.layoutContract", "cardinality");
+  expect("cosmos-layout-contract-path", withManifest((mutated) => { mutated.components[0].layoutContract.path = "packages/create-dcb/template/cosmos.experimental.json"; }), "CARDINALITY", "layoutContract.path", "cardinality");
+  expect("cosmos-layout-contract-digest", withManifest((mutated) => { mutated.components[0].layoutContract.digest = "0".repeat(64); }), "DIGEST_MISMATCH", "layoutContract.digest", "digest-mismatch");
+  expect("cosmos-second-pipeline", withManifest((mutated) => { mutated.resources.push({ ...mutated.resources[0], id: "pipeline-cosmos-b" }); }), "SECOND_SHARD", "resources.pipeline-Cosmos", "second-shard");
+  expect("cosmos-postgres-ref-reused", withManifest((mutated) => { mutated.resources[0].resourceRef = postgresManifest.resources[0].resourceRef; }), "RESOURCE_MISMATCH", "pipeline-cosmos", "resource-identity-mismatch");
+  expect("cosmos-tenant-ref", withManifest((mutated) => { mutated.tenantRef = "tnrf-00000000000000000000"; }), "SCOPE_PROOF_UNAVAILABLE", "tenantRef", "scope-proof-unavailable");
+  expect("cosmos-cloudflare-tenant-ref-reused", withManifest((mutated) => { mutated.tenantRef = cloudflareManifest.tenantRef; }), "SCOPE_PROOF_UNAVAILABLE", "tenantRef", "scope-proof-unavailable");
+  expect("cosmos-relabelled-edge-binding", withManifest((mutated) => { mutated.edges[0].binding = "COSMOS_URL"; }), "CARDINALITY", "edges.cosmos-endpoint", "cardinality");
+  expect("cosmos-swapped-edge-order", withManifest((mutated) => { [mutated.edges[0], mutated.edges[1]] = [mutated.edges[1], mutated.edges[0]]; }), "CARDINALITY", "edges", "cardinality");
+  expect("cosmos-fourth-edge", withManifest((mutated) => { mutated.edges.push({ id: "cosmos-client", kind: "physical-resource", from: COSMOS_COMPONENT_ID, to: "pipeline-cosmos", binding: "COSMOS_CLIENT" }); }), "CARDINALITY", "edges", "cardinality");
+  expect("cosmos-physical-resource-cardinality", withManifest((mutated) => { mutated.cardinalities[COSMOS_COMPONENT_ID]["physical-resource"] = 3; }), "CARDINALITY", "component.cardinality", "cardinality");
+  expect("cosmos-migration-domains", withManifest((mutated) => { mutated.migrationDomains = { cosmos: { [COSMOS_COMPONENT_ID]: { owner: COSMOS_COMPONENT_ID, sequence: ["v1"] } } }; }), "MIGRATION_ORDER", "migrationDomains", "migration-order");
+  expect("cosmos-durable-object-classes", withManifest((mutated) => { mutated.durableObjectClasses = ["AllocatorDurableObject"]; }), "CARDINALITY", "durableObjectClasses", "cardinality");
+  expect("cosmos-dropped-required-binding", withManifest((mutated) => { mutated.components[0].entrypoints[0].requiredBindings = ["COSMOS_DATABASE", "COSMOS_ENDPOINT"]; }), "CARDINALITY", "component.entrypoints", "cardinality");
+  expect("cosmos-changed-forbidden-list", withManifest((mutated) => { mutated.components[0].entrypoints[0].forbiddenBindings = mutated.components[0].entrypoints[0].forbiddenBindings.filter((name) => name !== "HYPERDRIVE"); }), "CARDINALITY", "component.entrypoints", "cardinality");
+
+  // Mapping: placeholders and keyRequired only; a key never appears.
+  expect("cosmos-mapping-key-field", withMapping((mutated) => { mutated.resources.COSMOS_KEY.key = COSMOS_CANARIES.mappingKey; }), "CARDINALITY", "resources.COSMOS_KEY", "cardinality");
+  expect("cosmos-mapping-value-field", withMapping((mutated) => { mutated.resources.COSMOS_KEY.value = COSMOS_CANARIES.mappingKey; }), "CARDINALITY", "resources.COSMOS_KEY", "cardinality");
+  expect("cosmos-mapping-key-required-false", withMapping((mutated) => { mutated.resources.COSMOS_KEY.keyRequired = false; }), "RESOURCE_MISMATCH", "resources.COSMOS_KEY.keyRequired", "resource-identity-mismatch");
+  expect("cosmos-mapping-endpoint-id", withMapping((mutated) => { mutated.resources.COSMOS_ENDPOINT.id = COSMOS_CANARIES.mappingEndpoint; }), "RESOURCE_MISMATCH", "resources.COSMOS_ENDPOINT.id", "resource-identity-mismatch");
+  expect("cosmos-mapping-database-id", withMapping((mutated) => { mutated.resources.COSMOS_DATABASE.id = "meeting-room"; }), "RESOURCE_MISMATCH", "resources.COSMOS_DATABASE.id", "resource-identity-mismatch");
+  expect("cosmos-mapping-extra-entry", withMapping((mutated) => { mutated.resources.COSMOS_CONTAINERS = { id: "dcb-events", resourceRef: COSMOS_RESOURCE_REF }; }), "CARDINALITY", "resources", "cardinality");
+  expect("cosmos-mapping-of-other-profile", () => run(manifest, postgresMapping), "CARDINALITY", "resources", "cardinality");
+  expect("cosmos-mapping-ref-differs", withMapping((mutated) => { mutated.resources.COSMOS_ENDPOINT.resourceRef = cloudflareMapping.resources.D1.resourceRef; }), "RESOURCE_MISMATCH", "resources.COSMOS_ENDPOINT.resourceRef", "resource-identity-mismatch");
+
+  // Layout reference: screened as raw text, then parsed with the shared core, then hashed.
+  const wrongLayoutDigest = structuredClone(manifest); wrongLayoutDigest.components[0].layoutContract.digest = "f".repeat(64);
+  const layoutCanaryCases = [
+    ["cosmos-layout-key-canary", withLayoutText('"key": "COSMOS_KEY"', `"key": "${COSMOS_CANARIES.layoutKey}"`, "layout-key", wrongLayoutDigest)],
+    ["cosmos-layout-endpoint-canary", withLayoutText('"provider": "cosmos",', `"provider": "cosmos",\n  "endpointHint": "${COSMOS_CANARIES.layoutEndpoint}",`, "layout-endpoint")],
+    ["cosmos-layout-connection-marker", withLayoutText('"provider": "cosmos",', `"provider": "cosmos",\n  "connectionHint": "${COSMOS_CANARIES.layoutConnection}",`, "layout-connection")],
+  ];
+  for (const [name, fn] of layoutCanaryCases) expect(name, fn, "CREDENTIAL_REDACTED", "layout.text", "credential-redacted");
+  expect("cosmos-layout-duplicate-json-key", withLayoutText('"provider": "cosmos",', '"provider": "cosmos",\n  "provider": "cosmos",', "layout-duplicate"), "CARDINALITY", "$", "cardinality");
+  expect("cosmos-layout-unknown-key", withLayout((mutated) => { mutated.client = { kind: "injected" }; }), "CARDINALITY", "layout.keys", "cardinality");
+  expect("cosmos-layout-stability", withLayout((mutated) => { mutated.stability = "stable"; }), "CARDINALITY", "layout.stability", "cardinality");
+  expect("cosmos-layout-binding-renamed", withLayout((mutated) => { mutated.bindings.database = "COSMOS_DATABASE_NAME"; }), "CARDINALITY", "layout.bindings", "cardinality");
+  expect("cosmos-layout-container-dropped", withLayout((mutated) => { delete mutated.containers.findings; }), "CARDINALITY", "layout.containers", "cardinality");
+  expect("cosmos-layout-container-reordered", withLayout((mutated) => { const { events, lagEstimates, ...rest } = mutated.containers; mutated.containers = { lagEstimates, events, ...rest }; }), "CARDINALITY", "layout.containers", "cardinality");
+  expect("cosmos-layout-container-name", withLayout((mutated) => { mutated.containers.findings.name = "dcb-findings-renamed"; }), "DIGEST_MISMATCH", "layoutContract.digest", "digest-mismatch");
+  run(manifest, mapping, `${JSON.stringify(parsedLayout, null, 2)}\n`);
+
+  // Digest movement.
+  for (const [label, edit] of [
+    ["layoutContract.digest", (mutated) => { mutated.components[0].layoutContract.digest = "0".repeat(64); }],
+    ["resourceRef", (mutated) => { mutated.resources[0].resourceRef = "rref-00000000000000000000"; }],
+    ["edge binding", (mutated) => { mutated.edges[0].binding = "COSMOS_URL"; }],
+    ["tenantRef", (mutated) => { mutated.tenantRef = "tnrf-00000000000000000000"; }],
+    ["component.config", (mutated) => { mutated.components[0].config = "contracts/cosmos-layout.v2.json"; }],
+  ]) {
+    const mutated = structuredClone(manifest); edit(mutated);
+    if (manifestDigest(mutated).digest === envelope.digest) throw new Error(`cosmos ${label} change did not move the digest`);
+  }
+
+  // Redaction.
+  const manifestCanaryCases = [
+    withManifest((mutated) => { mutated.tenantRef = COSMOS_CANARIES.manifestTenant; }),
+    withManifest((mutated) => { mutated.components[0].workerName = COSMOS_CANARIES.manifestWorker; }),
+  ];
+  const mappingCanaryCases = [
+    withMapping((mutated) => { mutated.resources.COSMOS_KEY.key = COSMOS_CANARIES.mappingKey; }),
+    withMapping((mutated) => { mutated.resources.COSMOS_ENDPOINT.id = COSMOS_CANARIES.mappingEndpoint; }),
+  ];
+  const rendered = [];
+  for (const fn of [...manifestCanaryCases, ...mappingCanaryCases, ...layoutCanaryCases.map(([, caseFn]) => caseFn)]) {
+    try { fn(); throw new Error("cosmos canary unexpectedly passed"); } catch (error) {
+      if (!(error instanceof CompositionDiagnostic)) throw error;
+      rendered.push(JSON.stringify(error.diagnostic), error.message, String(error.stack));
+    }
+  }
+  rendered.push(JSON.stringify(envelope), JSON.stringify(publishedPayload(manifest)), jcs(publishedPayload(manifest)));
+  const text = rendered.join("\n");
+  for (const value of [...Object.values(COSMOS_CANARIES), mapping.resources.COSMOS_ENDPOINT.id, mapping.resources.COSMOS_DATABASE.id]) {
+    if (text.includes(value)) throw new Error("cosmos canary or placeholder identity leaked");
+  }
   return envelope;
 }
 
