@@ -147,6 +147,18 @@ default layout and the environment role labels only: an injected client or a
 file, Worker, Queue, or Durable Object, and no deployable Cosmos Worker in this
 sample.
 
+`npm run test:remote:topology` runs the self-test of the remote Queue consumer
+reconcile check, and
+`node scripts/g155-remote-topology-reconcile.mjs --remote-snapshot <file>`
+checks a consumer snapshot the operator saved for the Cloudflare-only profile's
+work queue. The snapshot is `{ "queue": "<consumer queue>", "consumers": [ ... ] }`,
+and the queue name must match the local mapping. The declared consumers come
+from the profile, and the comparison is an exact set: a missing or stale
+consumer, a duplicate, or a pull consumer without a Worker script fails, while
+extra fields on a consumer row are ignored. The check never contacts
+Cloudflare, refuses `--fetch-live`, and deletes nothing; a green result proves
+the supplied snapshot, not the account.
+
 All profiles use the repository's shared validation core. It checks the
 checked-in sample authority, local mapping, Worker exports, and (for the
 Cloudflare-only profile) generated accessors before any deploy continuation; it
