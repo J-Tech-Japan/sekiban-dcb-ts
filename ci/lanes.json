@@ -89,6 +89,8 @@
         {"id": "g93", "command": "npm run test:release:workflow-packages"},
         {"id": "g99-sample-registry", "command": "npm run test:sample:registry-dependencies && npm run test:sample:registry-dependencies -- --self-test"},
         {"id": "g34", "command": "npm run test:provider:composition"},
+        {"id": "g155", "command": "npm run test:remote:topology"},
+        {"id": "g155-red", "command": "npm run test:remote:topology", "env": {"SDT_G155_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g100", "command": "npm run test:deploy:composition"},
         {"id": "g101", "command": "npm run test:shard:rotation"},
         {"id": "g102", "command": "npm run test:sample:registry-consumer"},

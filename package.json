@@ -140,6 +140,7 @@
     "test:scope:identity:forced-red": "npm run test:scope:identity && node -e \"if (process.env.SDT_G53_FORCE_FAILURE === '1') throw new Error('SDT-G53 forced-red CI wiring proof')\"",
     "test:sekiban:live-cross": "npm run build:packages && node scripts/g33-live-cross.mjs --self-test && node scripts/g33-live-cross.mjs --check",
     "test:provider:composition": "node scripts/g34-provider-composition.mjs --check",
+    "test:remote:topology": "node scripts/g155-remote-topology-reconcile.mjs --self-test",
     "test:deploy:composition": "node scripts/g100-deploy-gate.mjs --check",
     "test:shard:rotation": "node scripts/g101-shard-rotation.mjs --check",
     "test:sample:registry-consumer": "node scripts/g102-registry-consumer.mjs --check",

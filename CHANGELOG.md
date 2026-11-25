@@ -15,6 +15,11 @@
   by path and digest, and its local mapping never holds a key. It is offline
   only: no Wrangler file, Worker, runtime default, or package change, and the
   no-argument deploy-gate check still covers the Cloudflare-only profile.
+- `npm run test:remote:topology` adds an offline remote Queue consumer
+  reconcile check for the Cloudflare-only profile: the work-queue consumers
+  declared by the profile must exactly match an operator-supplied
+  `{ "queue", "consumers" }` snapshot. It never contacts Cloudflare and refuses
+  a live fetch; a green result proves the snapshot, not the account.
 
 ### @sekiban/dcb-runtime
 
