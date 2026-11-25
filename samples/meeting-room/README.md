@@ -159,6 +159,16 @@ extra fields on a consumer row are ignored. The check never contacts
 Cloudflare, refuses `--fetch-live`, and deletes nothing; a green result proves
 the supplied snapshot, not the account.
 
+That single `{ "queue", "consumers" }` snapshot checks the work queue only; it
+is not proof about the dead-letter queue. A bundle snapshot
+`{ "queues": [ <work queue envelope>, <dead-letter queue envelope> ] }` holds
+exactly two such envelopes, in either order, bound by queue name to the local
+mapping's consumer queue and dead-letter queue. It also checks the dead-letter
+queue's consumers against the profile, which declares none, so any consumer on
+the dead-letter queue fails. A green bundle proves the supplied snapshot's
+dead-letter consumer set only; it does not check the dead-letter setting on the
+work-queue consumers, the producer, or the live account.
+
 All profiles use the repository's shared validation core. It checks the
 checked-in sample authority, local mapping, Worker exports, and (for the
 Cloudflare-only profile) generated accessors before any deploy continuation; it
