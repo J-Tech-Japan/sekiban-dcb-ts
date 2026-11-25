@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "profileId": "cosmos-experimental",
+  "canonicalizationVersion": "rfc8785",
+  "tenantRef": "tnrf-e8519435bd00be91b1a6",
+  "scopeAxes": [
+    "logicalServiceScope",
+    "deploymentComponentScope",
+    "providerTenantScope",
+    "physicalResourceScope"
+  ],
+  "components": [
+    {
+      "id": "cosmos-store",
+      "workerName": null,
+      "config": "contracts/cosmos-layout.json",
+      "logicalServiceScope": {
+        "sharing": "exclusive",
+        "serviceIdSource": "deploy-var"
+      },
+      "deploymentComponentScope": "cosmos-store",
+      "providerTenantScope": {
+        "tenantRef": "tnrf-e8519435bd00be91b1a6"
+      },
+      "physicalResourceScope": "opaque-ref",
+      "layoutContract": {
+        "path": "contracts/cosmos-layout.json",
+        "digest": "913a9ad0783c24337ecc028b1d3ed406fa69933b1d0977369c2650df426a76aa"
+      },
+      "entrypoints": [
+        {
+          "kind": "named",
+          "name": "createCosmosStoreProvider",
+          "operation": "create",
+          "requiredBindings": [
+            "COSMOS_DATABASE",
+            "COSMOS_ENDPOINT",
+            "COSMOS_KEY"
+          ],
+          "forbiddenBindings": [
+            "BOOTSTRAP",
+            "D1",
+            "D1_MV",
+            "DOWNSTREAM_DOORBELL",
+            "HYPERDRIVE",
+            "POSTGRES_URL"
+          ]
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "id": "pipeline-cosmos",
+      "kind": "physical-resource",
+      "providerKind": "cosmos",
+      "role": "pipeline-Cosmos",
+      "resourceRef": "rref-9f235aa1d2875392d152"
+    }
+  ],
+  "edges": [
+    {
+      "id": "cosmos-endpoint",
+      "kind": "physical-resource",
+      "from": "cosmos-store",
+      "to": "pipeline-cosmos",
+      "binding": "COSMOS_ENDPOINT"
+    },
+    {
+      "id": "cosmos-database",
+      "kind": "physical-resource",
+      "from": "cosmos-store",
+      "to": "pipeline-cosmos",
+      "binding": "COSMOS_DATABASE"
+    },
+    {
+      "id": "cosmos-key-presence",
+      "kind": "physical-resource",
+      "from": "cosmos-store",
+      "to": "pipeline-cosmos",
+      "binding": "COSMOS_KEY"
+    }
+  ],
+  "cardinalities": {
+    "cosmos-store": {
+      "producer-binding": 0,
+      "consumer-attachment": 0,
+      "dlq-target": 0,
+      "service-binding": 0,
+      "embedded-entrypoint": 0,
+      "physical-resource": 1,
+      "durable-object-binding": 0
+    }
+  },
+  "migrationDomains": {},
+  "durableObjectClasses": []
+}

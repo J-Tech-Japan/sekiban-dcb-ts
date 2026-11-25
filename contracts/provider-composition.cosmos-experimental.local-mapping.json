@@ -1,0 +1,16 @@
+{
+  "resources": {
+    "COSMOS_ENDPOINT": {
+      "id": "REPLACE_WITH_COSMOS_ENDPOINT_HOST",
+      "resourceRef": "rref-9f235aa1d2875392d152"
+    },
+    "COSMOS_DATABASE": {
+      "id": "REPLACE_WITH_COSMOS_DATABASE_NAME",
+      "resourceRef": "rref-9f235aa1d2875392d152"
+    },
+    "COSMOS_KEY": {
+      "keyRequired": true,
+      "resourceRef": "rref-9f235aa1d2875392d152"
+    }
+  }
+}
