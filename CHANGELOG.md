@@ -20,6 +20,14 @@
   declared by the profile must exactly match an operator-supplied
   `{ "queue", "consumers" }` snapshot. It never contacts Cloudflare and refuses
   a live fetch; a green result proves the snapshot, not the account.
+- The same remote Queue consumer reconcile check also accepts a bundle
+  snapshot `{ "queues": [ <work queue envelope>, <dead-letter queue envelope> ] }`
+  (exactly two, either order, bound by queue name) and then also checks the
+  dead-letter queue's consumers, which the profile declares empty. The single
+  `{ "queue", "consumers" }` snapshot is unchanged and checks the work queue
+  only. A green bundle proves the supplied snapshot's dead-letter consumer set
+  only, not the dead-letter setting on the work-queue consumers, the producer,
+  or the live account.
 
 ### @sekiban/dcb-runtime
 
