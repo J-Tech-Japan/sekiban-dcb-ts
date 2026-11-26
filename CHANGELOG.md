@@ -26,8 +26,12 @@
   dead-letter queue's consumers, which the profile declares empty. The single
   `{ "queue", "consumers" }` snapshot is unchanged and checks the work queue
   only. A green bundle proves the supplied snapshot's dead-letter consumer set
-  only, not the dead-letter setting on the work-queue consumers, the producer,
-  or the live account.
+  only, not the producer or the live account.
+- The remote Queue consumer reconcile check now also requires each work-queue
+  consumer row to carry `dead_letter_queue` equal to the local mapping's
+  dead-letter queue, in both the single and the bundle snapshot form, checked
+  after the consumer set comparison. Snapshots without that field now fail. It
+  still never contacts Cloudflare.
 
 ### @sekiban/dcb-runtime
 

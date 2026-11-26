@@ -154,10 +154,13 @@ checks a consumer snapshot the operator saved for the Cloudflare-only profile's
 work queue. The snapshot is `{ "queue": "<consumer queue>", "consumers": [ ... ] }`,
 and the queue name must match the local mapping. The declared consumers come
 from the profile, and the comparison is an exact set: a missing or stale
-consumer, a duplicate, or a pull consumer without a Worker script fails, while
-extra fields on a consumer row are ignored. The check never contacts
-Cloudflare, refuses `--fetch-live`, and deletes nothing; a green result proves
-the supplied snapshot, not the account.
+consumer, a duplicate, or a pull consumer without a Worker script fails.
+After the set comparison, each work-queue consumer must also carry
+`dead_letter_queue` naming the local mapping's dead-letter queue, otherwise the
+check fails, so a snapshot saved without that field now fails; other extra
+fields on a consumer row are ignored. The check never contacts Cloudflare,
+refuses `--fetch-live`, and deletes nothing; a green result proves the supplied
+snapshot, not the account.
 
 That single `{ "queue", "consumers" }` snapshot checks the work queue only; it
 is not proof about the dead-letter queue. A bundle snapshot
@@ -165,9 +168,10 @@ is not proof about the dead-letter queue. A bundle snapshot
 exactly two such envelopes, in either order, bound by queue name to the local
 mapping's consumer queue and dead-letter queue. It also checks the dead-letter
 queue's consumers against the profile, which declares none, so any consumer on
-the dead-letter queue fails. A green bundle proves the supplied snapshot's
-dead-letter consumer set only; it does not check the dead-letter setting on the
-work-queue consumers, the producer, or the live account.
+the dead-letter queue fails; consumers on the dead-letter queue itself are not
+checked for the `dead_letter_queue` field. A green bundle proves the supplied
+snapshot's dead-letter consumer set only; it does not check the producer or the
+live account.
 
 All profiles use the repository's shared validation core. It checks the
 checked-in sample authority, local mapping, Worker exports, and (for the

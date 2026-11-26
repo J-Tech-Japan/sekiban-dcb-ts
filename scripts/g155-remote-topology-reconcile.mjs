@@ -15,10 +15,12 @@ import { parseJsonc } from "./lib/offline-provider-validation.mjs";
 // queue-bound snapshot {"queue", "consumers"}. The comparison is an exact set.
 // A bundle snapshot {"queues": [two envelopes]} also checks the dead-letter
 // queue consumer set (declared from the same composition), bound by queue name.
-// The work-queue rows' dead_letter_queue field is tolerated, not checked.
+// Each work-queue row must also carry dead_letter_queue equal to the mapped
+// dead-letter queue, checked after the set compare; dead-letter queue rows are
+// not field-checked.
 // This gate never contacts the provider: the live-fetch flag only refuses.
 // The frozen g34 queue-topology predicate is a separate, hard-coded neighbour
-// (it rejects extra row fields; this gate tolerates them) and is not called.
+// (it rejects extra row fields; this gate tolerates other extra row fields) and is not called.
 
 export const PROFILE_ID = "meeting-room-cloudflare";
 export const WORK_QUEUE_RESOURCE_ID = "work-queue";
@@ -220,10 +222,24 @@ function reconcile(consumers, declared, prefix) {
   compareSets(rowIdentities(consumers, prefix), declared, prefix);
 }
 
+// Work-queue envelope only, after the identity set compare. Values are
+// compared, never echoed. The DLQ envelope is never passed here.
+export function checkWorkDeadLetterFields(consumers, expectedDlq, prefix) {
+  for (const [index, row] of consumers.entries()) {
+    const path = `${prefix}/${index}/dead_letter_queue`;
+    if (!Object.hasOwn(row, "dead_letter_queue")) fail("REMOTE_IDENTITY", path);
+    const value = row.dead_letter_queue;
+    if (typeof value !== "string" || value.length === 0) fail("REMOTE_IDENTITY", path);
+    if (value !== expectedDlq) fail("REMOTE_IDENTITY", path);
+  }
+}
+
 // Single entry. Stages: 1 flags, 2 composition load, 3 snapshot read,
 // 4 classify; single: envelope and queue bind, then rows, duplicate
-// identities, set compare. Bundle: length, per-index shape, name bind, then the
-// work-queue envelope fully before the DLQ envelope.
+// identities, set compare, then each row's dead_letter_queue field. Bundle:
+// length, per-index shape, name bind, then the work-queue envelope fully
+// (rows, set compare, dead_letter_queue field) before the DLQ envelope, which
+// stops after its set compare.
 export function run(argv, deps = defaultDeps) {
   const invocation = checkArgv(argv);
   if (invocation.mode === "self-test") return runSelfTest();
@@ -232,10 +248,12 @@ export function run(argv, deps = defaultDeps) {
   if (classifySnapshot(snapshot) === "single") {
     const consumers = checkEnvelope(snapshot, composition.queue);
     reconcile(consumers, composition.declared, "consumers");
+    checkWorkDeadLetterFields(consumers, composition.dlqQueue, "consumers");
     return { result: "ok", profileId: PROFILE_ID, queue: composition.queue, declared: composition.declared, remoteConsumers: consumers.length };
   }
   const { work, dlq } = bindBundle(checkBundleShape(snapshot), composition);
   reconcile(work.consumers, composition.declared, "work-queue/consumers");
+  checkWorkDeadLetterFields(work.consumers, composition.dlqQueue, "work-queue/consumers");
   reconcile(dlq.consumers, composition.dlqDeclared, "dlq/consumers");
   return {
     result: "ok",
@@ -364,11 +382,12 @@ export function runSelfTest() {
   };
   const viaSnapshot = (text, overrides) => () => run(snapshotArgv, snapshotDeps(text, overrides));
 
-  const green = envelope([{ script: worker }]);
+  const green = envelope([{ script: worker, dead_letter_queue: dlqQueue }]);
   const staleExtra = envelope([{ script: worker }, { script: CANARIES.remoteScript }]);
 
-  // Bundle envelopes: W is the green work-queue envelope, D the green DLQ one.
-  const W = { queue, consumers: [{ script: worker }] };
+  // Bundle envelopes: W is the green work-queue envelope (its row names the
+  // mapped dead-letter queue), D the green DLQ one.
+  const W = { queue, consumers: [{ script: worker, dead_letter_queue: dlqQueue }] };
   const D = { queue: dlqQueue, consumers: [] };
   const bundle = (...queues) => JSON.stringify({ queues });
   const workWith = (consumers) => ({ queue, consumers });
@@ -382,12 +401,11 @@ export function runSelfTest() {
   // row keeps its stale-extra injection if it is ever reached.
   if (forceFailure) expectBundleOk("green-bundle", viaSnapshot(dlqStaleExtra));
   expectOk("green", viaSnapshot(forceFailure ? staleExtra : green));
-  expectOk("green-extra-fields", viaSnapshot(envelope([{ script: worker, type: "worker", settings: { batch_size: 10, note: CANARIES.fieldValue }, [CANARIES.key]: CANARIES.fieldValue }])));
-  expectOk("green-aliases", viaSnapshot(envelope([{ script: worker, worker, name: worker }])));
-  expectOk("green-dlq-field-tolerated", viaSnapshot(envelope([{ script: worker, dead_letter_queue: CANARIES.fieldValue }])));
+  expectOk("green-extra-fields", viaSnapshot(envelope([{ script: worker, dead_letter_queue: dlqQueue, type: "worker", settings: { batch_size: 10, note: CANARIES.fieldValue }, [CANARIES.key]: CANARIES.fieldValue }])));
+  expectOk("green-aliases", viaSnapshot(envelope([{ script: worker, worker, name: worker, dead_letter_queue: dlqQueue }])));
   if (!forceFailure) expectBundleOk("green-bundle", viaSnapshot(bundle(W, D)));
   expectBundleOk("green-bundle-reversed", viaSnapshot(bundle(D, W)));
-  expectBundleOk("green-bundle-dlq-field-tolerated", viaSnapshot(bundle(workWith([{ script: worker, dead_letter_queue: CANARIES.fieldValue }]), D)));
+  expectBundleOk("green-bundle-extra-fields", viaSnapshot(bundle(workWith([{ script: worker, dead_letter_queue: dlqQueue, max_retries: 3, settings: { note: CANARIES.fieldValue }, [CANARIES.key]: CANARIES.fieldValue }]), D)));
 
   // Pinned mutants, each built from the green envelope with one cause.
   expectFail("wrong-queue", viaSnapshot(JSON.stringify({ queue: CANARIES.queue, consumers: [{ script: worker }] })), "REMOTE_QUEUE_MISMATCH", "queue");
@@ -462,6 +480,85 @@ export function runSelfTest() {
   // Bundle text faults.
   expectFail("bundle-duplicate-key", viaSnapshot(`{"queues":[${JSON.stringify(W)},{"queue":${JSON.stringify(dlqQueue)},"consumers":[],"${CANARIES.key}":"${CANARIES.fieldValue}","${CANARIES.key}":2}]}`), "REMOTE_SHAPE", "snapshot");
   expectFail("bundle-malformed", viaSnapshot(`{"queues":[${CANARIES.malformed}`), "REMOTE_SHAPE", "snapshot");
+
+  // Work-queue dead_letter_queue field, checked after the set compare. Wrong
+  // values are canaries, so the redaction scan proves they are never echoed.
+  const fv = CANARIES.fieldValue;
+  const fieldRow = (value) => [{ script: worker, dead_letter_queue: value }];
+  const W0 = workWith([{ script: worker }]);
+  const singleFieldPath = "consumers/0/dead_letter_queue";
+  const workFieldPath = "work-queue/consumers/0/dead_letter_queue";
+  expectFail("dlq-field-wrong", viaSnapshot(envelope(fieldRow(fv))), "REMOTE_IDENTITY", singleFieldPath);
+  expectFail("dlq-field-absent", viaSnapshot(envelope([{ script: worker }])), "REMOTE_IDENTITY", singleFieldPath);
+  expectFail("dlq-field-empty", viaSnapshot(envelope(fieldRow(""))), "REMOTE_IDENTITY", singleFieldPath);
+  expectFail("dlq-field-non-string", viaSnapshot(envelope(fieldRow(42))), "REMOTE_IDENTITY", singleFieldPath);
+  expectFail("dlq-field-null", viaSnapshot(envelope(fieldRow(null))), "REMOTE_IDENTITY", singleFieldPath);
+  expectFail("dlq-field-array", viaSnapshot(envelope(fieldRow([fv]))), "REMOTE_IDENTITY", singleFieldPath);
+  expectFail("dlq-field-work-queue-name", viaSnapshot(envelope(fieldRow(queue))), "REMOTE_IDENTITY", singleFieldPath);
+  expectFail("bundle-dlq-field-wrong", viaSnapshot(bundle(workWith(fieldRow(fv)), D)), "REMOTE_IDENTITY", workFieldPath);
+  expectFail("bundle-dlq-field-absent", viaSnapshot(bundle(W0, D)), "REMOTE_IDENTITY", workFieldPath);
+  expectFail("bundle-dlq-field-non-string", viaSnapshot(bundle(workWith(fieldRow(42)), D)), "REMOTE_IDENTITY", workFieldPath);
+  expectFail("bundle-reversed-dlq-field-absent", viaSnapshot(bundle(D, W0)), "REMOTE_IDENTITY", workFieldPath);
+  // Row, duplicate and set faults precede the field pass.
+  expectFail("field-vs-identity", viaSnapshot(envelope([{ script: worker }, { script: 42 }])), "REMOTE_IDENTITY", "consumers/1/script");
+  expectFail("field-vs-row-shape", viaSnapshot(envelope([...fieldRow(fv), 42])), "REMOTE_SHAPE", "consumers/1");
+  expectFail("field-vs-duplicate", viaSnapshot(envelope([...fieldRow(fv), ...fieldRow(dlqQueue)])), "REMOTE_CARDINALITY", "consumers/1");
+  expectFail("field-vs-missing", viaSnapshot(envelope([{ script: CANARIES.remoteScript, dead_letter_queue: fv }])), "MISSING_REMOTE", "consumers");
+  expectFail("field-vs-undeclared", viaSnapshot(envelope([...fieldRow(fv), { script: CANARIES.remoteScript }])), "UNDECLARED_REMOTE", "consumers/1");
+  expectFail("bundle-field-vs-identity", viaSnapshot(bundle(workWith([{ script: worker }, { script: 42 }]), D)), "REMOTE_IDENTITY", "work-queue/consumers/1/script");
+  expectFail("bundle-field-vs-duplicate", viaSnapshot(bundle(workWith([...fieldRow(fv), ...fieldRow(dlqQueue)]), D)), "REMOTE_CARDINALITY", "work-queue/consumers/1");
+  // Pre-bind shape and bind faults precede the field pass.
+  expectFail("prebind-shape-beats-field", viaSnapshot(bundle(dlqWith({}), W0)), "REMOTE_SHAPE", "queues/0/consumers");
+  expectFail("bind-beats-field", viaSnapshot(bundle(W0, { queue: CANARIES.bundleUnknownQueue, consumers: [] })), "REMOTE_QUEUE_MISMATCH", "queues/1/queue");
+  // The work envelope (incl. its field) completes before the DLQ envelope, in
+  // both array orders.
+  expectFail("field-vs-dlq-work-first", viaSnapshot(bundle(workWith(fieldRow(fv)), dlqStale)), "REMOTE_IDENTITY", workFieldPath);
+  expectFail("field-vs-dlq-dlq-first", viaSnapshot(bundle(dlqStale, workWith(fieldRow(fv)))), "REMOTE_IDENTITY", workFieldPath);
+  expectFail("field-vs-dlq-shape-dlq-first", viaSnapshot(bundle(dlqWith([42]), W0)), "REMOTE_IDENTITY", workFieldPath);
+
+  // DLQ rows are not field-checked. With the real (empty) declared DLQ set any
+  // DLQ row fails the set compare first, so an unvalidated manifest copy
+  // attaches the worker to the DLQ and the success line is compared exactly.
+  const dlqAttachedManifest = () => {
+    const copy = structuredClone(baseManifest);
+    copy.edges.push({ kind: CONSUMER_EDGE_KIND, from: "worker", to: DLQ_RESOURCE_ID });
+    return copy;
+  };
+  const expectedExemptBundle = JSON.stringify({
+    result: "ok",
+    profileId: PROFILE_ID,
+    mode: "bundle",
+    queues: {
+      "work-queue": { queue, declared, remoteConsumers: 1 },
+      dlq: { queue: dlqQueue, declared: [worker], remoteConsumers: 1 },
+    },
+  });
+  const expectExempt = (id, dlqRow) => {
+    let result;
+    try {
+      result = run(snapshotArgv, snapshotDeps(bundle(W, dlqWith([dlqRow])), { loadManifest: dlqAttachedManifest, validateManifest: () => {} }));
+    } catch (error) {
+      if (!isDiagnostic(error)) throw error;
+      rendered.push(JSON.stringify(error.diagnostic), error.message, String(error.stack));
+      throw new SelfTestFailure(id);
+    }
+    const line = JSON.stringify(result);
+    if (line !== expectedExemptBundle || line.includes('"dead_letter_queue"')) throw new SelfTestFailure(id);
+    rendered.push(line);
+    mutations.push(id);
+  };
+  expectExempt("dlq-rows-field-exempt-absent", { script: worker });
+  expectExempt("dlq-rows-field-exempt-wrong", { script: worker, dead_letter_queue: fv });
+
+  // Field pass in process: the only proof of left-to-right order across rows.
+  expectFail("field-pass-left-to-right", () => checkWorkDeadLetterFields([{ script: "a", dead_letter_queue: dlqQueue }, { script: "b" }], dlqQueue, "consumers"), "REMOTE_IDENTITY", "consumers/1/dead_letter_queue");
+  expectFail("field-pass-first-fault", () => checkWorkDeadLetterFields([{ script: "a", dead_letter_queue: fv }, { script: "b" }], dlqQueue, "consumers"), "REMOTE_IDENTITY", "consumers/0/dead_letter_queue");
+  expectFail("field-pass-undefined-expected", () => checkWorkDeadLetterFields([{ script: "a", dead_letter_queue: dlqQueue }], undefined, "consumers"), "REMOTE_IDENTITY", "consumers/0/dead_letter_queue");
+  try {
+    checkWorkDeadLetterFields([{ script: "a", dead_letter_queue: dlqQueue }], dlqQueue, "consumers");
+  } catch {
+    throw new SelfTestFailure("field-pass-ok");
+  }
 
   // In-process derivation mutant: an unvalidated copy changes the derived set.
   if (JSON.stringify(declaredConsumers(renamedManifest())) !== JSON.stringify([CANARIES.workerName])) throw new SelfTestFailure("derivation");
