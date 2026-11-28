@@ -18,6 +18,12 @@ import { parseJsonc } from "./lib/offline-provider-validation.mjs";
 // Each work-queue row must also carry dead_letter_queue equal to the mapped
 // dead-letter queue, checked after the set compare; dead-letter queue rows are
 // not field-checked.
+// A producer snapshot {"queue", "producers"} holds operator-reduced deploy
+// configuration producer rows ({binding, queue}). The declared producer binding
+// names (producer-binding edges to the work queue) are an exact set; the
+// envelope queue and every row queue must equal the mapped producer queue
+// (mapping queue, not consumerQueue). A row without a binding is an identity
+// fault, not an undeclared row as for consumers. Extra row fields are tolerated.
 // This gate never contacts the provider: the live-fetch flag only refuses.
 // The frozen g34 queue-topology predicate is a separate, hard-coded neighbour
 // (it rejects extra row fields; this gate tolerates other extra row fields) and is not called.
@@ -26,6 +32,7 @@ export const PROFILE_ID = "meeting-room-cloudflare";
 export const WORK_QUEUE_RESOURCE_ID = "work-queue";
 export const DLQ_RESOURCE_ID = "dlq-queue";
 export const CONSUMER_EDGE_KIND = "consumer-attachment";
+export const PRODUCER_EDGE_KIND = "producer-binding";
 export const IDENTITY_ALIASES = Object.freeze(["script", "worker", "name"]);
 export const LIVE_FETCH_FLAG = "--fetch-live";
 export const LIVE_FETCH_REFUSAL =
@@ -90,6 +97,19 @@ export function declaredConsumers(manifest) {
   return declaredConsumersFor(manifest, WORK_QUEUE_RESOURCE_ID);
 }
 
+// Pure: binding names of producer-binding edges to the work-queue resource;
+// sorted and unique. Only edges are read. A matching edge without a non-empty
+// string binding is an internal fault. No loader and no validateManifest here.
+export function declaredProducers(manifest) {
+  const bindings = [];
+  for (const edge of manifest.edges) {
+    if (edge.kind !== PRODUCER_EDGE_KIND || edge.to !== WORK_QUEUE_RESOURCE_ID) continue;
+    if (typeof edge.binding !== "string" || edge.binding.length === 0) fail("INTERNAL", "-");
+    bindings.push(edge.binding);
+  }
+  return [...new Set(bindings)].sort();
+}
+
 export function readSnapshot(path) {
   return readFileSync(path, "utf8");
 }
@@ -114,6 +134,8 @@ function loadComposition(deps) {
     queue: mapping.resources.DOWNSTREAM_QUEUE.consumerQueue,
     dlqDeclared: declaredConsumersFor(manifest, DLQ_RESOURCE_ID),
     dlqQueue: mapping.resources.DOWNSTREAM_QUEUE.dead_letter_queue,
+    producerDeclared: declaredProducers(manifest),
+    producerQueue: mapping.resources.DOWNSTREAM_QUEUE.queue,
   };
 }
 
@@ -142,14 +164,17 @@ function parseSnapshot(text) {
 
 const ENVELOPE_KEYS = JSON.stringify(["consumers", "queue"]);
 const BUNDLE_KEYS = JSON.stringify(["queues"]);
+const PRODUCER_KEYS = JSON.stringify(["producers", "queue"]);
 
 // Exact top-level key set only: consumers+queue is single, queues alone is a
-// bundle, anything else is a shape fault at the snapshot.
+// bundle, producers+queue is a producer snapshot, anything else is a shape
+// fault at the snapshot.
 export function classifySnapshot(snapshot) {
   if (!isPlainObject(snapshot)) fail("REMOTE_SHAPE", "snapshot");
   const keys = JSON.stringify(Object.keys(snapshot).sort());
   if (keys === ENVELOPE_KEYS) return "single";
   if (keys === BUNDLE_KEYS) return "bundle";
+  if (keys === PRODUCER_KEYS) return "producers";
   fail("REMOTE_SHAPE", "snapshot");
 }
 
@@ -158,6 +183,13 @@ function checkEnvelope(snapshot, mappedQueue) {
   if (!Array.isArray(snapshot.consumers)) fail("REMOTE_SHAPE", "consumers");
   if (snapshot.queue !== mappedQueue) fail("REMOTE_QUEUE_MISMATCH", "queue");
   return snapshot.consumers;
+}
+
+function checkProducerEnvelope(snapshot, producerQueue) {
+  if (typeof snapshot.queue !== "string" || snapshot.queue.length === 0) fail("REMOTE_SHAPE", "queue");
+  if (!Array.isArray(snapshot.producers)) fail("REMOTE_SHAPE", "producers");
+  if (snapshot.queue !== producerQueue) fail("REMOTE_QUEUE_MISMATCH", "queue");
+  return snapshot.producers;
 }
 
 // Every element's shape is checked, in array order, before any name bind.
@@ -222,6 +254,22 @@ function reconcile(consumers, declared, prefix) {
   compareSets(rowIdentities(consumers, prefix), declared, prefix);
 }
 
+// Identity before queue, per row, left to right. A row without a binding is an
+// identity fault (unlike a consumer row without any identity alias, which is an
+// undeclared consumer). Values are compared, never echoed.
+function producerBindings(producers, producerQueue) {
+  const bindings = [];
+  for (const [index, row] of producers.entries()) {
+    const path = `producers/${index}`;
+    if (!isPlainObject(row)) fail("REMOTE_SHAPE", path);
+    if (!Object.hasOwn(row, "binding") || typeof row.binding !== "string" || row.binding.length === 0) fail("REMOTE_IDENTITY", `${path}/binding`);
+    if (!Object.hasOwn(row, "queue") || typeof row.queue !== "string" || row.queue.length === 0) fail("REMOTE_SHAPE", `${path}/queue`);
+    if (row.queue !== producerQueue) fail("REMOTE_QUEUE_MISMATCH", `${path}/queue`);
+    bindings.push(row.binding);
+  }
+  return bindings;
+}
+
 // Work-queue envelope only, after the identity set compare. Values are
 // compared, never echoed. The DLQ envelope is never passed here.
 export function checkWorkDeadLetterFields(consumers, expectedDlq, prefix) {
@@ -236,21 +284,30 @@ export function checkWorkDeadLetterFields(consumers, expectedDlq, prefix) {
 
 // Single entry. Stages: 1 flags, 2 composition load, 3 snapshot read,
 // 4 classify; single: envelope and queue bind, then rows, duplicate
-// identities, set compare, then each row's dead_letter_queue field. Bundle:
-// length, per-index shape, name bind, then the work-queue envelope fully
-// (rows, set compare, dead_letter_queue field) before the DLQ envelope, which
-// stops after its set compare.
+// identities, set compare, then each row's dead_letter_queue field; producers:
+// envelope shape and queue bind, then each row's shape, binding, queue shape
+// and queue bind, then the binding set compare; bundle: length, per-index
+// shape, name bind, then the work-queue envelope fully (rows, set compare,
+// dead_letter_queue field) before the DLQ envelope, which stops after its set
+// compare.
 export function run(argv, deps = defaultDeps) {
   const invocation = checkArgv(argv);
   if (invocation.mode === "self-test") return runSelfTest();
   const composition = loadComposition(deps);
   const snapshot = parseSnapshot(readSnapshotText(deps, invocation.snapshotPath));
-  if (classifySnapshot(snapshot) === "single") {
+  const kind = classifySnapshot(snapshot);
+  if (kind === "single") {
     const consumers = checkEnvelope(snapshot, composition.queue);
     reconcile(consumers, composition.declared, "consumers");
     checkWorkDeadLetterFields(consumers, composition.dlqQueue, "consumers");
     return { result: "ok", profileId: PROFILE_ID, queue: composition.queue, declared: composition.declared, remoteConsumers: consumers.length };
   }
+  if (kind === "producers") {
+    const producers = checkProducerEnvelope(snapshot, composition.producerQueue);
+    compareSets(producerBindings(producers, composition.producerQueue), composition.producerDeclared, "producers");
+    return { result: "ok", profileId: PROFILE_ID, mode: "producers", queue: composition.producerQueue, declared: composition.producerDeclared, remoteProducers: producers.length };
+  }
+  if (kind !== "bundle") fail("INTERNAL", "-");
   const { work, dlq } = bindBundle(checkBundleShape(snapshot), composition);
   reconcile(work.consumers, composition.declared, "work-queue/consumers");
   checkWorkDeadLetterFields(work.consumers, composition.dlqQueue, "work-queue/consumers");
@@ -277,6 +334,8 @@ const CANARIES = Object.freeze({
   workerName: "g155-canary-worker-name",
   bundleUnknownQueue: "g155-canary-bundle-queue",
   dlqStaleScript: "g155-canary-dlq-script",
+  producerBinding: "g155-canary-producer-binding",
+  producerQueue: "g155-canary-producer-queue",
 });
 
 const ALLOWED_IMPORTS = ["./g34-provider-composition.mjs", "./lib/offline-provider-validation.mjs", "node:fs", "node:path", "node:url"];
@@ -309,7 +368,11 @@ export function runSelfTest() {
   const dlqQueue = baseMapping.resources.DOWNSTREAM_QUEUE.dead_letter_queue;
   if (JSON.stringify(declared) !== JSON.stringify(["sekiban-dcb-meeting-room-cloudflare-only"])) throw new SelfTestFailure("declared-set");
   if (JSON.stringify(dlqDeclared) !== JSON.stringify([])) throw new SelfTestFailure("declared-set");
+  const producerDeclared = declaredProducers(baseManifest);
+  if (JSON.stringify(producerDeclared) !== JSON.stringify(["DOWNSTREAM_QUEUE"])) throw new SelfTestFailure("producer-declared-set");
   const [worker] = declared;
+  const [binding] = producerDeclared;
+  const producerQueue = baseMapping.resources.DOWNSTREAM_QUEUE.queue;
 
   const mutations = [];
   const rendered = [];
@@ -559,6 +622,116 @@ export function runSelfTest() {
   } catch {
     throw new SelfTestFailure("field-pass-ok");
   }
+
+  // Producer snapshot {"queue", "producers"}: operator-reduced deploy
+  // configuration producer rows. Success lines are built from the composition
+  // only and compared exactly. No producer row reads the forced-failure switch.
+  const producerLine = (declaredBindings, producerQueueName, count) =>
+    JSON.stringify({ result: "ok", profileId: PROFILE_ID, mode: "producers", queue: producerQueueName, declared: declaredBindings, remoteProducers: count });
+  const expectProducerOk = (id, fn, expectedLine) => {
+    let result;
+    try {
+      result = fn();
+    } catch (error) {
+      if (!isDiagnostic(error)) throw error;
+      rendered.push(JSON.stringify(error.diagnostic), error.message, String(error.stack));
+      throw new SelfTestFailure(id);
+    }
+    const line = JSON.stringify(result);
+    if (line !== expectedLine) throw new SelfTestFailure(id);
+    rendered.push(line);
+    mutations.push(id);
+    return result;
+  };
+  const P = (rows, extra = {}) => JSON.stringify({ queue: producerQueue, producers: rows, ...extra });
+  const prow = (o = {}) => ({ binding, queue: producerQueue, ...o });
+  const pb = CANARIES.producerBinding;
+  const pq = CANARIES.producerQueue;
+  const expectedProducer = producerLine(producerDeclared, producerQueue, 1);
+  // Green and classification.
+  expectProducerOk("producer-green", viaSnapshot(P([prow()])), expectedProducer);
+  expectProducerOk("producer-green-extra-fields", viaSnapshot(P([{ binding, queue: producerQueue, delivery_delay: 0, settings: { note: fv }, [CANARIES.key]: fv }])), expectedProducer);
+  expectProducerOk("producer-green-key-order", viaSnapshot(`{"producers":[{"binding":${JSON.stringify(binding)},"queue":${JSON.stringify(producerQueue)}}],"queue":${JSON.stringify(producerQueue)}}`), expectedProducer);
+  expectFail("producer-mixed-keys", viaSnapshot(JSON.stringify({ queue, consumers: [{ script: worker, dead_letter_queue: dlqQueue }], producers: [prow()] })), "REMOTE_SHAPE", "snapshot");
+  expectFail("producer-envelope-extra-key", viaSnapshot(P([prow()], { [CANARIES.key]: fv })), "REMOTE_SHAPE", "snapshot");
+  expectFail("producer-queue-missing", viaSnapshot(JSON.stringify({ producers: [prow()] })), "REMOTE_SHAPE", "snapshot");
+  expectFail("producer-in-bundle", viaSnapshot(bundle(W, { queue: dlqQueue, producers: [] })), "REMOTE_SHAPE", "queues/1");
+  // Envelope: queue shape, then producers array, then queue bind.
+  expectFail("producer-queue-empty", viaSnapshot(JSON.stringify({ queue: "", producers: [prow()] })), "REMOTE_SHAPE", "queue");
+  expectFail("producer-queue-non-string", viaSnapshot(JSON.stringify({ queue: 42, producers: [prow()] })), "REMOTE_SHAPE", "queue");
+  expectFail("producer-producers-not-array", viaSnapshot(JSON.stringify({ queue: producerQueue, producers: {} })), "REMOTE_SHAPE", "producers");
+  expectFail("producer-queue-shape-beats-array", viaSnapshot(JSON.stringify({ queue: 42, producers: {} })), "REMOTE_SHAPE", "queue");
+  expectFail("producer-array-beats-mismatch", viaSnapshot(JSON.stringify({ queue: pq, producers: {} })), "REMOTE_SHAPE", "producers");
+  expectFail("producer-envelope-wrong-queue", viaSnapshot(JSON.stringify({ queue: pq, producers: [prow()] })), "REMOTE_QUEUE_MISMATCH", "queue");
+  expectFail("producer-envelope-dlq-queue", viaSnapshot(JSON.stringify({ queue: dlqQueue, producers: [prow({ queue: dlqQueue })] })), "REMOTE_QUEUE_MISMATCH", "queue");
+  expectFail("producer-envelope-beats-rows", viaSnapshot(JSON.stringify({ queue: pq, producers: [42] })), "REMOTE_QUEUE_MISMATCH", "queue");
+  // Rows: shape, binding (identity), queue shape, queue bind; left to right.
+  expectFail("producer-row-number", viaSnapshot(P([42])), "REMOTE_SHAPE", "producers/0");
+  expectFail("producer-row-array", viaSnapshot(P([[]])), "REMOTE_SHAPE", "producers/0");
+  expectFail("producer-row-null", viaSnapshot(P([null])), "REMOTE_SHAPE", "producers/0");
+  expectFail("producer-binding-absent", viaSnapshot(P([{ queue: producerQueue }])), "REMOTE_IDENTITY", "producers/0/binding");
+  expectFail("producer-binding-empty", viaSnapshot(P([prow({ binding: "" })])), "REMOTE_IDENTITY", "producers/0/binding");
+  expectFail("producer-binding-non-string", viaSnapshot(P([prow({ binding: 42 })])), "REMOTE_IDENTITY", "producers/0/binding");
+  expectFail("producer-binding-null", viaSnapshot(P([prow({ binding: null })])), "REMOTE_IDENTITY", "producers/0/binding");
+  expectFail("producer-row-queue-absent", viaSnapshot(P([{ binding }])), "REMOTE_SHAPE", "producers/0/queue");
+  expectFail("producer-row-queue-empty", viaSnapshot(P([prow({ queue: "" })])), "REMOTE_SHAPE", "producers/0/queue");
+  expectFail("producer-row-queue-non-string", viaSnapshot(P([prow({ queue: 42 })])), "REMOTE_SHAPE", "producers/0/queue");
+  expectFail("producer-row-queue-wrong", viaSnapshot(P([prow({ queue: pq })])), "REMOTE_QUEUE_MISMATCH", "producers/0/queue");
+  expectFail("producer-row-queue-dlq", viaSnapshot(P([prow({ queue: dlqQueue })])), "REMOTE_QUEUE_MISMATCH", "producers/0/queue");
+  expectFail("producer-identity-beats-queue", viaSnapshot(P([{ binding: 42, queue: pq }])), "REMOTE_IDENTITY", "producers/0/binding");
+  expectFail("producer-binding-absent-beats-queue-shape", viaSnapshot(P([{ queue: 42 }])), "REMOTE_IDENTITY", "producers/0/binding");
+  expectFail("producer-rows-before-set", viaSnapshot(P([prow(), prow({ queue: pq })])), "REMOTE_QUEUE_MISMATCH", "producers/1/queue");
+  expectFail("producer-row-left-to-right", viaSnapshot(P([prow({ binding: 42 }), 42])), "REMOTE_IDENTITY", "producers/0/binding");
+  expectFail("producer-row-shape-at-index", viaSnapshot(P([prow(), 42])), "REMOTE_SHAPE", "producers/1");
+  // Binding set compare.
+  expectFail("producer-empty", viaSnapshot(P([])), "MISSING_REMOTE", "producers");
+  expectFail("producer-absent-binding", viaSnapshot(P([prow({ binding: pb })])), "MISSING_REMOTE", "producers");
+  expectFail("producer-stale-extra", viaSnapshot(P([prow(), prow({ binding: pb })])), "UNDECLARED_REMOTE", "producers/1");
+  expectFail("producer-stale-first", viaSnapshot(P([prow({ binding: pb }), prow()])), "UNDECLARED_REMOTE", "producers/0");
+  expectFail("producer-duplicate", viaSnapshot(P([prow(), prow()])), "REMOTE_CARDINALITY", "producers/1");
+  expectFail("producer-stale-duplicate", viaSnapshot(P([prow({ binding: pb }), prow({ binding: pb })])), "REMOTE_CARDINALITY", "producers/1");
+  expectFail("producer-binding-is-worker", viaSnapshot(P([prow({ binding: worker })])), "MISSING_REMOTE", "producers");
+  expectFail("producer-script-alias-ignored", viaSnapshot(P([{ script: worker, queue: producerQueue }])), "REMOTE_IDENTITY", "producers/0/binding");
+  // Queue split: the producer binds to the mapping queue; consumer lines still
+  // report consumerQueue.
+  const splitQueue = `${queue}-split`;
+  const splitMapping = () => {
+    const copy = structuredClone(baseMapping);
+    copy.resources.DOWNSTREAM_QUEUE.queue = splitQueue;
+    return copy;
+  };
+  const viaSplit = (text) => viaSnapshot(text, { loadMapping: splitMapping, validateManifest: () => {} });
+  expectProducerOk("producer-split-green", viaSplit(JSON.stringify({ queue: splitQueue, producers: [{ binding, queue: splitQueue }] })), producerLine(producerDeclared, splitQueue, 1));
+  expectFail("producer-split-envelope-consumer-queue", viaSplit(JSON.stringify({ queue, producers: [{ binding, queue: splitQueue }] })), "REMOTE_QUEUE_MISMATCH", "queue");
+  expectFail("producer-split-row-consumer-queue", viaSplit(JSON.stringify({ queue: splitQueue, producers: [{ binding, queue }] })), "REMOTE_QUEUE_MISMATCH", "producers/0/queue");
+  expectOk("producer-split-single-green", viaSplit(green));
+  expectBundleOk("producer-split-bundle-green", viaSplit(bundle(W, D)));
+  // Declared producer set in process.
+  const producerManifest = (edge) => {
+    const copy = structuredClone(baseManifest);
+    if (edge !== undefined) copy.edges.push(edge);
+    return copy;
+  };
+  const expectDeclaredProducers = (id, manifest, expected) => {
+    if (JSON.stringify(declaredProducers(manifest)) !== JSON.stringify(expected)) throw new SelfTestFailure(id);
+    mutations.push(id);
+  };
+  const secondEdge = { id: "worker-producer-second", kind: PRODUCER_EDGE_KIND, from: "worker", to: WORK_QUEUE_RESOURCE_ID, binding: "SECOND_QUEUE" };
+  expectDeclaredProducers("producer-declared-second", producerManifest(secondEdge), ["DOWNSTREAM_QUEUE", "SECOND_QUEUE"]);
+  expectDeclaredProducers("producer-declared-dedupe", producerManifest({ ...secondEdge, binding: "DOWNSTREAM_QUEUE" }), ["DOWNSTREAM_QUEUE"]);
+  expectDeclaredProducers("producer-declared-other-target", producerManifest({ ...secondEdge, to: DLQ_RESOURCE_ID }), ["DOWNSTREAM_QUEUE"]);
+  expectDeclaredProducers("producer-declared-other-kind", producerManifest({ kind: CONSUMER_EDGE_KIND, from: "worker", to: WORK_QUEUE_RESOURCE_ID, binding: "SECOND_QUEUE" }), ["DOWNSTREAM_QUEUE"]);
+  expectFail("producer-declared-bad-binding", () => declaredProducers(producerManifest({ ...secondEdge, binding: 42 })), "INTERNAL", "-");
+  const missingBindingEdge = { ...secondEdge };
+  delete missingBindingEdge.binding;
+  expectFail("producer-declared-missing-binding", () => declaredProducers(producerManifest(missingBindingEdge)), "INTERNAL", "-");
+  const resourceAbsent = producerManifest();
+  resourceAbsent.resources = resourceAbsent.resources.filter((resource) => resource.id !== WORK_QUEUE_RESOURCE_ID);
+  expectDeclaredProducers("producer-declared-resource-absent", resourceAbsent, ["DOWNSTREAM_QUEUE"]);
+  // Declared producer set through run: an unvalidated second-edge manifest.
+  const viaSecond = (text) => viaSnapshot(text, { loadManifest: () => producerManifest(secondEdge), validateManifest: () => {} });
+  expectFail("producer-cli-second-missing", viaSecond(P([prow()])), "MISSING_REMOTE", "producers");
+  expectProducerOk("producer-cli-second-green", viaSecond(P([prow(), prow({ binding: "SECOND_QUEUE" })])), producerLine(["DOWNSTREAM_QUEUE", "SECOND_QUEUE"], producerQueue, 2));
 
   // In-process derivation mutant: an unvalidated copy changes the derived set.
   if (JSON.stringify(declaredConsumers(renamedManifest())) !== JSON.stringify([CANARIES.workerName])) throw new SelfTestFailure("derivation");

@@ -173,6 +173,23 @@ checked for the `dead_letter_queue` field. A green bundle proves the supplied
 snapshot's dead-letter consumer set only; it does not check the producer or the
 live account.
 
+A producer snapshot
+`{ "queue": "<producer queue>", "producers": [ { "binding": "<binding>", "queue": "<producer queue>" } ] }`
+checks the Queue producer bindings of the Cloudflare-only profile's Worker. It
+is not a raw Cloudflare API response: reduce the deployed Worker's
+`queues.producers` rows (the `binding` and `queue` fields of the Wrangler
+configuration) to exactly these two top-level keys, or the check fails. The
+envelope `queue` and every row's `queue` must equal the local mapping's
+producer queue (`queue`, not `consumerQueue`). The declared bindings come from
+the profile, and the comparison is an exact set of binding names: a missing,
+stale, or duplicated binding fails. A row without a `binding` is reported as an
+identity fault at that row's `binding`, unlike a consumer row without a Worker
+script, which is reported as an undeclared consumer; other extra fields on a
+producer row are ignored. A producer snapshot cannot be combined with consumers
+or placed inside a bundle, and a green result reports `"mode": "producers"`.
+The check never contacts Cloudflare and refuses `--fetch-live`; a green result
+proves the supplied snapshot, not the account.
+
 All profiles use the repository's shared validation core. It checks the
 checked-in sample authority, local mapping, Worker exports, and (for the
 Cloudflare-only profile) generated accessors before any deploy continuation; it

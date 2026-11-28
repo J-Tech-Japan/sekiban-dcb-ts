@@ -32,6 +32,13 @@
   dead-letter queue, in both the single and the bundle snapshot form, checked
   after the consumer set comparison. Snapshots without that field now fail. It
   still never contacts Cloudflare.
+- The remote Queue reconcile check also accepts a producer snapshot
+  `{ "queue", "producers" }` that the operator reduces from the deployed
+  Worker's `queues.producers` rows (`binding`, `queue`). The producer binding
+  names declared by the Cloudflare-only profile must match exactly, and the
+  envelope and each row's queue must equal the local mapping's producer queue.
+  The consumer snapshots are unchanged. It never contacts Cloudflare and refuses
+  a live fetch; a green result proves the snapshot, not the account.
 
 ### @sekiban/dcb-runtime
 
